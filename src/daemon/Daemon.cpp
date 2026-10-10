@@ -1,6 +1,8 @@
 #include "Daemon.h"
 
 #include "CapturePipeline.h"
+#include "ClipboardWriter.h"
+#include "PopupWindow.h"
 #include "Paths.h"
 #include "db/Migrator.h"
 #include "db/Repository.h"
@@ -39,13 +41,6 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control, Q
 {
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
-
-    // The popup arrives with the UI layer; until then these requests are only logged.
-    connect(m_control, &ControlChannel::toggleRequested, this,
-            [](const QString& token) { qCInfo(lcDaemon) << "toggle requested, token:" << !token.isEmpty(); });
-    connect(m_control, &ControlChannel::showRequested, this,
-            [](const QString& token) { qCInfo(lcDaemon) << "show requested, token:" << !token.isEmpty(); });
-    connect(m_control, &ControlChannel::hideRequested, this, [] { qCInfo(lcDaemon) << "hide requested"; });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
 }
 
@@ -100,6 +95,15 @@ Daemon::StartResult Daemon::start(QString* error)
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
     startCapture();
+
+    m_writer = std::make_unique<ClipboardWriter>(QGuiApplication::clipboard(), m_pipeline->filter());
+    m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
+    connect(m_control, &ControlChannel::toggleRequested, m_popup.get(), &ui::PopupWindow::togglePopup);
+    connect(m_control, &ControlChannel::showRequested, m_popup.get(), &ui::PopupWindow::showPopup);
+    connect(m_control, &ControlChannel::hideRequested, m_popup.get(), &ui::PopupWindow::hidePopup);
+    connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, m_control, &ControlChannel::visibilityChanged);
+    connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
+    connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
     return StartResult::Ok;
 }
 
@@ -121,6 +125,17 @@ void Daemon::startCapture()
     }
 }
 
+void Daemon::onEntryActivated(const Entry& entry)
+{
+    // Runs before the popup hides: on Wayland, setting the clipboard needs our focus.
+    m_writer->setText(entry.content);
+    try {
+        m_repo->touch(entry.id);
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "failed to update last_used:" << e.what();
+    }
+}
+
 void Daemon::reloadConfig()
 {
     const Config previous = m_config;
@@ -130,6 +145,7 @@ void Daemon::reloadConfig()
         return;
     }
     m_pipeline->setLimits(m_config.maxHistory, m_config.maxItemBytes);
+    m_popup->applyConfig(m_config);
     if (m_config.maxHistory < previous.maxHistory) {
         m_repo->prune(m_config.maxHistory);
     }
@@ -147,6 +163,7 @@ QVariantMap Daemon::status() const
     s[QStringLiteral("config")] = m_options.configPath;
     s[QStringLiteral("database")] = m_options.databasePath;
     s[QStringLiteral("max_history")] = m_config.maxHistory;
+    s[QStringLiteral("visible")] = m_popup && m_popup->isVisible();
     if (m_capture.backend) {
         s[QStringLiteral("backend")] = m_capture.backend->name();
         s[QStringLiteral("backend_degraded")] = m_capture.degraded;

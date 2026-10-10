@@ -15,6 +15,9 @@ clipitto_add_test(tst_clipfilter)
 clipitto_add_test(tst_pipeline)
 clipitto_add_test(tst_clipboardbackend clipitto_capture)
 clipitto_add_test(tst_daemon clipitto_daemon_lib)
+clipitto_add_test(tst_historymodel clipitto_ui)
+clipitto_add_test(tst_searchcontroller clipitto_ui)
+clipitto_add_test(tst_popup clipitto_ui)
 
 # Not part of the default ctest run: ctest -C bench -L bench (or run bench_search directly).
 add_executable(bench_search bench_search.cpp TestDb.h)

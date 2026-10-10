@@ -1,5 +1,7 @@
 add_subdirectory(core)
 add_subdirectory(capture)
+add_subdirectory(output)
+add_subdirectory(ui)
 if(CLIPITTO_DBUS)
     add_subdirectory(ipc)
     add_subdirectory(cli)

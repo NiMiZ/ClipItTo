@@ -39,6 +39,20 @@ build/debug/src/cli/clipitto --status          # what the daemon is doing
 build/debug/src/cli/clipitto --toggle          # bind this to a global shortcut
 ```
 
+### Popup keys
+
+| Key | Action |
+|---|---|
+| type | filter history (note, group and text) |
+| `↓` / `↑` | move between the search bar and the list |
+| `Enter` / click | copy the entry back to the clipboard and close |
+| `Ctrl+S` / `Ctrl+G` / `Ctrl+E` | favorite / assign group / edit note |
+| `Del` | delete the entry |
+| right-click or `Menu` | the same actions in a menu |
+| `Esc` | close |
+
+Favorites and grouped entries are never pruned and are listed first.
+
 The CLI talks to the daemon over D-Bus (`io.github.nimiz.ClipItTo`, see
 [the interface](src/ipc/io.github.nimiz.ClipItTo.xml)). `kill -HUP` or `clipitto --reload`
 re-reads `~/.config/clipitto/config.toml`; history lives in `~/.local/share/clipitto/history.db`.

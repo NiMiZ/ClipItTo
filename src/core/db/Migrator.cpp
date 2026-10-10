@@ -27,6 +27,10 @@ std::vector<Migration> builtinMigrations()
         }
         result.push_back({match.captured(1).toInt(), entry, file.readAll()});
     }
+    if (result.empty()) {
+        // Only possible if the qrc object was not linked in; never run with no schema.
+        throw DbError("no embedded migrations found under :/clipitto/migrations", 0);
+    }
     std::sort(result.begin(), result.end(),
               [](const Migration& a, const Migration& b) { return a.version < b.version; });
     return result;

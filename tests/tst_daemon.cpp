@@ -1,10 +1,14 @@
 #include "ControlChannel.h"
 #include "Daemon.h"
+#include "HistoryModel.h"
+#include "HistoryView.h"
+#include "PopupWindow.h"
 #include "db/Repository.h"
 
 #include <QClipboard>
 #include <QFile>
 #include <QGuiApplication>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -124,6 +128,48 @@ private slots:
         emit d.control()->reloadRequested();
         QCOMPARE(d.config().maxHistory, 10);
         QCOMPARE(d.repository()->countUnsaved(), 10);
+    }
+
+    void toggleShowsAndHidesPopup()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QSignalSpy visibility(d.control(), &ControlChannel::visibilityChanged);
+
+        emit d.control()->toggleRequested(QString());
+        QVERIFY(d.popup()->isVisible());
+        QVERIFY(d.control()->status().value(QStringLiteral("visible")).toBool());
+        emit d.control()->toggleRequested(QString());
+        QVERIFY(!d.popup()->isVisible());
+
+        emit d.control()->showRequested(QString());
+        emit d.control()->showRequested(QString()); // idempotent
+        QVERIFY(d.popup()->isVisible());
+        emit d.control()->hideRequested();
+        QVERIFY(!d.popup()->isVisible());
+
+        QCOMPARE(visibility.size(), 4);
+        QCOMPARE(visibility.at(0).at(0).toBool(), true);
+        QCOMPARE(visibility.at(3).at(0).toBool(), false);
+    }
+
+    void activatingAnEntryCopiesItBack()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        emit d.control()->ingestRequested(QStringLiteral("older"), {});
+        emit d.control()->ingestRequested(QStringLiteral("newer"), {});
+
+        emit d.control()->showRequested(QString());
+        auto* model = d.popup()->model();
+        const int olderRow = model->rowForId(d.repository()->search(QStringLiteral("older")).front().id);
+        emit d.popup()->view()->activateRequested(model->index(olderRow));
+
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("older"));
+        QVERIFY(!d.popup()->isVisible());
+        QCoreApplication::processEvents(); // deliver the clipboard-change echo
+        QCOMPARE(d.repository()->count(), 2); // the echo is not a new copy
+        QCOMPARE(d.repository()->recent(1, false).front().content, QStringLiteral("older"));
     }
 
     void startPrunesToConfiguredLimit()

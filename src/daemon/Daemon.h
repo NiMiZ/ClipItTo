@@ -3,6 +3,7 @@
 #include "BackendSelector.h"
 #include "Config.h"
 #include "ControlChannel.h"
+#include "Entry.h"
 #include "SessionEnv.h"
 
 #include <QObject>
@@ -13,6 +14,11 @@
 namespace clipitto {
 
 class CapturePipeline;
+class ClipboardWriter;
+
+namespace ui {
+class PopupWindow;
+}
 
 namespace db {
 class Db;
@@ -25,8 +31,8 @@ struct DaemonOptions {
     SessionEnv session;
 };
 
-// Owns everything that lives for the whole session: config, database, capture and the
-// platform control channel (D-Bus on Linux).
+// Owns everything that lives for the whole session: config, database, capture, the popup
+// and the platform control channel (D-Bus on Linux).
 class Daemon : public QObject {
     Q_OBJECT
 
@@ -43,10 +49,12 @@ public:
     const Config& config() const { return m_config; }
     db::Repository* repository() const { return m_repo.get(); }
     ControlChannel* control() const { return m_control; }
+    ui::PopupWindow* popup() const { return m_popup.get(); } // null until start() succeeded
 
 private:
     void startCapture();
     void loadConfig();
+    void onEntryActivated(const Entry& entry);
 
     DaemonOptions m_options;
     Config m_config;
@@ -54,6 +62,8 @@ private:
     std::unique_ptr<db::Repository> m_repo;
     std::unique_ptr<CapturePipeline> m_pipeline;
     capture::Selection m_capture;
+    std::unique_ptr<ClipboardWriter> m_writer;
+    std::unique_ptr<ui::PopupWindow> m_popup; // declared last: destroyed first, it uses m_repo
     ControlChannel* m_control; // child of this
 };
 
