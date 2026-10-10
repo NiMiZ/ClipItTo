@@ -150,7 +150,7 @@ $env:VCPKG_ROOT = "C:\src\vcpkg"; $env:QT_ROOT_DIR = "C:\Qt\6.5.3\msvc2019_64"
 cmake --preset windows
 cmake --build --preset windows
 ctest --preset windows
-cmake --install build/windows --prefix stage      # runnable folder: stage\bin\clipitto-daemon.exe
+cmake --install build/windows --prefix $PWD\stage   # runnable folder (absolute path required)
 iscc /DStageDir=$PWD\stage packaging\windows\clipitto.iss   # optional installer (Inno Setup 6)
 ```
 

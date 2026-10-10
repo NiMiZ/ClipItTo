@@ -1,6 +1,6 @@
 # Windows installation layout: a self-contained folder (Qt DLLs via windeployqt, the MSVC
 # runtime next to the executables), which packaging/windows/clipitto.iss turns into an installer.
-#   cmake --install build/windows --prefix stage
+#   cmake --install build/windows --prefix C:/absolute/path/stage   (Qt's deploy step needs an absolute path)
 
 install(TARGETS clipitto clipitto-daemon RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 

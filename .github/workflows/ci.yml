@@ -90,7 +90,8 @@ jobs:
       - name: Stage (windeployqt)
         shell: pwsh
         run: |
-          $log = cmake --install build/windows --prefix stage 2>&1 | Out-String
+          # Qt's deploy script needs an absolute prefix.
+          $log = cmake --install build/windows --prefix "$PWD\stage" 2>&1 | Out-String
           Write-Host $log
           if ($LASTEXITCODE -ne 0) {
             # Surface the error as an annotation (readable without opening the log).

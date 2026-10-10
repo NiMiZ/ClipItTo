@@ -3,7 +3,7 @@
 ;   iscc /DStageDir=C:\path\to\stage /DAppVersion=0.1.0 [/DOutputDir=...] clipitto.iss
 
 #ifndef StageDir
-  #error Define StageDir: the directory produced by "cmake --install build/windows --prefix <dir>"
+  #error Define StageDir: the directory produced by "cmake --install build/windows --prefix <absolute dir>"
 #endif
 #ifndef AppVersion
   #define AppVersion "0.1.0"
