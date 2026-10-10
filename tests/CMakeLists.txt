@@ -16,3 +16,24 @@ target_link_libraries(bench_search PRIVATE clipitto_core Qt6::Test)
 clipitto_set_warnings(bench_search)
 add_test(NAME bench_search COMMAND bench_search CONFIGURATIONS bench)
 set_tests_properties(bench_search PROPERTIES LABELS bench)
+
+clipitto_add_test(tst_clipfilter)
+clipitto_add_test(tst_pipeline)
+
+clipitto_add_test(tst_x11backend)
+target_link_libraries(tst_x11backend PRIVATE clipitto_capture)
+set_tests_properties(tst_x11backend PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+
+# D-Bus integration: daemon in-process + the real CLI binary, on a private session bus.
+add_executable(tst_dbus tst_dbus.cpp)
+target_link_libraries(tst_dbus PRIVATE clipitto_daemon_lib Qt6::Test)
+target_compile_definitions(tst_dbus PRIVATE CLIPITTO_CLI_PATH="$<TARGET_FILE:clipitto>")
+add_dependencies(tst_dbus clipitto)
+clipitto_set_warnings(tst_dbus)
+find_program(DBUS_RUN_SESSION dbus-run-session)
+if(DBUS_RUN_SESSION)
+    add_test(NAME tst_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_dbus>)
+else()
+    add_test(NAME tst_dbus COMMAND tst_dbus) # skips itself without a session bus
+endif()
+set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)

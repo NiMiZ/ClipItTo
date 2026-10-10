@@ -1,0 +1,34 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- Source of truth for the daemon's session-bus API.
+     Bus name: io.github.nimiz.ClipItTo   Object path: /io/github/nimiz/ClipItTo -->
+<node>
+  <interface name="io.github.nimiz.ClipItTo">
+    <!-- Show the popup if hidden, hide it if shown. The token is an xdg-activation token
+         (XDG_ACTIVATION_TOKEN) or X11 startup id; empty when none is available. -->
+    <method name="Toggle">
+      <arg name="activation_token" type="s" direction="in"/>
+    </method>
+    <method name="Show">
+      <arg name="activation_token" type="s" direction="in"/>
+    </method>
+    <method name="Hide"/>
+
+    <!-- Called by capture helpers (the GNOME Shell extension) for each clipboard change. -->
+    <method name="Ingest">
+      <arg name="text" type="s" direction="in"/>
+      <arg name="mime_types" type="as" direction="in"/>
+    </method>
+
+    <method name="ReloadConfig"/>
+
+    <method name="Status">
+      <arg name="status" type="a{sv}" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QVariantMap"/>
+    </method>
+
+    <signal name="VisibilityChanged">
+      <arg name="visible" type="b"/>
+    </signal>
+  </interface>
+</node>

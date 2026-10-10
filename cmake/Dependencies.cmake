@@ -1,7 +1,7 @@
 # Third-party dependencies. On Ubuntu 24.04:
-#   sudo apt install qt6-base-dev libsqlite3-dev libtomlplusplus-dev
+#   sudo apt install qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev
 
-set(CLIPITTO_QT_COMPONENTS Core)
+set(CLIPITTO_QT_COMPONENTS Core Gui Widgets DBus)
 if(BUILD_TESTING)
     list(APPEND CLIPITTO_QT_COMPONENTS Test)
 endif()
