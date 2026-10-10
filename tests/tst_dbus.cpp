@@ -1,6 +1,7 @@
 #include "Daemon.h"
 #include "DbusControlChannel.h"
 #include "DbusNames.h"
+#include "GnomeShellIntegration.h"
 #include "db/Repository.h"
 
 #include <QDBusArgument>
@@ -17,6 +18,21 @@
 using clipitto::Daemon;
 using clipitto::DaemonOptions;
 using clipitto::ipc::DbusControlChannel;
+using clipitto::ipc::GnomeShellIntegration;
+
+// Plays the GNOME Shell extension's side of io.github.nimiz.ClipItTo.Shell.
+class FakeShellExtension : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "io.github.nimiz.ClipItTo.Shell")
+
+public:
+    QStringList calls;
+
+public slots:
+    Q_SCRIPTABLE void ActivateWindow() { calls << QStringLiteral("ActivateWindow"); }
+    Q_SCRIPTABLE void SetClipboard(const QString& text) { calls << QStringLiteral("SetClipboard:") + text; }
+    Q_SCRIPTABLE void Paste(const QString& keys) { calls << QStringLiteral("Paste:") + keys; }
+};
 
 // Integration tests against a real session bus. ctest runs this under dbus-run-session,
 // so it never touches the developer's own bus or a running clipitto-daemon.
@@ -133,6 +149,35 @@ private slots:
             QStringLiteral("VisibilityChanged"), this, SLOT(onVisibilityChanged(bool))));
         emit m_daemon->control()->visibilityChanged(true);
         QTRY_COMPARE(m_lastVisibility, 1);
+    }
+
+    void shellIntegrationFollowsTheExtension()
+    {
+        GnomeShellIntegration integration(QDBusConnection::sessionBus());
+        QSignalSpy availability(&integration, &GnomeShellIntegration::availabilityChanged);
+        QVERIFY(!integration.isAvailable());
+        integration.setClipboard(QStringLiteral("dropped")); // no extension: silently ignored
+
+        // The extension appears, on its own connection as the shell would have.
+        QDBusConnection shell = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("shell"));
+        FakeShellExtension extension;
+        QVERIFY(shell.registerObject(QString::fromLatin1(clipitto::ipc::kShellObjectPath), &extension,
+                                     QDBusConnection::ExportScriptableSlots));
+        QVERIFY(shell.registerService(QString::fromLatin1(clipitto::ipc::kShellServiceName)));
+        QTRY_VERIFY(integration.isAvailable());
+        QCOMPARE(availability.size(), 1);
+
+        integration.activatePopup();
+        integration.setClipboard(QStringLiteral("from history"));
+        integration.paste(clipitto::PasteKeys::CtrlV);
+        QTRY_COMPARE(extension.calls, (QStringList{QStringLiteral("ActivateWindow"),
+                                                    QStringLiteral("SetClipboard:from history"),
+                                                    QStringLiteral("Paste:ctrl+v")}));
+
+        shell.unregisterService(QString::fromLatin1(clipitto::ipc::kShellServiceName));
+        QTRY_VERIFY(!integration.isAvailable());
+        QCOMPARE(availability.size(), 2);
+        QDBusConnection::disconnectFromBus(QStringLiteral("shell"));
     }
 
     void cliToggleReachesDaemon()

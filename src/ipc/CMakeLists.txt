@@ -9,6 +9,7 @@ qt_add_dbus_adaptor(clipitto_adaptor_sources
 add_library(clipitto_ipc STATIC
     DbusControlChannel.cpp DbusControlChannel.h
     DbusNames.h
+    GnomeShellIntegration.cpp GnomeShellIntegration.h
     ${clipitto_adaptor_sources}
 )
 

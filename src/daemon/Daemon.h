@@ -3,6 +3,7 @@
 #include "BackendSelector.h"
 #include "Config.h"
 #include "ControlChannel.h"
+#include "DesktopIntegration.h"
 #include "Entry.h"
 #include "SessionEnv.h"
 
@@ -10,6 +11,7 @@
 #include <QVariantMap>
 
 #include <memory>
+#include <optional>
 
 namespace clipitto {
 
@@ -29,17 +31,20 @@ struct DaemonOptions {
     QString configPath;
     QString databasePath;
     SessionEnv session;
+    QString wlPasteProgram = QStringLiteral("wl-paste");
 };
 
-// Owns everything that lives for the whole session: config, database, capture, the popup
-// and the platform control channel (D-Bus on Linux).
+// Owns everything that lives for the whole session: config, database, capture, the popup,
+// the platform control channel (D-Bus on Linux) and the optional desktop integration
+// (the GNOME Shell extension on Linux).
 class Daemon : public QObject {
     Q_OBJECT
 
 public:
     using StartResult = ControlChannel::StartResult;
 
-    Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control, QObject* parent = nullptr);
+    Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
+           std::unique_ptr<DesktopIntegration> integration = nullptr, QObject* parent = nullptr);
     ~Daemon() override;
 
     StartResult start(QString* error = nullptr);
@@ -55,6 +60,9 @@ private:
     void startCapture();
     void loadConfig();
     void onEntryActivated(const Entry& entry);
+    void onPopupVisibilityChanged(bool visible);
+    bool integrationAvailable() const { return m_integration && m_integration->isAvailable(); }
+    capture::Capabilities capabilities();
 
     DaemonOptions m_options;
     Config m_config;
@@ -65,6 +73,8 @@ private:
     std::unique_ptr<ClipboardWriter> m_writer;
     std::unique_ptr<ui::PopupWindow> m_popup; // declared last: destroyed first, it uses m_repo
     ControlChannel* m_control; // child of this
+    DesktopIntegration* m_integration = nullptr; // child of this; may be null
+    std::optional<bool> m_wlDataControl; // probed lazily, once
 };
 
 } // namespace clipitto

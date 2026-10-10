@@ -93,6 +93,18 @@ private slots:
         QCOMPARE(ids(t.repo->saved(10)), (QList<qint64>{fav, grouped}));
     }
 
+    void sameMillisecondWritesStillOrder()
+    {
+        TestDb t;
+        const QDateTime frozen = t.clock;
+        Repository repo(t.db, [frozen] { return frozen; }); // every reading is the same instant
+        const auto a = repo.ingest(QStringLiteral("a")).id;
+        const auto b = repo.ingest(QStringLiteral("b")).id;
+        QCOMPARE(repo.recent(1, false).front().id, b);
+        repo.touch(a);
+        QCOMPARE(repo.recent(1, false).front().id, a);
+    }
+
     void touchMovesEntryToTop()
     {
         TestDb t;

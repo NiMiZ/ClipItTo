@@ -67,13 +67,14 @@ public:
     static QString hashOf(const QString& text);
 
 private:
-    QString now() const;
+    QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
     Stmt& likeStatement(int tokenCount);
 
     Db& m_db;
     Clock m_clock;
+    QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;
     std::unique_ptr<Stmt> m_recentAll;
     std::unique_ptr<Stmt> m_recentUnsaved;

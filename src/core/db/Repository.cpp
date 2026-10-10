@@ -80,9 +80,16 @@ Repository::Repository(Db& db, Clock clock)
 
 Repository::~Repository() = default;
 
-QString Repository::now() const
+QString Repository::now()
 {
-    return m_clock().toUTC().toString(Qt::ISODateWithMs);
+    // Timestamps have millisecond resolution; two writes in the same millisecond (e.g. a
+    // copy immediately followed by re-using an older entry) must still order correctly.
+    QDateTime stamp = m_clock().toUTC();
+    if (m_lastStamp.isValid() && stamp <= m_lastStamp) {
+        stamp = m_lastStamp.addMSecs(1);
+    }
+    m_lastStamp = stamp;
+    return stamp.toString(Qt::ISODateWithMs);
 }
 
 QString Repository::hashOf(const QString& text)

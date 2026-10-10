@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.clipitto" path="/org/gnome/shell/extensions/clipitto/">
+    <key name="toggle-shortcut" type="as">
+      <default>[]</default>
+      <summary>Shortcut that toggles the ClipItTo popup</summary>
+      <description>
+        Handled by the shell itself, which is the most reliable way to open the popup on
+        Wayland. Empty by default so it does not clash with a GNOME custom shortcut running
+        "clipitto --toggle"; use one or the other, e.g. ['&lt;Control&gt;&lt;Alt&gt;v'].
+      </description>
+    </key>
+    <key name="capture-primary" type="b">
+      <default>false</default>
+      <summary>Also record the primary selection (text that is merely selected)</summary>
+    </key>
+  </schema>
+</schemalist>

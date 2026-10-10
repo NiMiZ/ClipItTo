@@ -39,6 +39,33 @@ build/debug/src/cli/clipitto --status          # what the daemon is doing
 build/debug/src/cli/clipitto --toggle          # bind this to a global shortcut
 ```
 
+### GNOME on Wayland: the companion extension
+
+GNOME's Wayland session lets no regular app watch the clipboard or take focus, so ClipItTo
+ships a small GNOME Shell extension ([gnome-extension/](gnome-extension/clipitto@nimiz.github.io))
+that reports clipboard changes to the daemon and lets the popup take focus (and paste, with
+`paste_on_enter = true`). Install it once, then log out and back in:
+
+```bash
+gnome-extensions pack --force gnome-extension/clipitto@nimiz.github.io
+gnome-extensions install --force clipitto@nimiz.github.io.shell-extension.zip
+# after logging back in:
+gnome-extensions enable clipitto@nimiz.github.io
+```
+
+The daemon notices the extension coming and going; `clipitto --status` shows the active
+capture backend:
+
+| Session | Backend |
+|---|---|
+| GNOME Wayland + extension | `gnome-ext` |
+| Other Wayland compositors with data-control (wlroots, KDE) + `wl-clipboard` | `wl-paste` |
+| X11, Windows | `qt-clipboard` |
+| Wayland without either | `qt-clipboard`, degraded: only copies made while the popup has focus |
+
+The extension can also own the shortcut itself (most reliable on Wayland):
+`gsettings --schemadir ~/.local/share/gnome-shell/extensions/clipitto@nimiz.github.io/schemas set org.gnome.shell.extensions.clipitto toggle-shortcut "['<Control><Alt>v']"`.
+
 ### Popup keys
 
 | Key | Action |

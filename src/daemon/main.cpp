@@ -1,5 +1,6 @@
 #include "Daemon.h"
 #include "DbusControlChannel.h"
+#include "GnomeShellIntegration.h"
 #include "Paths.h"
 #include "UnixSignals.h"
 
@@ -35,7 +36,8 @@ int main(int argc, char* argv[])
     options.session = clipitto::SessionEnv::detect();
 
     clipitto::Daemon daemon(options,
-                            std::make_unique<clipitto::ipc::DbusControlChannel>(QDBusConnection::sessionBus()));
+                            std::make_unique<clipitto::ipc::DbusControlChannel>(QDBusConnection::sessionBus()),
+                            std::make_unique<clipitto::ipc::GnomeShellIntegration>(QDBusConnection::sessionBus()));
     QString error;
     switch (daemon.start(&error)) {
     case clipitto::Daemon::StartResult::Ok:

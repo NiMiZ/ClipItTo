@@ -1,0 +1,9 @@
+{
+  "uuid": "clipitto@nimiz.github.io",
+  "name": "ClipItTo",
+  "description": "Companion for the ClipItTo clipboard manager: reports clipboard changes to it and lets its popup take focus and paste on Wayland.",
+  "shell-version": ["46", "47", "48", "49"],
+  "url": "https://github.com/NiMiZ/ClipItTo",
+  "settings-schema": "org.gnome.shell.extensions.clipitto",
+  "version-name": "0.1.0"
+}

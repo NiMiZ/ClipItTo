@@ -3,6 +3,7 @@ add_library(clipitto_core STATIC
     ClipFilter.cpp ClipFilter.h
     Config.cpp Config.h
     ControlChannel.h
+    DesktopIntegration.h
     Entry.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h
