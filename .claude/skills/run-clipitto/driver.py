@@ -134,8 +134,8 @@ def cmd_start(_args):
 
     if SESSION.exists():
         shutil.rmtree(SESSION)
-    for sub in ("config", "data", "screenshots", "logs"):
-        (SESSION / sub).mkdir(parents=True)
+    for sub in ("config/clipitto", "data", "screenshots", "logs"):
+        (SESSION / sub).mkdir(parents=True)  # config/clipitto: so config.toml can be written right away
 
     n = free_display()
     xvfb = subprocess.Popen(

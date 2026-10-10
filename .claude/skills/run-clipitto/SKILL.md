@@ -72,8 +72,14 @@ Useful keys in the popup:
 - `ctrl+comma`: Settings.
 - `Escape`: closes the popup.
 
-The daemon's config is `/tmp/clipitto-driver/config/clipitto/config.toml`; edit it, then
-`python3 $D cli --reload`. Logs are in `/tmp/clipitto-driver/logs/{daemon,xvfb}.log`.
+The daemon's config is `/tmp/clipitto-driver/config/clipitto/config.toml`. It doesn't exist
+until written (the folder does), and unset keys use their defaults. For example:
+
+```bash
+printf 'theme = "dark"\npreview_lines = 3\n' > /tmp/clipitto-driver/config/clipitto/config.toml
+python3 $D cli --reload
+```
+ Logs are in `/tmp/clipitto-driver/logs/{daemon,xvfb}.log`.
 
 `CLIPITTO_BUILD` points the driver at another build dir (default `build/debug`), and
 `CLIPITTO_DRIVER_DIR` moves the session dir.
