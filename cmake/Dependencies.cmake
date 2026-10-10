@@ -14,6 +14,20 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS ${CLIPITTO_QT_COMPONENTS})
 
 find_package(SQLite3 3.35 REQUIRED) # 3.35+: UPSERT ... RETURNING; FTS5 trigram needs 3.34+
 
+# XTest for X11 auto-paste: optional, Linux only.
+if(UNIX AND NOT APPLE)
+    find_package(X11 QUIET)
+    if(X11_FOUND AND X11_XTest_FOUND)
+        set(CLIPITTO_X11_PASTE_DEFAULT ON)
+    else()
+        set(CLIPITTO_X11_PASTE_DEFAULT OFF)
+        message(STATUS "libXtst not found: building without X11 auto-paste (install libxtst-dev)")
+    endif()
+    option(CLIPITTO_X11_PASTE "Auto-paste on X11 via the XTest extension" ${CLIPITTO_X11_PASTE_DEFAULT})
+else()
+    set(CLIPITTO_X11_PASTE OFF)
+endif()
+
 # toml++: prefer the distro package (CMake config or pkg-config), else fetch the header-only release.
 find_package(tomlplusplus 3 CONFIG QUIET)
 if(NOT TARGET tomlplusplus::tomlplusplus)

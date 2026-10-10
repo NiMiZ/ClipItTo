@@ -23,6 +23,16 @@
       }
     },
     {
+      "name": "deb",
+      "inherits": "base",
+      "description": "Release build installed under /usr, for cpack",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "/usr",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
       "name": "asan",
       "inherits": "base",
       "cacheVariables": {
@@ -61,6 +71,10 @@
     {
       "name": "asan",
       "configurePreset": "asan"
+    },
+    {
+      "name": "deb",
+      "configurePreset": "deb"
     },
     {
       "name": "windows",

@@ -1,0 +1,6 @@
+# D-Bus session service: lets `clipitto --toggle` start the daemon on demand.
+# SystemdService hands the start over to systemd, so the unit's settings apply.
+[D-BUS Service]
+Name=io.github.nimiz.ClipItTo
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/clipitto-daemon
+SystemdService=clipitto.service

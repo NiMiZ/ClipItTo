@@ -4,6 +4,7 @@
 #include "HistoryModel.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
+#include "X11Paster.h"
 #include "db/Repository.h"
 
 #include <QClipboard>
@@ -270,6 +271,11 @@ private slots:
 
         fake->setAvailable(false); // shell restarted / extension disabled
         QCOMPARE(backend(), QStringLiteral("qt-clipboard"));
+    }
+
+    void xtestPasteNeedsX11()
+    {
+        QVERIFY(!clipitto::pasteViaXTest(PasteKeys::CtrlV)); // offscreen platform: no X display
     }
 
     void startPrunesToConfiguredLimit()

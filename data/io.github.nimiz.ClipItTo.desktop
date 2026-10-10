@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ClipItTo
+GenericName=Clipboard Manager
+Comment=Search and reuse your clipboard history
+Exec=clipitto --show
+Icon=edit-paste
+Terminal=false
+Categories=Utility;
+Keywords=clipboard;history;copy;paste;snippets;
+StartupNotify=false

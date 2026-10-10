@@ -1,0 +1,52 @@
+#!/bin/sh
+# Registers (or removes) a GNOME custom keyboard shortcut that runs "clipitto --toggle".
+# Other custom shortcuts are left untouched.
+#
+#   clipitto-shortcut [BINDING]    default: '<Control><Alt>v'
+#   clipitto-shortcut --remove
+set -eu
+
+schema=org.gnome.settings-daemon.plugins.media-keys
+path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipitto/
+entry="$schema.custom-keybinding:$path"
+
+if ! command -v gsettings >/dev/null 2>&1; then
+    echo "clipitto-shortcut: gsettings not found (is this a GNOME session?)" >&2
+    exit 1
+fi
+
+# Prints the current list without our entry, one quoted path per line.
+other_entries() {
+    gsettings get "$schema" custom-keybindings |
+        sed -e 's/^@as //' -e 's/^\[//' -e 's/\]$//' |
+        tr ',' '\n' | sed -e 's/^ *//' -e 's/ *$//' |
+        grep -v -x -F "'$path'" | grep -v '^$' || true
+}
+
+set_list() { # quoted paths on stdin
+    list=$(paste -s -d, - | sed 's/,/, /g')
+    gsettings set "$schema" custom-keybindings "[$list]"
+}
+
+if [ "${1:-}" = "--remove" ]; then
+    other_entries | set_list
+    gsettings reset-recursively "$entry" 2>/dev/null || true
+    echo "Removed the ClipItTo shortcut."
+    exit 0
+fi
+
+binding=${1:-'<Control><Alt>v'}
+command=$(command -v clipitto || echo clipitto)
+
+{ other_entries; echo "'$path'"; } | set_list
+gsettings set "$entry" name 'ClipItTo'
+gsettings set "$entry" command "$command --toggle"
+gsettings set "$entry" binding "$binding"
+echo "ClipItTo opens with $binding."
+
+case "$binding" in
+'<Super>v' | '<Super>V')
+    echo "Note: GNOME uses Super+V for the notification list. Free it with:" >&2
+    echo "  gsettings set org.gnome.shell.keybindings toggle-message-tray \"['<Super>m']\"" >&2
+    ;;
+esac

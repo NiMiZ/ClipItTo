@@ -16,7 +16,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev qt6-qpa-plugins libgl-dev \
-            libsqlite3-dev libtomlplusplus-dev dbus gjs
+            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin dbus gjs
 
       - name: Configure
         run: cmake --preset asan
@@ -24,6 +24,35 @@ jobs:
         run: cmake --build --preset asan
       - name: Test
         run: ctest --preset asan
+
+  package:
+    name: Debian package (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev \
+            libx11-dev libxtst-dev libglib2.0-bin dpkg-dev desktop-file-utils
+
+      - name: Build
+        run: cmake --preset deb && cmake --build --preset deb
+      - name: Package
+        working-directory: build/deb
+        run: cpack
+      - name: Inspect
+        run: |
+          dpkg-deb -I build/deb/clipitto_*.deb
+          dpkg-deb -c build/deb/clipitto_*.deb
+          desktop-file-validate data/io.github.nimiz.ClipItTo.desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipitto-deb
+          path: build/deb/clipitto_*.deb
 
   windows:
     name: Windows (MSVC, portable subset)

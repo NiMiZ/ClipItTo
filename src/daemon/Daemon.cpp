@@ -4,6 +4,7 @@
 #include "ClipboardWriter.h"
 #include "PopupWindow.h"
 #include "WlPasteBackend.h"
+#include "X11Paster.h"
 #include "Paths.h"
 #include "db/Migrator.h"
 #include "db/Repository.h"
@@ -178,8 +179,9 @@ void Daemon::onEntryActivated(const Entry& entry)
         QTimer::singleShot(80, this, [this] {
             if (integrationAvailable()) {
                 m_integration->paste(m_config.pasteKeys);
-            } else {
-                qCInfo(lcDaemon) << "paste_on_enter needs the desktop integration in this session";
+            } else if (!pasteViaXTest(m_config.pasteKeys)) {
+                qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
+                                    "(needs the GNOME Shell extension on Wayland, or X11)";
             }
         });
     }

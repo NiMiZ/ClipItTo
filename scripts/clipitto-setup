@@ -1,0 +1,37 @@
+#!/bin/sh
+# One-time setup for the current user after installing ClipItTo:
+# starts the daemon with the session, enables the GNOME extension, adds the shortcut.
+#
+#   clipitto-setup [BINDING]     BINDING is passed to clipitto-shortcut
+set -eu
+
+uuid=clipitto@nimiz.github.io
+here=$(dirname "$0")
+
+echo "== Daemon"
+systemctl --user daemon-reload
+systemctl --user enable --now clipitto.service
+echo "clipitto.service is enabled and running."
+
+case "${XDG_CURRENT_DESKTOP:-}" in
+*GNOME*)
+    echo "== GNOME Shell extension"
+    if gnome-extensions info "$uuid" >/dev/null 2>&1; then
+        gnome-extensions enable "$uuid"
+        echo "Extension enabled."
+    elif [ "${XDG_SESSION_TYPE:-}" = wayland ]; then
+        echo "GNOME Shell has not seen the extension yet: log out and back in, then run clipitto-setup again."
+    else
+        echo "Extension not found; restart GNOME Shell (Alt+F2, r) and run clipitto-setup again."
+    fi
+
+    echo "== Shortcut"
+    "$here/clipitto-shortcut" "$@"
+    ;;
+*)
+    echo "Not a GNOME session: bind 'clipitto --toggle' to a shortcut in your desktop's settings."
+    ;;
+esac
+
+echo
+clipitto --status | grep -E '^(backend|backend_degraded|desktop_integration):' || true

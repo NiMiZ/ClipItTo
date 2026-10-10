@@ -1,0 +1,12 @@
+#!/bin/sh
+# Minimal gsettings stand-in: keys are files under $FAKE_GSETTINGS_DIR, values stored verbatim.
+store=${FAKE_GSETTINGS_DIR:?}
+file() { printf '%s/%s' "$store" "$(printf '%s' "$1" | tr '/:' '__')"; }
+cmd=$1
+shift
+case "$cmd" in
+get) f=$(file "$1.$2"); if [ -e "$f" ]; then cat "$f"; else echo "@as []"; fi ;;
+set) printf '%s\n' "$3" > "$(file "$1.$2")" ;;
+reset-recursively) rm -f "$(file "$1")".* ;;
+*) echo "fake gsettings: unsupported $cmd" >&2; exit 2 ;;
+esac

@@ -45,6 +45,10 @@ endfunction()
 
 add_subdirectory(src)
 
+if(CLIPITTO_DBUS)
+    include(cmake/Packaging.cmake)
+endif()
+
 if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)

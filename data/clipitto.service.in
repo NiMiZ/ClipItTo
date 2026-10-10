@@ -1,0 +1,21 @@
+# systemd user unit for the ClipItTo daemon.
+# Started with the graphical session; also started on demand through D-Bus activation
+# (io.github.nimiz.ClipItTo.service) the first time `clipitto` is called.
+[Unit]
+Description=ClipItTo clipboard history daemon
+Documentation=https://github.com/NiMiZ/ClipItTo
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=io.github.nimiz.ClipItTo
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/clipitto-daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2
+Slice=app.slice
+MemoryHigh=150M
+
+[Install]
+WantedBy=graphical-session.target

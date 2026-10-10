@@ -88,6 +88,14 @@ private slots:
         QVERIFY(warnings.front().contains(QLatin1String("line 1")));
     }
 
+    void exampleConfigIsValidAndMatchesDefaults()
+    {
+        QStringList warnings;
+        const Config c = Config::load(QStringLiteral(CLIPITTO_EXAMPLE_CONFIG), &warnings);
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1String("; "))));
+        QVERIFY(c == Config{});
+    }
+
     void backendAliasIsAccepted()
     {
         QStringList warnings;

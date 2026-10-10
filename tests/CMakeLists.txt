@@ -8,6 +8,7 @@ endfunction()
 
 # Portable tests: run on Linux and Windows.
 clipitto_add_test(tst_config)
+target_compile_definitions(tst_config PRIVATE CLIPITTO_EXAMPLE_CONFIG="${PROJECT_SOURCE_DIR}/data/config.example.toml")
 clipitto_add_test(tst_ftsquery)
 clipitto_add_test(tst_migrator)
 clipitto_add_test(tst_repository)
@@ -24,6 +25,9 @@ if(UNIX)
     # Drives the backend against fake-wl-paste.sh (POSIX shell).
     clipitto_add_test(tst_wlpaste clipitto_capture)
     target_compile_definitions(tst_wlpaste PRIVATE CLIPITTO_FAKE_WLPASTE="${CMAKE_CURRENT_SOURCE_DIR}/fake-wl-paste.sh")
+
+    add_test(NAME clipitto_shortcut_script
+        COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/test-clipitto-shortcut.sh ${CMAKE_CURRENT_BINARY_DIR}/shortcut-test)
 
     # The GNOME Shell extension's logic, run by gjs against fake shell modules.
     find_program(GJS gjs)
@@ -54,4 +58,11 @@ if(CLIPITTO_DBUS)
         add_test(NAME tst_dbus COMMAND tst_dbus) # skips itself without a session bus
     endif()
     set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+
+    if(DBUS_RUN_SESSION)
+        add_test(NAME dbus_activation
+            COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/test-dbus-activation.sh
+                    $<TARGET_FILE:clipitto> $<TARGET_FILE:clipitto-daemon> ${CMAKE_CURRENT_BINARY_DIR}/dbus-activation
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    endif()
 endif()
