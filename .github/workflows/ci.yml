@@ -88,7 +88,16 @@ jobs:
         run: ctest --preset windows
 
       - name: Stage (windeployqt)
-        run: cmake --install build/windows --prefix stage
+        shell: pwsh
+        run: |
+          $log = cmake --install build/windows --prefix stage 2>&1 | Out-String
+          Write-Host $log
+          if ($LASTEXITCODE -ne 0) {
+            # Surface the error as an annotation (readable without opening the log).
+            $tail = ($log -split "`r?`n" | Select-Object -Last 40) -join '%0A'
+            Write-Host "::error title=cmake --install failed::$tail"
+            exit 1
+          }
 
       - name: Smoke test the staged app
         shell: pwsh
@@ -100,7 +109,10 @@ jobs:
           stage\bin\clipitto.exe --ingest "hello from CI"
           $status = stage\bin\clipitto.exe --status
           $status
-          if ($LASTEXITCODE -ne 0 -or -not ($status -match '^items: 1$')) { throw "unexpected status" }
+          if ($LASTEXITCODE -ne 0 -or -not ($status -match '^items: 1$')) {
+            Write-Host "::error title=smoke test::unexpected status: $($status -join '%0A')"
+            exit 1
+          }
           stage\bin\clipitto.exe --quit
           if (-not $daemon.WaitForExit(10000)) { $daemon.Kill(); throw "daemon did not quit" }
 
@@ -109,8 +121,13 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
-          & $iscc /DStageDir="$PWD\stage" /DOutputDir="$PWD\installer" /DAppVersion=0.1.0 packaging\windows\clipitto.iss
-          if ($LASTEXITCODE -ne 0) { throw "iscc failed" }
+          $log = & $iscc /DStageDir="$PWD\stage" /DOutputDir="$PWD\installer" /DAppVersion=0.1.0 packaging\windows\clipitto.iss 2>&1 | Out-String
+          Write-Host $log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = ($log -split "`r?`n" | Select-Object -Last 30) -join '%0A'
+            Write-Host "::error title=iscc failed::$tail"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         with:
