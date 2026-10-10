@@ -5,6 +5,39 @@ Press a shortcut, type a few letters, press Enter: the clip is back on your clip
 Favorites and grouped clips are never pruned and are listed first; notes give clips a
 readable title.
 
+## Quick start on Ubuntu 24.04+ (from source, no install)
+
+```bash
+# 1. Dependencies
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-wayland libgl-dev \
+  libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin wl-clipboard
+
+# 2. Build and test
+git clone https://github.com/NiMiZ/ClipItTo.git && cd ClipItTo
+cmake --preset release
+cmake --build --preset release
+ctest --test-dir build/release --output-on-failure
+
+# 3. Run the daemon and open the popup
+build/release/src/daemon/clipitto-daemon &
+build/release/src/cli/clipitto --toggle     # bind this command to a shortcut to use it daily
+build/release/src/cli/clipitto --status     # which capture backend is active
+```
+
+On **GNOME Wayland** (the Ubuntu default) the daemon can only see copies made while its own
+window has focus until the GNOME extension is installed (`backend_degraded: true` in
+`--status`). Install the extension from the source tree, log out and back in, then enable it:
+
+```bash
+gnome-extensions pack --force gnome-extension/clipitto@nimiz.github.io
+gnome-extensions install --force clipitto@nimiz.github.io.shell-extension.zip
+# log out and back in, then:
+gnome-extensions enable clipitto@nimiz.github.io
+build/release/src/cli/clipitto --status     # backend: gnome-ext
+```
+
+On **Ubuntu on Xorg** no extension is needed. For daily use, install it properly as below.
+
 ## Installing (Ubuntu 24.04+)
 
 Build the package (see [Building](#building) for the dependencies) and install it:
