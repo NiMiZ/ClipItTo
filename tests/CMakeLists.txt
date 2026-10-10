@@ -1,14 +1,20 @@
 function(clipitto_add_test name)
     add_executable(${name} ${name}.cpp TestDb.h)
-    target_link_libraries(${name} PRIVATE clipitto_core Qt6::Test)
+    target_link_libraries(${name} PRIVATE clipitto_core Qt6::Test ${ARGN})
     clipitto_set_warnings(${name})
     add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 endfunction()
 
+# Portable tests: run on Linux and Windows.
 clipitto_add_test(tst_config)
 clipitto_add_test(tst_ftsquery)
 clipitto_add_test(tst_migrator)
 clipitto_add_test(tst_repository)
+clipitto_add_test(tst_clipfilter)
+clipitto_add_test(tst_pipeline)
+clipitto_add_test(tst_clipboardbackend clipitto_capture)
+clipitto_add_test(tst_daemon clipitto_daemon_lib)
 
 # Not part of the default ctest run: ctest -C bench -L bench (or run bench_search directly).
 add_executable(bench_search bench_search.cpp TestDb.h)
@@ -17,23 +23,18 @@ clipitto_set_warnings(bench_search)
 add_test(NAME bench_search COMMAND bench_search CONFIGURATIONS bench)
 set_tests_properties(bench_search PROPERTIES LABELS bench)
 
-clipitto_add_test(tst_clipfilter)
-clipitto_add_test(tst_pipeline)
-
-clipitto_add_test(tst_x11backend)
-target_link_libraries(tst_x11backend PRIVATE clipitto_capture)
-set_tests_properties(tst_x11backend PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
-
-# D-Bus integration: daemon in-process + the real CLI binary, on a private session bus.
-add_executable(tst_dbus tst_dbus.cpp)
-target_link_libraries(tst_dbus PRIVATE clipitto_daemon_lib Qt6::Test)
-target_compile_definitions(tst_dbus PRIVATE CLIPITTO_CLI_PATH="$<TARGET_FILE:clipitto>")
-add_dependencies(tst_dbus clipitto)
-clipitto_set_warnings(tst_dbus)
-find_program(DBUS_RUN_SESSION dbus-run-session)
-if(DBUS_RUN_SESSION)
-    add_test(NAME tst_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_dbus>)
-else()
-    add_test(NAME tst_dbus COMMAND tst_dbus) # skips itself without a session bus
+# D-Bus integration (Linux): daemon in-process + the real CLI binary, on a private session bus.
+if(CLIPITTO_DBUS)
+    add_executable(tst_dbus tst_dbus.cpp)
+    target_link_libraries(tst_dbus PRIVATE clipitto_daemon_lib clipitto_ipc Qt6::Test)
+    target_compile_definitions(tst_dbus PRIVATE CLIPITTO_CLI_PATH="$<TARGET_FILE:clipitto>")
+    add_dependencies(tst_dbus clipitto)
+    clipitto_set_warnings(tst_dbus)
+    find_program(DBUS_RUN_SESSION dbus-run-session)
+    if(DBUS_RUN_SESSION)
+        add_test(NAME tst_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_dbus>)
+    else()
+        add_test(NAME tst_dbus COMMAND tst_dbus) # skips itself without a session bus
+    endif()
+    set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 endif()
-set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)

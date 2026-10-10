@@ -22,10 +22,12 @@ using EnumNames = std::array<std::pair<Enum, const char*>, N>;
 
 constexpr EnumNames<PasteKeys, 2> kPasteKeys{{{PasteKeys::CtrlV, "ctrl+v"}, {PasteKeys::ShiftInsert, "shift+insert"}}};
 constexpr EnumNames<ClickMode, 2> kClickModes{{{ClickMode::Single, "single"}, {ClickMode::Double, "double"}}};
-constexpr EnumNames<BackendChoice, 4> kBackends{{{BackendChoice::Auto, "auto"},
+// The first name of a value is the one written back; later ones are accepted aliases.
+constexpr EnumNames<BackendChoice, 5> kBackends{{{BackendChoice::Auto, "auto"},
                                                  {BackendChoice::GnomeExt, "gnome-ext"},
                                                  {BackendChoice::WlPaste, "wl-paste"},
-                                                 {BackendChoice::X11, "x11"}}};
+                                                 {BackendChoice::QtClipboard, "qt-clipboard"},
+                                                 {BackendChoice::QtClipboard, "x11"}}};
 
 template <typename Enum, std::size_t N>
 const char* nameOf(const EnumNames<Enum, N>& names, Enum value)
@@ -89,7 +91,9 @@ public:
         }
         QStringList allowed;
         for (const auto& entry : names) {
-            allowed << QString::fromLatin1(entry.second);
+            if (nameOf(names, entry.first) == entry.second) { // skip aliases
+                allowed << QString::fromLatin1(entry.second);
+            }
         }
         warn(QStringLiteral("%1: expected one of %2").arg(QLatin1String(key), allowed.join(QLatin1String(", "))));
     }
@@ -188,7 +192,7 @@ std::string Config::toToml() const
         << "click_to_copy = \"" << nameOf(kClickModes, clickToCopy) << "\"    # single | double\n"
         << "hide_on_focus_loss = " << b(hideOnFocusLoss) << "\n"
         << "search_debounce_ms = " << searchDebounceMs << "\n"
-        << "backend = \"" << nameOf(kBackends, backend) << "\"            # auto | gnome-ext | wl-paste | x11\n";
+        << "backend = \"" << nameOf(kBackends, backend) << "\"            # auto | gnome-ext | wl-paste | qt-clipboard\n";
     return out.str();
 }
 

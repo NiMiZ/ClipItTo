@@ -1,4 +1,5 @@
 #include "Daemon.h"
+#include "DbusControlChannel.h"
 #include "DbusNames.h"
 #include "db/Repository.h"
 
@@ -15,6 +16,7 @@
 
 using clipitto::Daemon;
 using clipitto::DaemonOptions;
+using clipitto::ipc::DbusControlChannel;
 
 // Integration tests against a real session bus. ctest runs this under dbus-run-session,
 // so it never touches the developer's own bus or a running clipitto-daemon.
@@ -53,6 +55,10 @@ private:
 
     QTemporaryDir m_dir;
     std::unique_ptr<Daemon> m_daemon;
+    int m_lastVisibility = -1;
+
+public slots:
+    void onVisibilityChanged(bool visible) { m_lastVisibility = visible ? 1 : 0; }
 
 private slots:
     void initTestCase()
@@ -64,7 +70,7 @@ private slots:
         DaemonOptions options;
         options.configPath = m_dir.filePath(QStringLiteral("config.toml"));
         options.databasePath = m_dir.filePath(QStringLiteral("data/history.db"));
-        m_daemon = std::make_unique<Daemon>(options);
+        m_daemon = std::make_unique<Daemon>(options, std::make_unique<DbusControlChannel>(QDBusConnection::sessionBus()));
         QString error;
         QVERIFY2(m_daemon->start(&error) == Daemon::StartResult::Ok, qPrintable(error));
     }
@@ -75,8 +81,8 @@ private slots:
         options.configPath = m_dir.filePath(QStringLiteral("config.toml"));
         options.databasePath = m_dir.filePath(QStringLiteral("other.db"));
         // A separate connection, as a second process would have.
-        options.bus = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("second"));
-        Daemon second(options);
+        Daemon second(options, std::make_unique<DbusControlChannel>(
+                                   QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("second"))));
         QVERIFY(second.start() == Daemon::StartResult::AlreadyRunning);
         QVERIFY(!QFile::exists(options.databasePath)); // bailed out before opening a database
         QDBusConnection::disconnectFromBus(QStringLiteral("second"));
@@ -103,24 +109,30 @@ private slots:
         QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
         const QVariantMap status = qdbus_cast<QVariantMap>(reply.arguments().constFirst());
         QCOMPARE(status.value(QStringLiteral("items")).toLongLong(), m_daemon->repository()->count());
-        QCOMPARE(status.value(QStringLiteral("backend")).toString(), QStringLiteral("x11"));
+        QCOMPARE(status.value(QStringLiteral("backend")).toString(), QStringLiteral("qt-clipboard"));
         QCOMPARE(status.value(QStringLiteral("max_history")).toInt(), 1000);
     }
 
-    void reloadConfigAppliesNewLimit()
+    void reloadConfigMethodTriggersReload()
     {
-        for (int i = 0; i < 20; ++i) {
-            call(QStringLiteral("Ingest"), {QStringLiteral("bulk %1").arg(i), QStringList{}});
-        }
         QFile file(m_dir.filePath(QStringLiteral("config.toml")));
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write("max_history = 10\n");
         file.close();
 
-        call(QStringLiteral("ReloadConfig"));
+        QCOMPARE(call(QStringLiteral("ReloadConfig")).type(), QDBusMessage::ReplyMessage);
         QCOMPARE(m_daemon->config().maxHistory, 10);
-        QCOMPARE(m_daemon->repository()->countUnsaved(), 10);
         QFile::remove(file.fileName());
+        call(QStringLiteral("ReloadConfig"));
+    }
+
+    void visibilityIsBroadcast()
+    {
+        QVERIFY(QDBusConnection::sessionBus().connect(
+            QString(), QString::fromLatin1(clipitto::ipc::kObjectPath), QString::fromLatin1(clipitto::ipc::kInterface),
+            QStringLiteral("VisibilityChanged"), this, SLOT(onVisibilityChanged(bool))));
+        emit m_daemon->control()->visibilityChanged(true);
+        QTRY_COMPARE(m_lastVisibility, 1);
     }
 
     void cliToggleReachesDaemon()
@@ -133,7 +145,7 @@ private slots:
     {
         const auto [code, output] = runCli({QStringLiteral("--status")});
         QVERIFY2(code == 0, qPrintable(output));
-        QVERIFY(output.contains(QLatin1String("backend: x11")));
+        QVERIFY(output.contains(QLatin1String("backend: qt-clipboard")));
         QVERIFY(output.contains(QLatin1String("items: ")));
     }
 

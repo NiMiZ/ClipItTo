@@ -1,22 +1,22 @@
-#include "X11QtBackend.h"
+#include "QtClipboardBackend.h"
 
 #include <QGuiApplication>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QTest>
 
-using clipitto::capture::X11QtBackend;
+using clipitto::capture::QtClipboardBackend;
 
 // Runs on the offscreen platform, whose in-process clipboard emits the same
-// QClipboard signals the xcb platform emits for XFixes selection events.
-class TestX11Backend : public QObject {
+// QClipboard signals the xcb and windows platforms emit for external changes.
+class TestClipboardBackend : public QObject {
     Q_OBJECT
 
 private slots:
     void emitsTextAndMimeTypes()
     {
-        X11QtBackend backend(QGuiApplication::clipboard(), false);
-        QSignalSpy captured(&backend, &X11QtBackend::captured);
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
         backend.start();
 
         auto* data = new QMimeData;
@@ -31,8 +31,8 @@ private slots:
 
     void ignoresNonText()
     {
-        X11QtBackend backend(QGuiApplication::clipboard(), false);
-        QSignalSpy captured(&backend, &X11QtBackend::captured);
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
         backend.start();
 
         auto* data = new QMimeData;
@@ -44,8 +44,8 @@ private slots:
 
     void stopDisconnects()
     {
-        X11QtBackend backend(QGuiApplication::clipboard(), false);
-        QSignalSpy captured(&backend, &X11QtBackend::captured);
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
         backend.start();
         backend.stop();
         QGuiApplication::clipboard()->setText(QStringLiteral("after stop"));
@@ -54,5 +54,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestX11Backend)
-#include "tst_x11backend.moc"
+QTEST_MAIN(TestClipboardBackend)
+#include "tst_clipboardbackend.moc"

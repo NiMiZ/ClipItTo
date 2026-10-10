@@ -1,7 +1,12 @@
-# Third-party dependencies. On Ubuntu 24.04:
-#   sudo apt install qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev
+# Third-party dependencies.
+#   Ubuntu 24.04: sudo apt install qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev
+#   Windows:      Qt 6.5+ (MSVC) plus vcpkg in manifest mode (see vcpkg.json and the
+#                 "windows" preset), which provides SQLite (with FTS5) and toml++.
 
-set(CLIPITTO_QT_COMPONENTS Core Gui Widgets DBus)
+set(CLIPITTO_QT_COMPONENTS Core Gui Widgets)
+if(CLIPITTO_DBUS)
+    list(APPEND CLIPITTO_QT_COMPONENTS DBus)
+endif()
 if(BUILD_TESTING)
     list(APPEND CLIPITTO_QT_COMPONENTS Test)
 endif()

@@ -1,4 +1,5 @@
 #include "Daemon.h"
+#include "DbusControlChannel.h"
 #include "Paths.h"
 #include "UnixSignals.h"
 
@@ -33,7 +34,8 @@ int main(int argc, char* argv[])
     options.databasePath = clipitto::paths::databaseFile();
     options.session = clipitto::SessionEnv::detect();
 
-    clipitto::Daemon daemon(options);
+    clipitto::Daemon daemon(options,
+                            std::make_unique<clipitto::ipc::DbusControlChannel>(QDBusConnection::sessionBus()));
     QString error;
     switch (daemon.start(&error)) {
     case clipitto::Daemon::StartResult::Ok:

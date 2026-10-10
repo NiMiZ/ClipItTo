@@ -1,7 +1,6 @@
 #include "Daemon.h"
 
 #include "CapturePipeline.h"
-#include "DaemonService.h"
 #include "Paths.h"
 #include "db/Migrator.h"
 #include "db/Repository.h"
@@ -23,6 +22,8 @@ QString displayName(SessionEnv::Display display)
         return QStringLiteral("wayland");
     case SessionEnv::Display::X11:
         return QStringLiteral("x11");
+    case SessionEnv::Display::Windows:
+        return QStringLiteral("windows");
     case SessionEnv::Display::Unknown:
         break;
     }
@@ -31,20 +32,21 @@ QString displayName(SessionEnv::Display display)
 
 } // namespace
 
-Daemon::Daemon(DaemonOptions options, QObject* parent)
+Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control, QObject* parent)
     : QObject(parent)
     , m_options(std::move(options))
-    , m_service(new ipc::DaemonService(this))
+    , m_control(control.release())
 {
-    m_service->setStatusProvider([this] { return status(); });
+    m_control->setParent(this);
+    m_control->setStatusProvider([this] { return status(); });
 
     // The popup arrives with the UI layer; until then these requests are only logged.
-    connect(m_service, &ipc::DaemonService::toggleRequested, this,
+    connect(m_control, &ControlChannel::toggleRequested, this,
             [](const QString& token) { qCInfo(lcDaemon) << "toggle requested, token:" << !token.isEmpty(); });
-    connect(m_service, &ipc::DaemonService::showRequested, this,
+    connect(m_control, &ControlChannel::showRequested, this,
             [](const QString& token) { qCInfo(lcDaemon) << "show requested, token:" << !token.isEmpty(); });
-    connect(m_service, &ipc::DaemonService::hideRequested, this, [] { qCInfo(lcDaemon) << "hide requested"; });
-    connect(m_service, &ipc::DaemonService::reloadRequested, this, &Daemon::reloadConfig);
+    connect(m_control, &ControlChannel::hideRequested, this, [] { qCInfo(lcDaemon) << "hide requested"; });
+    connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
 }
 
 Daemon::~Daemon()
@@ -69,21 +71,10 @@ void Daemon::loadConfig()
 
 Daemon::StartResult Daemon::start(QString* error)
 {
-    // Claim the bus name first: a second instance must not touch the database.
-    QString busError;
-    switch (m_service->registerOn(m_options.bus, &busError)) {
-    case ipc::DaemonService::RegisterResult::Ok:
-        break;
-    case ipc::DaemonService::RegisterResult::AlreadyRunning:
-        if (error) {
-            *error = busError;
-        }
-        return StartResult::AlreadyRunning;
-    case ipc::DaemonService::RegisterResult::Failed:
-        if (error) {
-            *error = busError;
-        }
-        return StartResult::Failed;
+    // Claim single-instance ownership first: a second instance must not touch the database.
+    const StartResult controlResult = m_control->start(error);
+    if (controlResult != StartResult::Ok) {
+        return controlResult;
     }
 
     loadConfig();
@@ -107,7 +98,7 @@ Daemon::StartResult Daemon::start(QString* error)
     }
 
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
-    connect(m_service, &ipc::DaemonService::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
+    connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
     startCapture();
     return StartResult::Ok;
 }

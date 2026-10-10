@@ -11,7 +11,7 @@ namespace clipitto {
 
 enum class PasteKeys { CtrlV, ShiftInsert };
 enum class ClickMode { Single, Double };
-enum class BackendChoice { Auto, GnomeExt, WlPaste, X11 };
+enum class BackendChoice { Auto, GnomeExt, WlPaste, QtClipboard };
 
 // User settings from ~/.config/clipitto/config.toml. Missing or invalid keys fall back to defaults.
 struct Config {

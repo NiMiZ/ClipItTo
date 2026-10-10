@@ -6,12 +6,12 @@ namespace clipitto {
 
 // What kind of graphical session we are running in; drives capture backend selection.
 struct SessionEnv {
-    enum class Display { Wayland, X11, Unknown };
+    enum class Display { Wayland, X11, Windows, Unknown };
 
     Display display = Display::Unknown;
     bool isGnome = false;
 
-    static SessionEnv detect(); // from the process environment
+    static SessionEnv detect(); // from the process environment (always Windows on Windows)
 
     // XDG_SESSION_TYPE wins; WAYLAND_DISPLAY / DISPLAY are the fallback.
     // XDG_CURRENT_DESKTOP is colon-separated, e.g. "ubuntu:GNOME".

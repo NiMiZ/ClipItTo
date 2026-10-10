@@ -1,17 +1,17 @@
-#include "X11QtBackend.h"
+#include "QtClipboardBackend.h"
 
 #include <QMimeData>
 
 namespace clipitto::capture {
 
-X11QtBackend::X11QtBackend(QClipboard* clipboard, bool capturePrimary, QObject* parent)
+QtClipboardBackend::QtClipboardBackend(QClipboard* clipboard, bool capturePrimary, QObject* parent)
     : CaptureBackend(parent)
     , m_clipboard(clipboard)
     , m_capturePrimary(capturePrimary)
 {
 }
 
-void X11QtBackend::start()
+void QtClipboardBackend::start()
 {
     stop();
     m_clipboardConn = connect(m_clipboard, &QClipboard::dataChanged, this,
@@ -22,13 +22,13 @@ void X11QtBackend::start()
     }
 }
 
-void X11QtBackend::stop()
+void QtClipboardBackend::stop()
 {
     disconnect(m_clipboardConn);
     disconnect(m_selectionConn);
 }
 
-void X11QtBackend::read(QClipboard::Mode mode)
+void QtClipboardBackend::read(QClipboard::Mode mode)
 {
     const QMimeData* data = m_clipboard->mimeData(mode);
     if (!data || !data->hasText()) {

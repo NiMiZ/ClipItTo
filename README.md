@@ -12,7 +12,23 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
-Presets: `debug`, `release`, `asan` (address/UB sanitizers, warnings as errors).
+Presets: `debug`, `release`, `asan` (address/UB sanitizers, warnings as errors), `windows`.
+
+### Windows (work in progress)
+
+The core, capture and daemon libraries and their tests build natively with MSVC; the
+Windows entry point (global hotkey, named-pipe CLI, installer) is a later milestone.
+Needs Qt 6.5+ for MSVC and [vcpkg](https://vcpkg.io) (installs SQLite and toml++ from
+[vcpkg.json](vcpkg.json)). From a *Developer PowerShell for VS*:
+
+```powershell
+$env:VCPKG_ROOT = "C:\src\vcpkg"; $env:QT_ROOT_DIR = "C:\Qt\6.5.3\msvc2019_64"
+cmake --preset windows
+cmake --build --preset windows
+ctest --preset windows
+```
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds and tests both platforms.
 Search benchmark: `build/debug/tests/bench_search`.
 
 ## Running

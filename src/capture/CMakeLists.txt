@@ -1,7 +1,7 @@
 add_library(clipitto_capture STATIC
     BackendSelector.cpp BackendSelector.h
     CaptureBackend.h
-    X11QtBackend.cpp X11QtBackend.h
+    QtClipboardBackend.cpp QtClipboardBackend.h
 )
 
 target_include_directories(clipitto_capture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

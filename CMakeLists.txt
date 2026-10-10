@@ -12,6 +12,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_TESTING "Build unit tests and benchmarks" ON)
 option(CLIPITTO_WERROR "Treat compiler warnings as errors" OFF)
+if(UNIX AND NOT APPLE)
+    set(CLIPITTO_DBUS_DEFAULT ON)
+else()
+    set(CLIPITTO_DBUS_DEFAULT OFF)
+endif()
+option(CLIPITTO_DBUS "Build the D-Bus control channel, Linux daemon entry point and clipitto CLI"
+    ${CLIPITTO_DBUS_DEFAULT})
+
+if(MSVC)
+    add_compile_options(/utf-8) # sources and test literals are UTF-8
+endif()
 
 include(GNUInstallDirs)
 include(cmake/Dependencies.cmake)
@@ -19,9 +30,16 @@ include(cmake/Dependencies.cmake)
 qt_standard_project_setup()
 
 function(clipitto_set_warnings target)
-    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
-    if(CLIPITTO_WERROR)
-        target_compile_options(${target} PRIVATE -Werror)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive-)
+        if(CLIPITTO_WERROR)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        if(CLIPITTO_WERROR)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
     endif()
 endfunction()
 

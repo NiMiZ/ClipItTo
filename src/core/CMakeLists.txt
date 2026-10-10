@@ -2,6 +2,7 @@ add_library(clipitto_core STATIC
     CapturePipeline.cpp CapturePipeline.h
     ClipFilter.cpp ClipFilter.h
     Config.cpp Config.h
+    ControlChannel.h
     Entry.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h

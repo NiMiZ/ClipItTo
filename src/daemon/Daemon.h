@@ -2,9 +2,9 @@
 
 #include "BackendSelector.h"
 #include "Config.h"
+#include "ControlChannel.h"
 #include "SessionEnv.h"
 
-#include <QDBusConnection>
 #include <QObject>
 #include <QVariantMap>
 
@@ -19,25 +19,21 @@ class Db;
 class Repository;
 } // namespace db
 
-namespace ipc {
-class DaemonService;
-}
-
 struct DaemonOptions {
     QString configPath;
     QString databasePath;
     SessionEnv session;
-    QDBusConnection bus = QDBusConnection::sessionBus();
 };
 
-// Owns everything that lives for the whole session: config, database, capture, D-Bus service.
+// Owns everything that lives for the whole session: config, database, capture and the
+// platform control channel (D-Bus on Linux).
 class Daemon : public QObject {
     Q_OBJECT
 
 public:
-    enum class StartResult { Ok, AlreadyRunning, Failed };
+    using StartResult = ControlChannel::StartResult;
 
-    explicit Daemon(DaemonOptions options, QObject* parent = nullptr);
+    Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control, QObject* parent = nullptr);
     ~Daemon() override;
 
     StartResult start(QString* error = nullptr);
@@ -46,6 +42,7 @@ public:
 
     const Config& config() const { return m_config; }
     db::Repository* repository() const { return m_repo.get(); }
+    ControlChannel* control() const { return m_control; }
 
 private:
     void startCapture();
@@ -57,7 +54,7 @@ private:
     std::unique_ptr<db::Repository> m_repo;
     std::unique_ptr<CapturePipeline> m_pipeline;
     capture::Selection m_capture;
-    ipc::DaemonService* m_service = nullptr;
+    ControlChannel* m_control; // child of this
 };
 
 } // namespace clipitto

@@ -1,34 +1,36 @@
 #include "BackendSelector.h"
 
 #include "Config.h"
+#include "QtClipboardBackend.h"
 #include "SessionEnv.h"
-#include "X11QtBackend.h"
 
 namespace clipitto::capture {
 
 Selection selectBackend(const Config& config, const SessionEnv& session, QClipboard* clipboard)
 {
     Selection s;
-    s.backend = std::make_unique<X11QtBackend>(clipboard, config.capturePrimary);
+    s.backend = std::make_unique<QtClipboardBackend>(clipboard, config.capturePrimary);
 
     switch (config.backend) {
     case BackendChoice::GnomeExt:
     case BackendChoice::WlPaste:
-        s.degraded = session.display != SessionEnv::Display::X11;
-        s.note = QStringLiteral("configured backend is not available in this build; using x11");
-        return s;
-    case BackendChoice::X11:
-        s.note = QStringLiteral("configured: x11");
+        s.note = QStringLiteral("configured backend is not available in this build; using qt-clipboard");
+        break;
+    case BackendChoice::QtClipboard:
+        s.note = QStringLiteral("configured: qt-clipboard");
         break;
     case BackendChoice::Auto:
         s.note = QStringLiteral("auto");
         break;
     }
 
-    if (session.display != SessionEnv::Display::X11) {
+    // QClipboard sees every change on X11 and Windows, but only focused changes on Wayland.
+    const bool complete = session.display == SessionEnv::Display::X11
+        || session.display == SessionEnv::Display::Windows;
+    if (!complete) {
         s.degraded = true;
-        s.note += QStringLiteral("; no Wayland capture backend available, clipboard changes are "
-                                 "only seen while ClipItTo has focus");
+        s.note += QStringLiteral("; no complete capture backend for this session yet, clipboard "
+                                 "changes are only seen while ClipItTo has focus");
     }
     return s;
 }

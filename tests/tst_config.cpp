@@ -88,6 +88,15 @@ private slots:
         QVERIFY(warnings.front().contains(QLatin1String("line 1")));
     }
 
+    void backendAliasIsAccepted()
+    {
+        QStringList warnings;
+        const Config c = Config::fromToml(R"(backend = "x11")", &warnings);
+        QVERIFY(warnings.isEmpty());
+        QVERIFY(c.backend == BackendChoice::QtClipboard);
+        QVERIFY(c.toToml().find("backend = \"qt-clipboard\"") != std::string::npos);
+    }
+
     void saveLoadRoundTrip()
     {
         QTemporaryDir dir;
@@ -98,7 +107,7 @@ private slots:
         c.maxHistory = 42;
         c.pasteOnEnter = true;
         c.pasteKeys = PasteKeys::ShiftInsert;
-        c.backend = BackendChoice::X11;
+        c.backend = BackendChoice::QtClipboard;
         QString error;
         QVERIFY2(c.save(path, &error), qPrintable(error));
 
