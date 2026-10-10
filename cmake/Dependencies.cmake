@@ -6,6 +6,8 @@
 set(CLIPITTO_QT_COMPONENTS Core Gui Widgets)
 if(CLIPITTO_DBUS)
     list(APPEND CLIPITTO_QT_COMPONENTS DBus)
+else()
+    list(APPEND CLIPITTO_QT_COMPONENTS Network) # QLocalServer/QLocalSocket
 endif()
 if(BUILD_TESTING)
     list(APPEND CLIPITTO_QT_COMPONENTS Test)

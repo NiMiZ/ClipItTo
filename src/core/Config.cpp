@@ -1,5 +1,7 @@
 #include "Config.h"
 
+#include "Hotkey.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -98,6 +100,21 @@ public:
         warn(QStringLiteral("%1: expected one of %2").arg(QLatin1String(key), allowed.join(QLatin1String(", "))));
     }
 
+    void hotkey(const char* key, QString& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const auto value = node->value_exact<std::string>();
+        const auto parsed = value ? parseHotkey(QString::fromStdString(*value)) : std::nullopt;
+        if (parsed) {
+            out = parsed->canonical;
+        } else {
+            warn(QStringLiteral("%1: expected a shortcut like \"Ctrl+Alt+V\"").arg(QLatin1String(key)));
+        }
+    }
+
     void warnUnknownKeys()
     {
         for (const auto& [key, node] : m_table) {
@@ -156,6 +173,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("hide_on_focus_loss", config.hideOnFocusLoss);
     r.integer("search_debounce_ms", config.searchDebounceMs, 0, 2000);
     r.choice("backend", config.backend, kBackends);
+    r.hotkey("hotkey", config.hotkey);
     r.warnUnknownKeys();
     return config;
 }
@@ -192,7 +210,8 @@ std::string Config::toToml() const
         << "click_to_copy = \"" << nameOf(kClickModes, clickToCopy) << "\"    # single | double\n"
         << "hide_on_focus_loss = " << b(hideOnFocusLoss) << "\n"
         << "search_debounce_ms = " << searchDebounceMs << "\n"
-        << "backend = \"" << nameOf(kBackends, backend) << "\"            # auto | gnome-ext | wl-paste | qt-clipboard\n";
+        << "backend = \"" << nameOf(kBackends, backend) << "\"            # auto | gnome-ext | wl-paste | qt-clipboard\n"
+        << "hotkey = \"" << hotkey.toStdString() << "\"      # Windows global shortcut\n";
     return out.str();
 }
 

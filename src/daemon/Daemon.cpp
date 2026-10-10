@@ -4,7 +4,7 @@
 #include "ClipboardWriter.h"
 #include "PopupWindow.h"
 #include "WlPasteBackend.h"
-#include "X11Paster.h"
+#include "SyntheticPaste.h"
 #include "Paths.h"
 #include "db/Migrator.h"
 #include "db/Repository.h"
@@ -179,9 +179,9 @@ void Daemon::onEntryActivated(const Entry& entry)
         QTimer::singleShot(80, this, [this] {
             if (integrationAvailable()) {
                 m_integration->paste(m_config.pasteKeys);
-            } else if (!pasteViaXTest(m_config.pasteKeys)) {
+            } else if (!pasteWithSyntheticKeys(m_config.pasteKeys)) {
                 qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
-                                    "(needs the GNOME Shell extension on Wayland, or X11)";
+                                    "(needs the GNOME Shell extension on Wayland)";
             }
         });
     }
@@ -203,11 +203,12 @@ void Daemon::reloadConfig()
     if (m_config.backend != previous.backend || m_config.capturePrimary != previous.capturePrimary) {
         startCapture();
     }
+    emit configReloaded();
 }
 
 QVariantMap Daemon::status() const
 {
-    QVariantMap s;
+    QVariantMap s = m_extraStatus;
     s[QStringLiteral("version")] = QCoreApplication::applicationVersion();
     s[QStringLiteral("session")] = displayName(m_options.session.display);
     s[QStringLiteral("gnome")] = m_options.session.isGnome;

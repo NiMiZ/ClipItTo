@@ -13,3 +13,5 @@ click_to_copy = "single"    # single | double
 hide_on_focus_loss = true
 search_debounce_ms = 100
 backend = "auto"            # auto | gnome-ext | wl-paste | qt-clipboard
+hotkey = "Ctrl+Alt+V"       # Windows: global shortcut that opens the popup. On Linux, set the
+                            # shortcut in your desktop's settings (clipitto-shortcut on GNOME).

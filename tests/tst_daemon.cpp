@@ -4,7 +4,7 @@
 #include "HistoryModel.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
-#include "X11Paster.h"
+#include "SyntheticPaste.h"
 #include "db/Repository.h"
 
 #include <QClipboard>
@@ -273,9 +273,12 @@ private slots:
         QCOMPARE(backend(), QStringLiteral("qt-clipboard"));
     }
 
-    void xtestPasteNeedsX11()
+    void syntheticPasteNeedsADisplay()
     {
-        QVERIFY(!clipitto::pasteViaXTest(PasteKeys::CtrlV)); // offscreen platform: no X display
+#ifdef Q_OS_WIN
+        QSKIP("SendInput needs no display connection");
+#endif
+        QVERIFY(!clipitto::pasteWithSyntheticKeys(PasteKeys::CtrlV)); // offscreen: no X display
     }
 
     void startPrunesToConfiguredLimit()

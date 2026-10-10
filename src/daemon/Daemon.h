@@ -50,11 +50,16 @@ public:
     StartResult start(QString* error = nullptr);
     void reloadConfig();
     QVariantMap status() const;
+    // Adds platform details (e.g. the Windows hotkey) to status().
+    void setStatusValue(const QString& key, const QVariant& value) { m_extraStatus.insert(key, value); }
 
     const Config& config() const { return m_config; }
     db::Repository* repository() const { return m_repo.get(); }
     ControlChannel* control() const { return m_control; }
     ui::PopupWindow* popup() const { return m_popup.get(); } // null until start() succeeded
+
+signals:
+    void configReloaded();
 
 private:
     void startCapture();
@@ -75,6 +80,7 @@ private:
     ControlChannel* m_control; // child of this
     DesktopIntegration* m_integration = nullptr; // child of this; may be null
     std::optional<bool> m_wlDataControl; // probed lazily, once
+    QVariantMap m_extraStatus;
 };
 
 } // namespace clipitto

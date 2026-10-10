@@ -27,6 +27,7 @@ struct Config {
     bool hideOnFocusLoss = true;
     int searchDebounceMs = 100;
     BackendChoice backend = BackendChoice::Auto;
+    QString hotkey = QStringLiteral("Ctrl+Alt+V"); // global shortcut registered by the daemon (Windows)
 
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)
     // and never fail: the affected values keep their defaults.

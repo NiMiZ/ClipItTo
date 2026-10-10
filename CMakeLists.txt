@@ -23,6 +23,9 @@ option(CLIPITTO_DBUS "Build the D-Bus control channel, Linux daemon entry point 
 if(MSVC)
     add_compile_options(/utf-8) # sources and test literals are UTF-8
 endif()
+if(WIN32)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+endif()
 
 include(GNUInstallDirs)
 include(cmake/Dependencies.cmake)
@@ -47,6 +50,8 @@ add_subdirectory(src)
 
 if(CLIPITTO_DBUS)
     include(cmake/Packaging.cmake)
+elseif(WIN32)
+    include(cmake/PackagingWindows.cmake)
 endif()
 
 if(BUILD_TESTING)

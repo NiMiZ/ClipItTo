@@ -22,6 +22,9 @@
 
     <method name="ReloadConfig"/>
 
+    <!-- Exits the daemon. Under systemd, prefer stopping the clipitto.service user unit. -->
+    <method name="Quit"/>
+
     <method name="Status">
       <arg name="status" type="a{sv}" direction="out"/>
       <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QVariantMap"/>

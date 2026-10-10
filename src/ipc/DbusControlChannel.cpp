@@ -81,6 +81,11 @@ void DbusControlChannel::ReloadConfig()
     emit reloadRequested();
 }
 
+void DbusControlChannel::Quit()
+{
+    emit quitRequested();
+}
+
 QVariantMap DbusControlChannel::Status()
 {
     return status();

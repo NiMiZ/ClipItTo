@@ -29,12 +29,15 @@ CONF
 # Inherited by the activated daemon: keep it away from the real config and history.
 export XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data" QT_QPA_PLATFORM=offscreen
 
+# The bus (and the daemon it activates) log to a file, not to ctest's pipe, which a
+# leftover daemon would otherwise keep open.
 dbus-run-session --config-file="$work/bus.conf" -- sh -c '
     cli=$1 daemon=$2
+    trap "pkill -x -f \"\$daemon\" 2>/dev/null" EXIT # never leave the daemon behind
     "$cli" --status > status.txt 2>&1 || { cat status.txt; echo "FAIL: no reply from an activated daemon"; exit 1; }
     grep -q "^backend: " status.txt || { cat status.txt; echo "FAIL: unexpected status"; exit 1; }
     "$cli" --ingest activated
     "$cli" --status | grep -q "^items: 1$" || { echo "FAIL: ingest not stored"; exit 1; }
-    pkill -x -f "$daemon" # the private bus goes away next; do not leave the daemon behind
-' sh "$cli" "$daemon"
+' sh "$cli" "$daemon" </dev/null >"$work/bus.log" 2>&1 || { cat "$work/bus.log"; exit 1; }
+cat "$work/bus.log"
 echo "PASS: the daemon was started by D-Bus activation"

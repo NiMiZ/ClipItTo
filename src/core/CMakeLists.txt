@@ -5,6 +5,7 @@ add_library(clipitto_core STATIC
     ControlChannel.h
     DesktopIntegration.h
     Entry.h
+    Hotkey.cpp Hotkey.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h
     db/FtsQuery.cpp db/FtsQuery.h

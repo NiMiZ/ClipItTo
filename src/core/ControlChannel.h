@@ -10,7 +10,8 @@ namespace clipitto {
 
 // How the outside world drives the daemon: requests from shortcuts / the CLI / capture
 // helpers come in as signals; status and popup visibility go out.
-// Platform implementations: ipc::DbusControlChannel (Linux).
+// Platform implementations: ipc::DbusControlChannel (Linux), localipc::LocalControlChannel
+// (Windows; local socket / named pipe).
 class ControlChannel : public QObject {
     Q_OBJECT
 
@@ -31,6 +32,7 @@ signals:
     void hideRequested();
     void ingestRequested(const QString& text, const QStringList& mimeTypes);
     void reloadRequested();
+    void quitRequested();
 
     // Emitted by the daemon when the popup is shown or hidden; implementations forward it to clients.
     void visibilityChanged(bool visible);

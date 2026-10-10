@@ -1,6 +1,6 @@
 add_library(clipitto_output STATIC
     ClipboardWriter.cpp ClipboardWriter.h
-    X11Paster.cpp X11Paster.h
+    SyntheticPaste.cpp SyntheticPaste.h
 )
 
 target_include_directories(clipitto_output PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

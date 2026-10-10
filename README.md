@@ -1,5 +1,5 @@
 # ClipItTo
-Clipboard manager with history, groups and favorites for Linux
+Clipboard manager with history, groups and favorites for Linux and Windows
 
 Press a shortcut, type a few letters, press Enter: the clip is back on your clipboard.
 Favorites and grouped clips are never pruned and are listed first; notes give clips a
@@ -125,18 +125,33 @@ Presets: `debug`, `release`, `asan` (address/UB sanitizers, warnings as errors),
 The daemon runs as the `clipitto.service` systemd user unit and is also started on demand
 through D-Bus (`io.github.nimiz.ClipItTo`, see [the interface](src/ipc/io.github.nimiz.ClipItTo.xml)).
 
-### Windows (work in progress)
+## Windows 10/11
 
-The core, capture and daemon libraries and their tests build natively with MSVC; the
-Windows entry point (global hotkey, named-pipe CLI, installer) is a later milestone.
-Needs Qt 6.5+ for MSVC and [vcpkg](https://vcpkg.io) (installs SQLite and toml++ from
-[vcpkg.json](vcpkg.json)). From a *Developer PowerShell for VS*:
+**Install:** download `ClipItTo-<version>-setup.exe` from the latest successful
+[CI run](https://github.com/NiMiZ/ClipItTo/actions) (artifact `clipitto-windows-installer`;
+a portable folder is in `clipitto-windows-portable`), run it, and keep "Start ClipItTo when
+I sign in" ticked. No admin rights are needed.
+
+**Use:** press **Ctrl+Alt+V** anywhere (Win+V is Windows' own clipboard history). The keys in the
+popup are the same as on Linux. ClipItTo lives in the notification area: click its icon to
+open the popup, right-click it to reload settings or quit.
+
+Settings are in `%LOCALAPPDATA%\clipitto\config.toml` (same keys as
+[config.example.toml](data/config.example.toml); `hotkey = "Ctrl+Shift+V"` changes the
+shortcut), history in `%LOCALAPPDATA%\clipitto\history.db`. `clipitto.exe --status`,
+`--reload` and `--quit` (in the install folder's `bin`) work as on Linux.
+
+**Build from source:** Visual Studio 2022 Build Tools (C++ workload), Qt 6.5+ for MSVC and
+[vcpkg](https://vcpkg.io), which builds SQLite and toml++ from [vcpkg.json](vcpkg.json).
+From a *Developer PowerShell for VS*:
 
 ```powershell
 $env:VCPKG_ROOT = "C:\src\vcpkg"; $env:QT_ROOT_DIR = "C:\Qt\6.5.3\msvc2019_64"
 cmake --preset windows
 cmake --build --preset windows
 ctest --preset windows
+cmake --install build/windows --prefix stage      # runnable folder: stage\bin\clipitto-daemon.exe
+iscc /DStageDir=$PWD\stage packaging\windows\clipitto.iss   # optional installer (Inno Setup 6)
 ```
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds and tests both platforms and

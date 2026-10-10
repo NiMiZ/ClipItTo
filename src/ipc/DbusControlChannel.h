@@ -24,6 +24,7 @@ public slots: // D-Bus methods
     void Hide();
     void Ingest(const QString& text, const QStringList& mimeTypes);
     void ReloadConfig();
+    void Quit();
     QVariantMap Status();
 
 signals:

@@ -25,6 +25,12 @@ jobs:
       - name: Test
         run: ctest --preset asan
 
+      - name: Build and test without D-Bus (Windows transport on Linux)
+        run: |
+          cmake -S . -B build/nodbus -G Ninja -DCLIPITTO_DBUS=OFF -DCLIPITTO_WERROR=ON
+          cmake --build build/nodbus
+          QT_QPA_PLATFORM=offscreen ctest --test-dir build/nodbus --output-on-failure
+
   package:
     name: Debian package (Ubuntu 24.04)
     runs-on: ubuntu-24.04
@@ -55,7 +61,7 @@ jobs:
           path: build/deb/clipitto_*.deb
 
   windows:
-    name: Windows (MSVC, portable subset)
+    name: Windows (MSVC)
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -80,3 +86,38 @@ jobs:
         run: cmake --build --preset windows
       - name: Test
         run: ctest --preset windows
+
+      - name: Stage (windeployqt)
+        run: cmake --install build/windows --prefix stage
+
+      - name: Smoke test the staged app
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:CLIPITTO_SERVER_NAME = "clipitto-ci"
+          $daemon = Start-Process stage\bin\clipitto-daemon.exe -PassThru
+          Start-Sleep -Seconds 3
+          stage\bin\clipitto.exe --ingest "hello from CI"
+          $status = stage\bin\clipitto.exe --status
+          $status
+          if ($LASTEXITCODE -ne 0 -or -not ($status -match '^items: 1$')) { throw "unexpected status" }
+          stage\bin\clipitto.exe --quit
+          if (-not $daemon.WaitForExit(10000)) { $daemon.Kill(); throw "daemon did not quit" }
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc /DStageDir="$PWD\stage" /DOutputDir="$PWD\installer" /DAppVersion=0.1.0 packaging\windows\clipitto.iss
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipitto-windows-installer
+          path: installer/*.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipitto-windows-portable
+          path: stage

@@ -20,6 +20,14 @@ clipitto_add_test(tst_daemon clipitto_daemon_lib)
 clipitto_add_test(tst_historymodel clipitto_ui)
 clipitto_add_test(tst_searchcontroller clipitto_ui)
 clipitto_add_test(tst_popup clipitto_ui)
+clipitto_add_test(tst_hotkey)
+
+if(NOT CLIPITTO_DBUS)
+    # The local-socket transport (Windows; Unix socket elsewhere) and the CLI built on it.
+    clipitto_add_test(tst_localipc clipitto_localipc)
+    target_compile_definitions(tst_localipc PRIVATE CLIPITTO_CLI_PATH="$<TARGET_FILE:clipitto>")
+    add_dependencies(tst_localipc clipitto)
+endif()
 
 if(UNIX)
     # Drives the backend against fake-wl-paste.sh (POSIX shell).
@@ -57,12 +65,13 @@ if(CLIPITTO_DBUS)
     else()
         add_test(NAME tst_dbus COMMAND tst_dbus) # skips itself without a session bus
     endif()
-    set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+    set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120)
 
     if(DBUS_RUN_SESSION)
         add_test(NAME dbus_activation
             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/test-dbus-activation.sh
                     $<TARGET_FILE:clipitto> $<TARGET_FILE:clipitto-daemon> ${CMAKE_CURRENT_BINARY_DIR}/dbus-activation
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+        set_tests_properties(dbus_activation PROPERTIES TIMEOUT 60)
     endif()
 endif()
