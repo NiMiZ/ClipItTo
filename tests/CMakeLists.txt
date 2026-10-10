@@ -25,6 +25,7 @@ clipitto_add_test(tst_searchcontroller clipitto_ui)
 clipitto_add_test(tst_popup clipitto_ui)
 clipitto_add_test(tst_settings clipitto_ui)
 clipitto_add_test(tst_hotkey)
+clipitto_add_test(tst_paths)
 
 if(NOT CLIPITTO_DBUS)
     # The local-socket transport (Windows; Unix socket elsewhere) and the CLI built on it.

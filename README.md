@@ -148,7 +148,7 @@ I sign in" ticked. No admin rights are needed.
 popup are the same as on Linux. ClipItTo lives in the notification area: click its icon to
 open the popup, right-click it to reload settings or quit.
 
-Settings are in `%LOCALAPPDATA%\clipitto\config.toml` (same keys as
+Settings are in `%APPDATA%\clipitto\config.toml` (same keys as
 [config.example.toml](data/config.example.toml); `hotkey = "Ctrl+Shift+V"` changes the
 shortcut), history in `%LOCALAPPDATA%\clipitto\history.db`. `clipitto.exe --status`,
 `--reload` and `--quit` (in the install folder's `bin`) work as on Linux.

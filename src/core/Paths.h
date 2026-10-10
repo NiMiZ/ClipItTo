@@ -2,11 +2,15 @@
 
 #include <QString>
 
-// XDG locations used by ClipItTo.
+// Where ClipItTo keeps its files.
+//   Config:  Linux $XDG_CONFIG_HOME/clipitto (~/.config)     Windows %APPDATA%\clipitto (roams)
+//   History: Linux $XDG_DATA_HOME/clipitto (~/.local/share)  Windows %LOCALAPPDATA%\clipitto
 namespace clipitto::paths {
 
-QString configFile(); // ~/.config/clipitto/config.toml
-QString databaseFile(); // ~/.local/share/clipitto/history.db
+QString configDir();
+QString configFile(); // <configDir>/config.toml
+QString dataDir();
+QString databaseFile(); // <dataDir>/history.db
 
 // Creates the parent directory of a file path. Returns false on failure.
 bool ensureParentDir(const QString& filePath);

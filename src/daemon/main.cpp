@@ -95,6 +95,8 @@ int main(int argc, char* argv[])
     }
     QObject::connect(daemon.control(), &clipitto::ControlChannel::quitRequested, &app, &QCoreApplication::quit);
 
+    // Clean shutdown (history optimize, socket cleanup): SIGTERM/SIGINT on Linux (systemd,
+    // Ctrl+C); on Windows, Qt quits on session end, and the tray menu / `clipitto --quit`.
 #ifdef Q_OS_UNIX
     clipitto::UnixSignals unixSignals({SIGTERM, SIGINT, SIGHUP});
     QObject::connect(&unixSignals, &clipitto::UnixSignals::received, &daemon, [&daemon](int signo) {

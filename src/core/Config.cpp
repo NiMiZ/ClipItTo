@@ -193,6 +193,7 @@ Config Config::load(const QString& path, QStringList* warnings)
         }
         return {};
     }
+    // Binary read: TOML is UTF-8 by definition, and the parser accepts LF and CRLF files.
     const QByteArray data = file.readAll();
     return fromToml(std::string_view(data.constData(), std::size_t(data.size())), warnings);
 }
@@ -235,7 +236,7 @@ bool Config::save(const QString& path, QString* error) const
         }
         return false;
     }
-    const std::string text = toToml();
+    const std::string text = toToml(); // UTF-8, LF line endings on every platform
     file.write(text.data(), qint64(text.size()));
     if (!file.commit()) {
         if (error) {
