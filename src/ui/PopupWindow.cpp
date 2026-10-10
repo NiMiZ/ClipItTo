@@ -1,8 +1,8 @@
 #include "PopupWindow.h"
 
 #include "Config.h"
+#include "GroupPath.h"
 #include "HistoryDelegate.h"
-#include "HistoryModel.h"
 #include "HistoryView.h"
 #include "SearchBar.h"
 #include "SearchController.h"
@@ -10,14 +10,21 @@
 #include "db/Sqlite.h"
 
 #include <QCursor>
+#include <QDialog>
 #include <QGuiApplication>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLoggingCategory>
 #include <QMenu>
+#include <QMessageBox>
 #include <QScreen>
+#include <QShortcut>
+#include <QToolButton>
 #include <QVBoxLayout>
+
+#include <utility>
 
 Q_LOGGING_CATEGORY(lcPopup, "clipitto.popup")
 
@@ -25,11 +32,13 @@ namespace clipitto::ui {
 
 namespace {
 
+using Kind = HistoryModel::Kind;
+
 std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices)
 {
     QInputDialog dialog(parent);
     dialog.setWindowTitle(PopupWindow::tr("Assign group"));
-    dialog.setLabelText(PopupWindow::tr("Group (leave empty to remove):"));
+    dialog.setLabelText(PopupWindow::tr("Group (use / for sub-groups, e.g. Work/Servers; empty to remove):"));
     dialog.setComboBoxItems(choices);
     dialog.setComboBoxEditable(true);
     dialog.setTextValue(current);
@@ -60,6 +69,12 @@ private:
     int& m_depth;
 };
 
+// "" stands for the Groups row in the expanded set.
+QString expandKey(const HistoryModel& model, const QModelIndex& index)
+{
+    return model.kindAt(index) == Kind::GroupsRoot ? QString() : model.pathAt(index);
+}
+
 } // namespace
 
 PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* parent)
@@ -68,10 +83,16 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_model(new HistoryModel(this))
     , m_controller(new SearchController(repo, *m_model, this))
     , m_search(new SearchBar(this))
+    , m_settingsButton(new QToolButton(this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
     , m_groupPrompt(askGroup)
     , m_notePrompt(askNote)
+    , m_textPrompt(defaultTextPrompt())
+    , m_confirm(defaultConfirmPrompt())
+    , m_notify([](QWidget* parent, const QString& message) {
+        QMessageBox::warning(parent, QStringLiteral("ClipItTo"), message);
+    })
 {
     setWindowTitle(QStringLiteral("ClipItTo"));
     resize(560, 480);
@@ -79,16 +100,34 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_view->setHistoryModel(m_model);
     m_view->setItemDelegate(new HistoryDelegate(m_view));
 
-    m_footer->setText(tr("Enter copy · Ctrl+S ★ · Ctrl+G group · Ctrl+E note · Del remove · Esc close"));
+    const QIcon gear = QIcon::fromTheme(QStringLiteral("preferences-system"),
+                                        QIcon::fromTheme(QStringLiteral("emblem-system")));
+    if (gear.isNull()) {
+        m_settingsButton->setText(QStringLiteral("⚙")); // ⚙
+    } else {
+        m_settingsButton->setIcon(gear);
+    }
+    m_settingsButton->setAutoRaise(true);
+    m_settingsButton->setFocusPolicy(Qt::NoFocus); // keyboard: Ctrl+,
+    m_settingsButton->setToolTip(tr("Settings (Ctrl+,)"));
+    connect(m_settingsButton, &QToolButton::clicked, this, &PopupWindow::settingsRequested);
+    auto* settingsShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma), this);
+    connect(settingsShortcut, &QShortcut::activated, this, &PopupWindow::settingsRequested);
+
+    m_footer->setText(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+G group · Ctrl+E note · Del remove · Esc close"));
     m_footer->setFont(scaledFont(m_footer->font(), 0.85));
     m_footer->setEnabled(false); // dim
 
     auto* frame = new QFrame(this);
     frame->setFrameShape(QFrame::StyledPanel);
+    auto* top = new QHBoxLayout;
+    top->setSpacing(4);
+    top->addWidget(m_search, 1);
+    top->addWidget(m_settingsButton);
     auto* inner = new QVBoxLayout(frame);
     inner->setContentsMargins(8, 8, 8, 6);
     inner->setSpacing(6);
-    inner->addWidget(m_search);
+    inner->addLayout(top);
     inner->addWidget(m_view, 1);
     inner->addWidget(m_footer);
     auto* outer = new QVBoxLayout(this);
@@ -103,13 +142,16 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
 
     connect(m_search, &SearchBar::focusListRequested, this, [this] {
         m_view->setFocus();
-        m_view->selectFirstEntry();
+        m_view->selectFirstRow(); // the row right under the search box (Groups, if any)
     });
+    connect(m_search, &SearchBar::openGroupsRequested, this, &PopupWindow::openGroups);
     connect(m_search, &SearchBar::activateRequested, this, [this] {
         if (m_controller->isPending()) {
             m_controller->refresh(); // Enter right after typing: use the up-to-date results
         }
-        activate(m_view->currentIndex());
+        // From the search box, Enter always copies: the selected copy, else the first one.
+        const QModelIndex current = m_view->currentIndex();
+        activate(entryFor(current) ? current : m_model->firstEntry());
     });
     connect(m_view, &HistoryView::focusSearchRequested, this, [this] {
         m_search->setFocus();
@@ -122,15 +164,21 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     });
     connect(m_view, &HistoryView::activateRequested, this, &PopupWindow::activate);
     connect(m_view, &QAbstractItemView::clicked, this, [this](const QModelIndex& index) {
-        if (m_singleClick) {
+        if (m_model->isExpandable(index)) {
+            m_view->toggleExpanded(index);
+        } else if (m_singleClick) {
             activate(index);
         }
     });
     connect(m_view, &QAbstractItemView::doubleClicked, this, [this](const QModelIndex& index) {
-        if (!m_singleClick) {
+        if (!m_singleClick && entryFor(index)) {
             activate(index);
         }
     });
+    connect(m_view, &QTreeView::expanded, this,
+            [this](const QModelIndex& index) { m_expanded.insert(expandKey(*m_model, index)); });
+    connect(m_view, &QTreeView::collapsed, this,
+            [this](const QModelIndex& index) { m_expanded.remove(expandKey(*m_model, index)); });
     connect(m_view, &HistoryView::toggleFavoriteRequested, this, [this](const QModelIndex& index) {
         if (const Entry* e = entryFor(index)) {
             toggleFavorite(e->id);
@@ -139,6 +187,8 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     connect(m_view, &HistoryView::editGroupRequested, this, [this](const QModelIndex& index) {
         if (const Entry* e = entryFor(index)) {
             editGroup(e->id);
+        } else if (m_model->kindAt(index) == Kind::Group) {
+            renameGroup(m_model->pathAt(index));
         }
     });
     connect(m_view, &HistoryView::editNoteRequested, this, [this](const QModelIndex& index) {
@@ -147,8 +197,10 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
         }
     });
     connect(m_view, &HistoryView::deleteRequested, this, [this](const QModelIndex& index) {
-        if (const Entry* e = entryFor(index)) {
-            remove(e->id);
+        if (entryFor(index)) {
+            remove(index);
+        } else if (m_model->kindAt(index) == Kind::Group) {
+            deleteGroup(m_model->pathAt(index));
         }
     });
     connect(m_view, &HistoryView::contextMenuRequested, this, &PopupWindow::showContextMenu);
@@ -163,12 +215,16 @@ void PopupWindow::applyConfig(const Config& config)
     m_controller->applyConfig(config);
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
+    if (isVisible()) {
+        refresh(); // preview lines or counts may have changed
+    }
 }
 
 void PopupWindow::showPopup(const QString& activationToken)
 {
     if (!isVisible()) {
-        m_restoreId = 0;
+        m_restore.reset();
+        m_expanded.clear(); // the group tree starts collapsed
         if (m_search->text().isEmpty()) {
             m_controller->refresh();
         } else {
@@ -203,11 +259,25 @@ void PopupWindow::togglePopup(const QString& activationToken)
 void PopupWindow::historyChanged()
 {
     if (isVisible() && m_search->text().trimmed().isEmpty()) {
-        if (const Entry* e = entryFor(m_view->currentIndex())) {
-            m_restoreId = e->id;
-        }
-        m_controller->refresh();
+        refresh();
     }
+}
+
+void PopupWindow::refresh()
+{
+    refreshSelecting(selectionOf(m_view->currentIndex()), /*focusList=*/false);
+}
+
+int PopupWindow::execDialog(QDialog& dialog)
+{
+    int result = 0;
+    {
+        ModalGuard guard(m_modalDepth);
+        result = dialog.exec();
+    }
+    activateWindow();
+    m_search->setFocus();
+    return result;
 }
 
 void PopupWindow::placeOnScreen()
@@ -233,21 +303,45 @@ void PopupWindow::placeOnScreen()
 
 const Entry* PopupWindow::entryFor(const QModelIndex& index) const
 {
-    return index.isValid() ? m_model->entryAt(index.row()) : nullptr;
+    return m_model->entryAt(index);
+}
+
+PopupWindow::Selection PopupWindow::selectionOf(const QModelIndex& index) const
+{
+    Selection s;
+    s.kind = m_model->kindAt(index);
+    s.path = m_model->pathAt(index);
+    if (const Entry* e = entryFor(index)) {
+        s.id = e->id;
+    }
+    return s;
 }
 
 void PopupWindow::activate(const QModelIndex& index)
 {
-    const Entry* e = entryFor(index);
-    if (!e) {
-        e = m_model->entryAt(m_model->firstEntryRow());
-    }
-    if (!e) {
+    const QModelIndex target = index.isValid() ? index : m_model->firstEntry();
+    if (m_model->isExpandable(target)) {
+        m_view->toggleExpanded(target);
         return;
+    }
+    const Entry* e = entryFor(target);
+    if (!e) {
+        return; // a header or an empty group
     }
     const Entry chosen = *e; // receivers may refresh the model
     emit entryActivated(chosen);
     hidePopup();
+}
+
+void PopupWindow::openGroups()
+{
+    const QModelIndex root = m_model->groupsRoot();
+    if (!root.isValid()) {
+        return;
+    }
+    m_view->setFocus();
+    m_view->selectIndex(root);
+    m_view->expand(root);
 }
 
 void PopupWindow::toggleFavorite(qint64 id)
@@ -259,11 +353,12 @@ void PopupWindow::toggleFavorite(qint64 id)
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "toggle favorite failed:" << err.what();
     }
-    afterEdit(id);
+    refreshSelecting(selectionOf(m_view->currentIndex()));
 }
 
 void PopupWindow::editGroup(qint64 id)
 {
+    Selection follow = selectionOf(m_view->currentIndex());
     try {
         const auto e = m_repo.get(id);
         if (!e) {
@@ -276,11 +371,15 @@ void PopupWindow::editGroup(qint64 id)
         }
         if (group) {
             m_repo.setGroup(id, *group);
+            if (!follow.path.isEmpty()) {
+                // The copy left its place in the group tree: follow it to its section row.
+                follow.path.clear();
+            }
         }
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "assign group failed:" << err.what();
     }
-    afterEdit(id);
+    refreshSelecting(follow);
 }
 
 void PopupWindow::editNote(qint64 id)
@@ -301,33 +400,135 @@ void PopupWindow::editNote(qint64 id)
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "edit note failed:" << err.what();
     }
-    afterEdit(id);
+    refreshSelecting(selectionOf(m_view->currentIndex()));
 }
 
-void PopupWindow::remove(qint64 id)
+void PopupWindow::remove(const QModelIndex& index)
 {
-    // Keep the cursor in place: select the neighbor that slides into this row.
-    const int row = m_model->rowForId(id);
-    int neighbor = m_model->nextEntryRow(row, +1);
-    if (neighbor < 0) {
-        neighbor = m_model->nextEntryRow(row, -1);
+    const Entry* e = entryFor(index);
+    if (!e) {
+        return;
     }
-    const Entry* next = m_model->entryAt(neighbor);
-    const qint64 nextId = next ? next->id : 0;
+    const qint64 id = e->id;
+    // Keep the cursor in place: select the copy that slides into this row.
+    std::optional<Selection> next;
+    for (QModelIndex i = m_view->indexBelow(index); i.isValid(); i = m_view->indexBelow(i)) {
+        if (entryFor(i) && entryFor(i)->id != id) {
+            next = selectionOf(i);
+            break;
+        }
+    }
+    if (!next) {
+        for (QModelIndex i = m_view->indexAbove(index); i.isValid(); i = m_view->indexAbove(i)) {
+            if (i.flags() & Qt::ItemIsSelectable) {
+                next = selectionOf(i);
+                break;
+            }
+        }
+    }
     try {
         m_repo.remove(id);
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "delete failed:" << err.what();
     }
-    afterEdit(nextId);
+    refreshSelecting(next);
 }
 
-void PopupWindow::afterEdit(qint64 selectId)
+void PopupWindow::newGroup(const QString& parentPath)
 {
-    m_restoreId = selectId;
+    std::optional<QString> name;
+    {
+        ModalGuard guard(m_modalDepth);
+        name = m_textPrompt(this, parentPath.isEmpty() ? tr("New group") : tr("New sub-group"),
+                            parentPath.isEmpty()
+                                ? tr("Name:")
+                                : tr("Name of the new group inside %1:").arg(groups::display(parentPath)),
+                            QString());
+    }
+    if (!name || groups::normalize(*name).isEmpty()) {
+        refreshSelecting(selectionOf(m_view->currentIndex()));
+        return;
+    }
+    QString created;
+    try {
+        created = m_repo.createGroup(parentPath.isEmpty() ? *name : parentPath + groups::kSeparator + *name);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "create group failed:" << err.what();
+    }
+    // Show where it landed.
+    m_expanded.insert(QString());
+    for (QString p = groups::parent(created); !p.isEmpty(); p = groups::parent(p)) {
+        m_expanded.insert(p);
+    }
+    refreshSelecting(Selection{Kind::Group, 0, created});
+}
+
+void PopupWindow::renameGroup(const QString& path)
+{
+    std::optional<QString> target;
+    {
+        ModalGuard guard(m_modalDepth);
+        target = m_textPrompt(this, tr("Rename group"),
+                              tr("New name, or a full path to move it (e.g. Work/Servers):"), path);
+    }
+    if (!target) {
+        refreshSelecting(selectionOf(m_view->currentIndex()));
+        return;
+    }
+    QString error;
+    bool ok = false;
+    try {
+        ok = m_repo.renameGroup(path, *target, &error);
+    } catch (const db::DbError& err) {
+        error = QString::fromUtf8(err.what());
+    }
+    if (!ok) {
+        ModalGuard guard(m_modalDepth);
+        m_notify(this, tr("Could not rename the group: %1").arg(error));
+        refreshSelecting(selectionOf(m_view->currentIndex()));
+        return;
+    }
+    const QString renamed = groups::normalize(*target);
+    // Keep the moved subtree's expansion, under its new name.
+    QSet<QString> expanded;
+    for (const QString& key : std::as_const(m_expanded)) {
+        expanded.insert(!key.isEmpty() && groups::isWithin(key, path) ? renamed + key.mid(path.size()) : key);
+    }
+    for (QString p = groups::parent(renamed); !p.isEmpty(); p = groups::parent(p)) {
+        expanded.insert(p);
+    }
+    m_expanded = expanded;
+    refreshSelecting(Selection{Kind::Group, 0, renamed});
+}
+
+void PopupWindow::deleteGroup(const QString& path)
+{
+    bool confirmed = false;
+    {
+        ModalGuard guard(m_modalDepth);
+        confirmed = m_confirm(this, tr("Delete the group %1 and its sub-groups?\nTheir copies stay in the history.")
+                                        .arg(groups::display(path)));
+    }
+    if (confirmed) {
+        try {
+            m_repo.deleteGroup(path);
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "delete group failed:" << err.what();
+        }
+    }
+    const QString parent = groups::parent(path);
+    refreshSelecting(confirmed ? Selection{parent.isEmpty() ? Kind::GroupsRoot : Kind::Group, 0, parent}
+                               : selectionOf(m_view->currentIndex()));
+}
+
+void PopupWindow::refreshSelecting(std::optional<Selection> selection, bool focusList)
+{
+    m_restore = std::move(selection);
     m_controller->refresh();
-    activateWindow(); // dialogs may have taken focus
-    m_view->setFocus();
+    if (focusList) {
+        activateWindow(); // dialogs may have taken focus
+        m_view->setFocus();
+    }
 }
 
 void PopupWindow::onResultsUpdated()
@@ -335,10 +536,37 @@ void PopupWindow::onResultsUpdated()
     m_view->setEmptyText(m_controller->query().trimmed().isEmpty()
                              ? tr("Nothing copied yet. Copied text will show up here.")
                              : tr("No matches"));
-    const int row = m_restoreId ? m_model->rowForId(m_restoreId) : -1;
-    m_restoreId = 0;
-    if (row >= 0) {
-        m_view->selectRow(row);
+
+    // Re-open what was open (the model rebuild collapsed everything).
+    const QSet<QString> expanded = m_expanded;
+    for (const QString& key : expanded) {
+        const QModelIndex group = m_model->findGroup(key);
+        if (group.isValid()) {
+            m_view->expand(group);
+        }
+    }
+    m_expanded = expanded; // drop nothing that is merely missing right now
+
+    QModelIndex target;
+    if (m_restore) {
+        switch (m_restore->kind) {
+        case Kind::Entry:
+            target = m_model->findEntry(m_restore->id, m_restore->path);
+            if (!target.isValid()) {
+                target = m_model->findEntry(m_restore->id);
+            }
+            break;
+        case Kind::Group:
+        case Kind::GroupsRoot:
+            target = m_model->findGroup(m_restore->path);
+            break;
+        case Kind::Header:
+            break;
+        }
+    }
+    m_restore.reset();
+    if (target.isValid()) {
+        m_view->selectIndex(target);
     } else {
         m_view->selectFirstEntry();
     }
@@ -351,7 +579,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     menu->addAction(entry.favorite ? tr("Remove from favorites") : tr("★ Add to favorites"),
                     this, [this, id] { toggleFavorite(id); });
 
-    QMenu* groups = menu->addMenu(tr("Group"));
+    QMenu* groupMenu = menu->addMenu(tr("Group"));
     QStringList existing;
     try {
         existing = m_repo.groups();
@@ -359,45 +587,66 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
         qCWarning(lcPopup) << "listing groups failed:" << err.what();
     }
     for (const QString& group : existing) {
-        QAction* action = groups->addAction(group, this, [this, id, group] {
+        QAction* action = groupMenu->addAction(groups::display(group), this, [this, id, group] {
             try {
                 m_repo.setGroup(id, group);
             } catch (const db::DbError& err) {
                 qCWarning(lcPopup) << "assign group failed:" << err.what();
             }
-            afterEdit(id);
+            refreshSelecting(Selection{Kind::Entry, id, {}});
         });
         action->setCheckable(true);
         action->setChecked(group == entry.group);
     }
     if (!existing.isEmpty()) {
-        groups->addSeparator();
+        groupMenu->addSeparator();
     }
-    groups->addAction(tr("New group…"), this, [this, id] { editGroup(id); });
+    groupMenu->addAction(tr("New group…"), this, [this, id] { editGroup(id); });
     if (!entry.group.isEmpty()) {
-        groups->addAction(tr("Remove from group"), this, [this, id] {
+        groupMenu->addAction(tr("Remove from group"), this, [this, id] {
             try {
                 m_repo.setGroup(id, QString());
             } catch (const db::DbError& err) {
                 qCWarning(lcPopup) << "remove group failed:" << err.what();
             }
-            afterEdit(id);
+            refreshSelecting(Selection{Kind::Entry, id, {}});
         });
     }
 
     menu->addAction(entry.note.isEmpty() ? tr("Add note…") : tr("Edit note…"), this, [this, id] { editNote(id); });
     menu->addSeparator();
-    menu->addAction(tr("Delete"), this, [this, id] { remove(id); });
+    menu->addAction(tr("Delete"), this, [this, id] {
+        const QModelIndex index = m_model->findEntry(id);
+        remove(index.isValid() ? index : m_view->currentIndex());
+    });
+    return menu;
+}
+
+QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
+{
+    auto* menu = new QMenu(parent);
+    if (path.isEmpty()) {
+        menu->addAction(tr("New group…"), this, [this] { newGroup(QString()); });
+        return menu;
+    }
+    menu->addAction(tr("New sub-group…"), this, [this, path] { newGroup(path); });
+    menu->addAction(tr("Rename or move…"), this, [this, path] { renameGroup(path); });
+    menu->addSeparator();
+    menu->addAction(tr("Delete group"), this, [this, path] { deleteGroup(path); });
     return menu;
 }
 
 void PopupWindow::showContextMenu(const QModelIndex& index, const QPoint& globalPos)
 {
-    const Entry* e = entryFor(index);
-    if (!e) {
+    QMenu* menu = nullptr;
+    if (const Entry* e = entryFor(index)) {
+        menu = createContextMenu(*e, this);
+    } else if (m_model->kindAt(index) == Kind::Group || m_model->kindAt(index) == Kind::GroupsRoot) {
+        menu = createGroupMenu(expandKey(*m_model, index), this);
+    }
+    if (!menu) {
         return;
     }
-    QMenu* menu = createContextMenu(*e, this);
     {
         ModalGuard guard(m_modalDepth);
         menu->exec(globalPos);

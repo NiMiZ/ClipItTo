@@ -137,6 +137,100 @@ private slots:
         QCOMPARE(t.repo->countUnsaved(), 1);
     }
 
+    void groupPathsAreNormalized()
+    {
+        TestDb t;
+        const auto id = t.repo->ingest(QStringLiteral("x")).id;
+        t.repo->setGroup(id, QStringLiteral(" Work /  Servers / "));
+        QCOMPARE(t.repo->get(id)->group, QStringLiteral("Work/Servers"));
+        t.repo->setGroup(id, QStringLiteral("Work \u203A Prod")); // the display separator also works
+        QCOMPARE(t.repo->get(id)->group, QStringLiteral("Work/Prod"));
+    }
+
+    void creatingAGroupCreatesItsParents()
+    {
+        TestDb t;
+        QCOMPARE(t.repo->createGroup(QStringLiteral("Work/Servers/Prod")), QStringLiteral("Work/Servers/Prod"));
+        QCOMPARE(t.repo->groups(), (QStringList{QStringLiteral("Work"), QStringLiteral("Work/Servers"),
+                                                QStringLiteral("Work/Servers/Prod")}));
+        QVERIFY(t.repo->createGroup(QStringLiteral("  / ")).isEmpty());
+        QCOMPARE(t.repo->groups().size(), 3);
+    }
+
+    void groupTreeCountsDirectClips()
+    {
+        TestDb t;
+        const auto a = t.repo->ingest(QStringLiteral("a")).id;
+        const auto b = t.repo->ingest(QStringLiteral("b")).id;
+        const auto c = t.repo->ingest(QStringLiteral("c")).id;
+        t.repo->setGroup(a, QStringLiteral("Work"));
+        t.repo->setGroup(b, QStringLiteral("Work/Servers"));
+        t.repo->setGroup(c, QStringLiteral("Work/Servers"));
+        t.repo->createGroup(QStringLiteral("Empty"));
+
+        const auto tree = t.repo->groupTree();
+        QCOMPARE(tree.size(), 3u);
+        QCOMPARE(tree[0].path, QStringLiteral("Empty"));
+        QCOMPARE(tree[0].clipCount, 0);
+        QCOMPARE(tree[1].clipCount, 1); // Work: a only, not its sub-group's clips
+        QCOMPARE(tree[2].clipCount, 2);
+        QCOMPARE(t.repo->groupedEntries().size(), 3u);
+    }
+
+    void renamingMovesTheWholeSubtree()
+    {
+        TestDb t;
+        const auto a = t.repo->ingest(QStringLiteral("a")).id;
+        const auto b = t.repo->ingest(QStringLiteral("b")).id;
+        const auto other = t.repo->ingest(QStringLiteral("other")).id;
+        t.repo->setGroup(a, QStringLiteral("Work"));
+        t.repo->setGroup(b, QStringLiteral("Work/Servers"));
+        t.repo->setGroup(other, QStringLiteral("Workshop")); // shares a prefix, must not move
+
+        QVERIFY(t.repo->renameGroup(QStringLiteral("Work"), QStringLiteral("Jobs/Acme")));
+        QCOMPARE(t.repo->get(a)->group, QStringLiteral("Jobs/Acme"));
+        QCOMPARE(t.repo->get(b)->group, QStringLiteral("Jobs/Acme/Servers"));
+        QCOMPARE(t.repo->get(other)->group, QStringLiteral("Workshop"));
+        QCOMPARE(t.repo->groups(), (QStringList{QStringLiteral("Jobs"), QStringLiteral("Jobs/Acme"),
+                                                QStringLiteral("Jobs/Acme/Servers"), QStringLiteral("Workshop")}));
+        // Searching the new name finds clips in the moved sub-group too.
+        QCOMPARE(t.repo->search(QStringLiteral("acme")).size(), 2u);
+    }
+
+    void renameRefusesConflictsAndCycles()
+    {
+        TestDb t;
+        t.repo->createGroup(QStringLiteral("Work/Servers"));
+        t.repo->createGroup(QStringLiteral("Home"));
+        QString error;
+        QVERIFY(!t.repo->renameGroup(QStringLiteral("Work"), QStringLiteral("Home"), &error));
+        QVERIFY(error.contains(QLatin1String("already exists")));
+        QVERIFY(!t.repo->renameGroup(QStringLiteral("Work"), QStringLiteral("Work/Servers/Deeper"), &error));
+        QVERIFY(error.contains(QLatin1String("into itself")));
+        QVERIFY(t.repo->renameGroup(QStringLiteral("Work"), QStringLiteral(" Work ")));
+        QCOMPARE(t.repo->groups().size(), 3);
+    }
+
+    void deletingAGroupUngroupsItsClips()
+    {
+        TestDb t;
+        const auto a = t.repo->ingest(QStringLiteral("a")).id;
+        const auto b = t.repo->ingest(QStringLiteral("b")).id;
+        const auto keep = t.repo->ingest(QStringLiteral("keep")).id;
+        t.repo->setGroup(a, QStringLiteral("Work"));
+        t.repo->setGroup(b, QStringLiteral("Work/Servers"));
+        t.repo->setGroup(keep, QStringLiteral("Workshop"));
+        t.repo->setFavorite(b, true);
+
+        t.repo->deleteGroup(QStringLiteral("Work"));
+        QCOMPARE(t.repo->groups(), QStringList{QStringLiteral("Workshop")});
+        QVERIFY(t.repo->get(a)->group.isEmpty());
+        QVERIFY(t.repo->get(b)->group.isEmpty());
+        QVERIFY(t.repo->get(b)->favorite); // still saved through the favorite flag
+        QCOMPARE(t.repo->get(keep)->group, QStringLiteral("Workshop"));
+        QCOMPARE(t.repo->count(), 3); // clips are kept
+    }
+
     void groupsAreDistinctAndSorted()
     {
         TestDb t;

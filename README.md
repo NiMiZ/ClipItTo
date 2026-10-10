@@ -71,11 +71,23 @@ clipitto-setup
 |---|---|
 | type | filter history (note, group and text) |
 | `↓` / `↑` | move between the search bar and the list |
-| `Enter` / click | copy the entry back to the clipboard and close |
-| `Ctrl+S` / `Ctrl+G` / `Ctrl+E` | favorite / assign group / edit note |
-| `Del` | delete the entry |
-| right-click or `Menu` | the same actions in a menu |
+| `Enter` / click | copy the entry back to the clipboard and close (on a group: open/close it) |
+| `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
+| `Ctrl+S` / `Ctrl+G` / `Ctrl+E` | favorite / assign group (on a group: rename) / edit note |
+| `Del` | delete the entry (on a group: delete the group, its copies are kept) |
+| right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |
+| `Ctrl+,` or ⚙ | settings |
 | `Esc` | close |
+
+**Groups** sit collapsed right under the search box. Open them to browse your groups as a
+tree: each group lists its sub-groups, then its copies. Put a copy in a group with `Ctrl+G`
+and a path such as `Work/Servers` (missing groups are created). Grouped and favorite copies
+are never pruned and are also listed under *Saved*.
+
+**Settings** (⚙): theme (system / light / dark), how many copies are listed, how many text
+lines each copy shows, the shortcut (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows
+ClipItTo registers it, on GNOME it becomes the GNOME keyboard shortcut), and group
+management (new, sub-group, rename/move, delete).
 
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs

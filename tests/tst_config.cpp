@@ -49,6 +49,9 @@ private slots:
             hide_on_focus_loss = false
             search_debounce_ms = 50
             backend = "wl-paste"
+            preview_lines = 3
+            theme = "dark"
+            hotkey = "ctrl+`"
         )", &warnings);
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1String("; "))));
         QCOMPARE(c.maxHistory, 250);
@@ -63,6 +66,9 @@ private slots:
         QVERIFY(!c.hideOnFocusLoss);
         QCOMPARE(c.searchDebounceMs, 50);
         QVERIFY(c.backend == BackendChoice::WlPaste);
+        QCOMPARE(c.previewLines, 3);
+        QVERIFY(c.theme == clipitto::Theme::Dark);
+        QCOMPARE(c.hotkey, QStringLiteral("Ctrl+`")); // normalized
     }
 
     void invalidValuesKeepDefaultsAndWarn()
@@ -116,6 +122,9 @@ private slots:
         c.pasteOnEnter = true;
         c.pasteKeys = PasteKeys::ShiftInsert;
         c.backend = BackendChoice::QtClipboard;
+        c.theme = clipitto::Theme::Light;
+        c.previewLines = 4;
+        c.hotkey = QStringLiteral("Ctrl+`");
         QString error;
         QVERIFY2(c.save(path, &error), qPrintable(error));
 

@@ -15,7 +15,8 @@ namespace clipitto::ui {
 class HistoryModel;
 
 // Turns the search text into model rows. Non-empty queries are debounced; clearing the
-// query switches back to the default view (saved items + recent copies) immediately.
+// query switches back to the default view (group tree + saved items + recent copies)
+// immediately. Search results are a flat list.
 class SearchController : public QObject {
     Q_OBJECT
 

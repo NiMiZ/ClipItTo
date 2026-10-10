@@ -12,11 +12,13 @@ namespace clipitto {
 enum class PasteKeys { CtrlV, ShiftInsert };
 enum class ClickMode { Single, Double };
 enum class BackendChoice { Auto, GnomeExt, WlPaste, QtClipboard };
+enum class Theme { System, Light, Dark };
 
 // User settings from ~/.config/clipitto/config.toml. Missing or invalid keys fall back to defaults.
 struct Config {
     int maxHistory = 1000; // unsaved items kept; saved items don't count
-    int recentCount = 20;
+    int recentCount = 20; // copies listed when the search box is empty
+    int previewLines = 1; // text lines shown per copy
     bool showSavedOnTop = true;
     int savedCap = 15;
     qint64 maxItemBytes = 1024 * 1024;
@@ -27,7 +29,8 @@ struct Config {
     bool hideOnFocusLoss = true;
     int searchDebounceMs = 100;
     BackendChoice backend = BackendChoice::Auto;
-    QString hotkey = QStringLiteral("Ctrl+Alt+V"); // global shortcut registered by the daemon (Windows)
+    QString hotkey = QStringLiteral("Ctrl+Alt+V"); // Windows: registered by the daemon; GNOME: custom shortcut
+    Theme theme = Theme::System;
 
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)
     // and never fail: the affected values keep their defaults.

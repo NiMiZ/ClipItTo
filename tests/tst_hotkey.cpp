@@ -26,6 +26,30 @@ private slots:
         QTest::newRow("function key") << "Win+F12" << uint(win32::ModWin) << 0x7Bu << "Win+F12";
         QTest::newRow("named key") << "ctrl+space" << uint(win32::ModControl) << 0x20u << "Ctrl+Space";
         QTest::newRow("page down") << "Alt+PageDown" << uint(win32::ModAlt) << 0x22u << "Alt+PageDown";
+        QTest::newRow("backtick") << "Ctrl+`" << uint(win32::ModControl) << 0xC0u << "Ctrl+`";
+        QTest::newRow("grave alias") << "ctrl+grave" << uint(win32::ModControl) << 0xC0u << "Ctrl+`";
+        QTest::newRow("slash") << "Ctrl+Shift+/" << uint(win32::ModControl | win32::ModShift) << 0xBFu
+                               << "Ctrl+Shift+/";
+    }
+
+    void gtkAccelerators_data()
+    {
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<QString>("gtk");
+        QTest::newRow("default") << "Ctrl+Alt+V" << "<Control><Alt>v";
+        QTest::newRow("backtick") << "Ctrl+`" << "<Control>grave";
+        QTest::newRow("super f-key") << "Win+Shift+F9" << "<Shift><Super>F9";
+        QTest::newRow("space") << "Ctrl+Space" << "<Control>space";
+        QTest::newRow("page up") << "Alt+PageUp" << "<Alt>Page_Up";
+    }
+
+    void gtkAccelerators()
+    {
+        QFETCH(QString, text);
+        QFETCH(QString, gtk);
+        const auto hotkey = parseHotkey(text);
+        QVERIFY(hotkey);
+        QCOMPARE(hotkey->gtkAccelerator, gtk);
     }
 
     void parses()
@@ -52,6 +76,7 @@ private slots:
         QTest::newRow("unknown key") << "Ctrl+Banana";
         QTest::newRow("F25") << "Ctrl+F25";
         QTest::newRow("non-ascii") << "Ctrl+é";
+        QTest::newRow("unsupported punctuation") << "Ctrl+~";
     }
 
     void rejects()

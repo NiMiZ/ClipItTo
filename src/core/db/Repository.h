@@ -22,6 +22,11 @@ class Repository {
 public:
     using Clock = std::function<QDateTime()>;
 
+    struct GroupInfo {
+        QString path; // "Work/Servers"
+        int clipCount = 0; // clips directly in this group (not in its sub-groups)
+    };
+
     struct IngestResult {
         qint64 id;
         bool inserted; // false when an identical clip existed and only last_used was bumped
@@ -50,14 +55,24 @@ public:
     std::optional<Entry> get(qint64 id);
     void touch(qint64 id); // last_used = now
     void setFavorite(qint64 id, bool favorite);
-    void setGroup(qint64 id, const QString& group); // empty clears the group
+    void setGroup(qint64 id, const QString& group); // a group path; created if new; empty clears
     void setNote(qint64 id, const QString& note); // empty clears the note
     void remove(qint64 id);
 
     // Deletes the oldest unsaved entries so at most maxUnsaved remain. Returns the number deleted.
     qint64 prune(int maxUnsaved);
 
-    QStringList groups();
+    // --- Groups: a tree of paths (see GroupPath.h). Parents of a group always exist.
+    QStringList groups(); // every group path, parents before children
+    std::vector<GroupInfo> groupTree(); // same order, with direct clip counts
+    std::vector<Entry> groupedEntries(); // all clips that are in a group; favorites, then newest first
+    QString createGroup(const QString& path); // creates it and its parents; returns the normalized path
+    // Renames or moves a group with everything below it. Fails if the target exists or
+    // lies inside the group being moved.
+    bool renameGroup(const QString& from, const QString& to, QString* error = nullptr);
+    // Deletes a group and its sub-groups; their clips stay in the history, ungrouped.
+    void deleteGroup(const QString& path);
+
     qint64 count();
     qint64 countUnsaved();
 

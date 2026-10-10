@@ -1,5 +1,6 @@
 #include "Config.h"
 #include "HistoryModel.h"
+#include "db/Repository.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
 #include "SearchBar.h"
@@ -11,6 +12,7 @@
 #include <QMenu>
 #include <QSignalSpy>
 #include <QTest>
+#include <QToolButton>
 
 using clipitto::Config;
 using clipitto::Entry;
@@ -45,11 +47,25 @@ private:
         }
 
         HistoryModel* model() const { return popup->model(); }
-        int currentRow() const { return popup->view()->currentIndex().row(); }
+        QModelIndex current() const { return popup->view()->currentIndex(); }
+        int currentRow() const { return current().row(); }
         QString currentContent() const
         {
-            const Entry* e = model()->entryAt(currentRow());
+            const Entry* e = model()->entryAt(current());
             return e ? e->content : QString();
+        }
+    };
+
+    // Fixture plus groups: beta in Work, alpha in Work/Servers.
+    struct GroupFixture : Fixture {
+        qint64 alphaId = 0;
+        qint64 betaId = 0;
+        GroupFixture()
+        {
+            alphaId = t.repo->search(QStringLiteral("alpha")).front().id;
+            betaId = t.repo->search(QStringLiteral("beta")).front().id;
+            t.repo->setGroup(alphaId, QStringLiteral("Work/Servers"));
+            t.repo->setGroup(betaId, QStringLiteral("Work"));
         }
     };
 
@@ -164,7 +180,7 @@ private slots:
         Fixture f;
         QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
         QVERIFY(f.show());
-        const QModelIndex gamma = f.model()->index(3);
+        const QModelIndex gamma = f.model()->index(3, 0);
         QTest::mouseClick(f.popup->view()->viewport(), Qt::LeftButton, {},
                           f.popup->view()->visualRect(gamma).center());
         QCOMPARE(activated.size(), 1);
@@ -178,7 +194,7 @@ private slots:
         Fixture f(cfg);
         QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
         QVERIFY(f.show());
-        const QPoint pos = f.popup->view()->visualRect(f.model()->index(3)).center();
+        const QPoint pos = f.popup->view()->visualRect(f.model()->index(3, 0)).center();
         QTest::mouseClick(f.popup->view()->viewport(), Qt::LeftButton, {}, pos);
         QCOMPARE(activated.size(), 0);
         QTest::mouseDClick(f.popup->view()->viewport(), Qt::LeftButton, {}, pos);
@@ -193,7 +209,7 @@ private slots:
         QTest::keyClick(f.popup->view(), Qt::Key_Down); // gamma ray
         QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
         QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
-        QVERIFY(f.model()->entryAt(f.currentRow())->favorite);
+        QVERIFY(f.model()->entryAt(f.current())->favorite);
         QCOMPARE(f.t.repo->saved(10).size(), 2u);
     }
 
@@ -219,7 +235,7 @@ private slots:
         QCOMPARE(alpha.note, QStringLiteral("my title"));
         QVERIFY(offeredGroups.isEmpty()); // no groups existed yet
         QCOMPARE(f.currentContent(), QStringLiteral("alpha")); // followed into the Saved section
-        QCOMPARE(f.model()->index(f.currentRow()).data(HistoryModel::TitleRole).toString(), QStringLiteral("my title"));
+        QCOMPARE(f.current().data(HistoryModel::TitleRole).toString(), QStringLiteral("my title"));
     }
 
     void cancelledPromptChangesNothing()
@@ -247,7 +263,7 @@ private slots:
     {
         Fixture f;
         QVERIFY(f.show());
-        const Entry beta = *f.model()->entryAt(4);
+        const Entry beta = *f.model()->entryAt(f.model()->index(4, 0));
         std::unique_ptr<QMenu> menu(f.popup->createContextMenu(beta, nullptr));
         QStringList texts;
         QAction* deleteAction = nullptr;
@@ -282,8 +298,204 @@ private slots:
         QVERIFY(f.show());
         f.t.repo->ingest(QStringLiteral("fresh"));
         f.popup->historyChanged();
-        QCOMPARE(f.model()->entryAt(3)->content, QStringLiteral("fresh"));
+        QCOMPARE(f.model()->entryAt(f.model()->index(3, 0))->content, QStringLiteral("fresh"));
         QCOMPARE(f.currentContent(), QStringLiteral("ssh -J bastion app")); // selection kept
+    }
+
+    // --- Group tree ---------------------------------------------------------------------
+
+    void groupsRowIsFirstAndCollapsed()
+    {
+        GroupFixture f;
+        QVERIFY(f.show());
+        const QModelIndex root = f.model()->groupsRoot();
+        QCOMPARE(root.row(), 0);
+        QVERIFY(!f.popup->view()->isExpanded(root));
+        QCOMPARE(f.currentContent(), QStringLiteral("ssh -J bastion app")); // Enter still copies a copy
+    }
+
+    void keyboardWalksTheGroupTree()
+    {
+        GroupFixture f;
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        QCOMPARE(f.current(), f.model()->groupsRoot()); // the row right under the search box
+
+        auto* view = f.popup->view();
+        QTest::keyClick(view, Qt::Key_Right);
+        QVERIFY(view->isExpanded(f.model()->groupsRoot()));
+        QTest::keyClick(view, Qt::Key_Down);
+        QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Work")));
+        QTest::keyClick(view, Qt::Key_Return); // Enter on a group opens it
+        QVERIFY(view->isExpanded(f.current()));
+        QTest::keyClick(view, Qt::Key_Down);
+        QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Work/Servers")));
+        QTest::keyClick(view, Qt::Key_Down); // over the collapsed Servers, to Work's own copy
+        QCOMPARE(f.currentContent(), QStringLiteral("beta"));
+        QCOMPARE(f.model()->pathAt(f.current()), QStringLiteral("Work"));
+
+        QTest::keyClick(view, Qt::Key_Up);
+        QTest::keyClick(view, Qt::Key_Right); // open Servers
+        QTest::keyClick(view, Qt::Key_Down);
+        QCOMPARE(f.currentContent(), QStringLiteral("alpha"));
+        QTest::keyClick(view, Qt::Key_Return);
+        QCOMPARE(activated.size(), 1);
+        QCOMPARE(activated.at(0).at(0).value<Entry>().content, QStringLiteral("alpha"));
+    }
+
+    void leftCollapsesAndUpReturnsToSearch()
+    {
+        GroupFixture f;
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        auto* view = f.popup->view();
+        QTest::keyClick(view, Qt::Key_Right);
+        QTest::keyClick(view, Qt::Key_Left);
+        QVERIFY(!view->isExpanded(f.model()->groupsRoot()));
+        QTest::keyClick(view, Qt::Key_Up);
+        QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
+    }
+
+    void rightInEmptySearchOpensGroups()
+    {
+        GroupFixture f;
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        QCOMPARE(QApplication::focusWidget(), f.popup->view());
+        QCOMPARE(f.current(), f.model()->groupsRoot());
+        QVERIFY(f.popup->view()->isExpanded(f.current()));
+
+        // With text, Right just moves the text cursor.
+        QTest::keyClick(f.popup->view(), Qt::Key_Up);
+        QTest::keyClicks(f.popup->searchBar(), QStringLiteral("ab"));
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Left);
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
+    }
+
+    void enterInSearchCopiesEvenWhenGroupsRowWasSelected()
+    {
+        GroupFixture f;
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // Groups row
+        QTest::keyClick(f.popup->view(), Qt::Key_Up); // back to search
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Return);
+        QCOMPARE(activated.size(), 1);
+        QCOMPARE(activated.at(0).at(0).value<Entry>().content, QStringLiteral("ssh -J bastion app"));
+    }
+
+    void clickTogglesGroups()
+    {
+        GroupFixture f;
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        const QModelIndex root = f.model()->groupsRoot();
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(root).center());
+        QVERIFY(view->isExpanded(root));
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(root).center());
+        QVERIFY(!view->isExpanded(root));
+        QCOMPARE(activated.size(), 0);
+    }
+
+    void expansionSurvivesRefreshButNotReopening()
+    {
+        GroupFixture f;
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        f.popup->view()->expand(f.model()->findGroup(QStringLiteral("Work")));
+        f.t.repo->ingest(QStringLiteral("fresh"));
+        f.popup->historyChanged(); // model rebuilt
+        QVERIFY(f.popup->view()->isExpanded(f.model()->groupsRoot()));
+        QVERIFY(f.popup->view()->isExpanded(f.model()->findGroup(QStringLiteral("Work"))));
+
+        QTest::keyClick(f.popup->view(), Qt::Key_Escape);
+        QVERIFY(f.show());
+        QVERIFY(!f.popup->view()->isExpanded(f.model()->groupsRoot()));
+    }
+
+    void groupMenuCreatesSubGroup()
+    {
+        GroupFixture f;
+        f.popup->setTextPrompt([](QWidget*, const QString&, const QString&, const QString&) {
+            return std::optional<QString>(QStringLiteral("Prod"));
+        });
+        QVERIFY(f.show());
+        std::unique_ptr<QMenu> menu(f.popup->createGroupMenu(QStringLiteral("Work/Servers"), nullptr));
+        QAction* create = menu->actions().value(0);
+        QCOMPARE(create->text(), QStringLiteral("New sub-group…"));
+        create->trigger();
+        QVERIFY(f.t.repo->groups().contains(QStringLiteral("Work/Servers/Prod")));
+        // The new group is revealed and selected.
+        QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Work/Servers/Prod")));
+        QVERIFY(f.popup->view()->isExpanded(f.model()->findGroup(QStringLiteral("Work/Servers"))));
+    }
+
+    void groupsRowMenuCreatesTopLevelGroup()
+    {
+        GroupFixture f;
+        f.popup->setTextPrompt([](QWidget*, const QString&, const QString&, const QString&) {
+            return std::optional<QString>(QStringLiteral("Personal"));
+        });
+        QVERIFY(f.show());
+        std::unique_ptr<QMenu> menu(f.popup->createGroupMenu(QString(), nullptr));
+        menu->actions().value(0)->trigger();
+        QVERIFY(f.t.repo->groups().contains(QStringLiteral("Personal")));
+    }
+
+    void ctrlGRenamesAndDelDeletesAGroup()
+    {
+        GroupFixture f;
+        f.popup->setTextPrompt([](QWidget*, const QString&, const QString&, const QString& current) {
+            return current == QLatin1String("Work") ? std::optional<QString>(QStringLiteral("Jobs")) : std::nullopt;
+        });
+        bool asked = false;
+        f.popup->setConfirmPrompt([&](QWidget*, const QString&) {
+            asked = true;
+            return true;
+        });
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        QTest::keyClick(view, Qt::Key_Down); // Work
+        QTest::keyClick(view, Qt::Key_G, Qt::ControlModifier);
+        QCOMPARE(f.t.repo->get(f.betaId)->group, QStringLiteral("Jobs"));
+        QCOMPARE(f.t.repo->get(f.alphaId)->group, QStringLiteral("Jobs/Servers"));
+        QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Jobs")));
+
+        QTest::keyClick(view, Qt::Key_Delete);
+        QVERIFY(asked);
+        QVERIFY(f.t.repo->groups().isEmpty());
+        QCOMPARE(f.t.repo->count(), 4); // copies kept
+    }
+
+    void renameConflictIsReported()
+    {
+        GroupFixture f;
+        f.t.repo->createGroup(QStringLiteral("Home"));
+        f.popup->setTextPrompt([](QWidget*, const QString&, const QString&, const QString&) {
+            return std::optional<QString>(QStringLiteral("Home"));
+        });
+        QString reported;
+        f.popup->setNotify([&](QWidget*, const QString& message) { reported = message; });
+        QVERIFY(f.show());
+        std::unique_ptr<QMenu> menu(f.popup->createGroupMenu(QStringLiteral("Work"), nullptr));
+        menu->actions().value(1)->trigger(); // Rename or move…
+        QVERIFY(reported.contains(QLatin1String("already exists")));
+        QVERIFY(f.t.repo->groups().contains(QStringLiteral("Work")));
+    }
+
+    void settingsButtonAndShortcut()
+    {
+        Fixture f;
+        QSignalSpy requested(f.popup.get(), &PopupWindow::settingsRequested);
+        QVERIFY(f.show());
+        QTest::mouseClick(f.popup->settingsButton(), Qt::LeftButton);
+        QCOMPARE(requested.size(), 1);
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Comma, Qt::ControlModifier);
+        QCOMPARE(requested.size(), 2);
     }
 
     void focusLossHidesWhenEnabled()

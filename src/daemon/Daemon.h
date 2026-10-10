@@ -32,6 +32,7 @@ struct DaemonOptions {
     QString databasePath;
     SessionEnv session;
     QString wlPasteProgram = QStringLiteral("wl-paste");
+    QString gsettingsProgram = QStringLiteral("gsettings"); // GNOME shortcut updates
 };
 
 // Owns everything that lives for the whole session: config, database, capture, the popup,
@@ -49,6 +50,11 @@ public:
 
     StartResult start(QString* error = nullptr);
     void reloadConfig();
+    // Opens the settings dialog over the popup (the popup's ⚙ button).
+    void openSettings();
+    // Saves the settings to the config file and applies them. On GNOME the shortcut is
+    // (re)applied even when unchanged, so the first save creates it.
+    bool applySettings(const Config& config, QString* error = nullptr);
     QVariantMap status() const;
     // Adds platform details (e.g. the Windows hotkey) to status().
     void setStatusValue(const QString& key, const QVariant& value) { m_extraStatus.insert(key, value); }
@@ -64,6 +70,9 @@ signals:
 private:
     void startCapture();
     void loadConfig();
+    void reload(bool forceShortcut);
+    void applyDesktopShortcut();
+    QString cliCommand() const;
     void onEntryActivated(const Entry& entry);
     void onPopupVisibilityChanged(bool visible);
     bool integrationAvailable() const { return m_integration && m_integration->isAvailable(); }

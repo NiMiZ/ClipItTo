@@ -1,6 +1,7 @@
 # Daemon logic as a portable library, so tests can drive it in-process on every platform.
 add_library(clipitto_daemon_lib STATIC
     Daemon.cpp Daemon.h
+    GnomeShortcut.cpp GnomeShortcut.h
 )
 target_include_directories(clipitto_daemon_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_output clipitto_ui)

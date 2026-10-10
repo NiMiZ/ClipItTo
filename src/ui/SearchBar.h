@@ -13,6 +13,7 @@ public:
 signals:
     void focusListRequested(); // Down arrow
     void activateRequested(); // Enter: activate the current list row
+    void openGroupsRequested(); // Right arrow in an empty search box
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;

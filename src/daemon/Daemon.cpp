@@ -1,6 +1,10 @@
 #include "Daemon.h"
 
 #include "CapturePipeline.h"
+#include "GnomeShortcut.h"
+#include "Hotkey.h"
+#include "SettingsDialog.h"
+#include "Theme.h"
 #include "ClipboardWriter.h"
 #include "PopupWindow.h"
 #include "WlPasteBackend.h"
@@ -10,6 +14,8 @@
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QTimer>
@@ -111,7 +117,9 @@ Daemon::StartResult Daemon::start(QString* error)
     startCapture();
 
     m_writer = std::make_unique<ClipboardWriter>(QGuiApplication::clipboard(), m_pipeline->filter(), m_integration);
+    ui::applyTheme(m_config.theme);
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
+    connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(m_control, &ControlChannel::toggleRequested, m_popup.get(), &ui::PopupWindow::togglePopup);
     connect(m_control, &ControlChannel::showRequested, m_popup.get(), &ui::PopupWindow::showPopup);
     connect(m_control, &ControlChannel::hideRequested, m_popup.get(), &ui::PopupWindow::hidePopup);
@@ -189,6 +197,68 @@ void Daemon::onEntryActivated(const Entry& entry)
 
 void Daemon::reloadConfig()
 {
+    reload(false);
+}
+
+void Daemon::openSettings()
+{
+    if (!m_popup) {
+        return;
+    }
+    ui::ShortcutSupport support;
+    if (m_options.session.display == SessionEnv::Display::Windows) {
+        support.note = tr("ClipItTo registers this shortcut itself.");
+    } else if (m_options.session.isGnome) {
+        support.note = tr("Saved as the GNOME keyboard shortcut for ClipItTo.");
+    } else {
+        support.editable = false;
+        support.note = tr("Bind \"clipitto --toggle\" to a shortcut in your desktop's keyboard settings.");
+    }
+    ui::SettingsDialog dialog(m_config, *m_repo, support, m_popup.get());
+    if (m_popup->execDialog(dialog) == QDialog::Accepted) {
+        QString error;
+        if (!applySettings(dialog.config(), &error)) {
+            qCWarning(lcDaemon).noquote() << "saving settings failed:" << error;
+        }
+    } else if (dialog.groupsChanged()) {
+        m_popup->refresh();
+    }
+}
+
+bool Daemon::applySettings(const Config& config, QString* error)
+{
+    if (!config.save(m_options.configPath, error)) {
+        return false;
+    }
+    reload(/*forceShortcut=*/true);
+    return true;
+}
+
+QString Daemon::cliCommand() const
+{
+    const QString local = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("clipitto"));
+    return (QFileInfo(local).isExecutable() ? local : QStringLiteral("clipitto")) + QStringLiteral(" --toggle");
+}
+
+void Daemon::applyDesktopShortcut()
+{
+    // Windows registers the hotkey in-process (see main.cpp, configReloaded); GNOME keeps
+    // it as a custom keyboard shortcut; elsewhere the user binds `clipitto --toggle`.
+    if (!m_options.session.isGnome || m_options.session.display == SessionEnv::Display::Windows) {
+        return;
+    }
+    const auto hotkey = parseHotkey(m_config.hotkey);
+    QString error;
+    if (!hotkey || !applyGnomeShortcut(hotkey->gtkAccelerator, cliCommand(), &error, m_options.gsettingsProgram)) {
+        qCWarning(lcDaemon).noquote() << "could not set the GNOME shortcut:" << error;
+        setStatusValue(QStringLiteral("shortcut"), QStringLiteral("not set: ") + error);
+    } else {
+        setStatusValue(QStringLiteral("shortcut"), m_config.hotkey + QStringLiteral(" (GNOME)"));
+    }
+}
+
+void Daemon::reload(bool forceShortcut)
+{
     const Config previous = m_config;
     loadConfig();
     qCInfo(lcDaemon) << "configuration reloaded";
@@ -196,7 +266,13 @@ void Daemon::reloadConfig()
         return;
     }
     m_pipeline->setLimits(m_config.maxHistory, m_config.maxItemBytes);
+    if (m_config.theme != previous.theme) {
+        ui::applyTheme(m_config.theme);
+    }
     m_popup->applyConfig(m_config);
+    if (forceShortcut || m_config.hotkey != previous.hotkey) {
+        applyDesktopShortcut();
+    }
     if (m_config.maxHistory < previous.maxHistory) {
         m_repo->prune(m_config.maxHistory);
     }

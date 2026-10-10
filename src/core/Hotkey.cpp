@@ -7,13 +7,23 @@ namespace clipitto {
 namespace {
 
 struct NamedKey {
-    const char* name;
-    quint32 vk;
+    const char* name; // canonical spelling
+    quint32 vk; // Win32 virtual-key code
+    const char* gtk; // GDK key name for GNOME accelerators
 };
 
 constexpr NamedKey kNamedKeys[] = {
-    {"Space", 0x20}, {"Tab", 0x09},      {"Enter", 0x0D},  {"Insert", 0x2D},   {"Delete", 0x2E},
-    {"Home", 0x24},  {"End", 0x23},      {"PageUp", 0x21}, {"PageDown", 0x22},
+    {"Space", 0x20, "space"},   {"Tab", 0x09, "Tab"},        {"Enter", 0x0D, "Return"},
+    {"Insert", 0x2D, "Insert"}, {"Delete", 0x2E, "Delete"},  {"Home", 0x24, "Home"},
+    {"End", 0x23, "End"},       {"PageUp", 0x21, "Page_Up"}, {"PageDown", 0x22, "Page_Down"},
+};
+
+// Punctuation keys by their US-layout character (VK_OEM_* codes).
+constexpr NamedKey kPunctuation[] = {
+    {"`", 0xC0, "grave"},       {"-", 0xBD, "minus"},        {"=", 0xBB, "equal"},
+    {"[", 0xDB, "bracketleft"}, {"]", 0xDD, "bracketright"}, {"\\", 0xDC, "backslash"},
+    {";", 0xBA, "semicolon"},   {"'", 0xDE, "apostrophe"},   {",", 0xBC, "comma"},
+    {".", 0xBE, "period"},      {"/", 0xBF, "slash"},
 };
 
 } // namespace
@@ -54,10 +64,28 @@ std::optional<NativeHotkey> parseHotkey(const QString& text)
 
     const QString key = parts.last().trimmed();
     QString keyName;
+    QString gtkKey;
     if (key.size() == 1 && key.at(0).isLetterOrNumber() && key.at(0).unicode() < 128) {
         const QChar upper = key.at(0).toUpper();
         hotkey.virtualKey = upper.unicode(); // VK_A..VK_Z / VK_0..VK_9 equal their ASCII codes
         keyName = upper;
+        gtkKey = upper.toLower();
+    } else if (key.compare(QLatin1String("grave"), Qt::CaseInsensitive) == 0
+               || key.compare(QLatin1String("backtick"), Qt::CaseInsensitive) == 0) {
+        hotkey.virtualKey = 0xC0;
+        keyName = QStringLiteral("`");
+        gtkKey = QStringLiteral("grave");
+    } else if (key.size() == 1 && key.at(0).unicode() < 128 && !key.at(0).isLetterOrNumber()) {
+        for (const NamedKey& named : kPunctuation) {
+            if (key == QLatin1String(named.name)) {
+                hotkey.virtualKey = named.vk;
+                keyName = key;
+                gtkKey = QString::fromLatin1(named.gtk);
+            }
+        }
+        if (!hotkey.virtualKey) {
+            return std::nullopt;
+        }
     } else if (key.size() >= 2 && key.at(0).toUpper() == QLatin1Char('F')) {
         bool ok = false;
         const int n = key.mid(1).toInt(&ok);
@@ -66,11 +94,13 @@ std::optional<NativeHotkey> parseHotkey(const QString& text)
         }
         hotkey.virtualKey = 0x70 + quint32(n - 1); // VK_F1..VK_F24
         keyName = QStringLiteral("F%1").arg(n);
+        gtkKey = keyName;
     } else {
         for (const NamedKey& named : kNamedKeys) {
             if (key.compare(QLatin1String(named.name), Qt::CaseInsensitive) == 0) {
                 hotkey.virtualKey = named.vk;
                 keyName = QString::fromLatin1(named.name);
+                gtkKey = QString::fromLatin1(named.gtk);
             }
         }
         if (!hotkey.virtualKey) {
@@ -78,6 +108,13 @@ std::optional<NativeHotkey> parseHotkey(const QString& text)
         }
     }
 
+    for (const auto& [flag, gtk] : {std::pair{win32::ModControl, "<Control>"}, std::pair{win32::ModAlt, "<Alt>"},
+                                    std::pair{win32::ModShift, "<Shift>"}, std::pair{win32::ModWin, "<Super>"}}) {
+        if (hotkey.modifiers & flag) {
+            hotkey.gtkAccelerator += QString::fromLatin1(gtk);
+        }
+    }
+    hotkey.gtkAccelerator += gtkKey;
     hotkey.canonical = (canonicalModifiers << keyName).join(QLatin1Char('+'));
     return hotkey;
 }

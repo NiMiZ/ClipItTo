@@ -5,6 +5,7 @@ add_library(clipitto_core STATIC
     ControlChannel.h
     DesktopIntegration.h
     Entry.h
+    GroupPath.cpp GroupPath.h
     Hotkey.cpp Hotkey.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h
@@ -17,7 +18,7 @@ add_library(clipitto_core STATIC
 qt_add_resources(clipitto_core "clipitto_migrations"
     PREFIX "/clipitto"
     BASE db
-    FILES db/migrations/001_init.sql
+    FILES db/migrations/001_init.sql db/migrations/002_groups.sql
 )
 
 target_include_directories(clipitto_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

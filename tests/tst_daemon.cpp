@@ -9,11 +9,15 @@
 
 #include <QClipboard>
 #include <QFile>
+#include <QApplication>
 #include <QGuiApplication>
+#include <QPalette>
+#include <QStyle>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
+using clipitto::Config;
 using clipitto::ControlChannel;
 using clipitto::DesktopIntegration;
 using clipitto::PasteKeys;
@@ -191,8 +195,8 @@ private slots:
 
         emit d.control()->showRequested(QString());
         auto* model = d.popup()->model();
-        const int olderRow = model->rowForId(d.repository()->search(QStringLiteral("older")).front().id);
-        emit d.popup()->view()->activateRequested(model->index(olderRow));
+        emit d.popup()->view()->activateRequested(
+            model->findEntry(d.repository()->search(QStringLiteral("older")).front().id));
 
         QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("older"));
         QVERIFY(!d.popup()->isVisible());
@@ -213,8 +217,7 @@ private slots:
 
         emit d.control()->showRequested(QString());
         QCOMPARE(fake->activations, 1);
-        emit d.popup()->view()->activateRequested(d.popup()->model()->index(d.popup()->model()->rowForId(
-            d.repository()->search(QStringLiteral("from history")).front().id)));
+        emit d.popup()->view()->activateRequested(d.popup()->model()->findEntry(d.repository()->search(QStringLiteral("from history")).front().id));
         QCOMPARE(fake->clipboardTexts, QStringList{QStringLiteral("from history")});
         QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("sentinel")); // left to the shell
         QVERIFY(d.control()->status().value(QStringLiteral("desktop_integration")).toString().contains(
@@ -230,7 +233,7 @@ private slots:
         emit d.control()->ingestRequested(QStringLiteral("local copy"), {});
         emit d.control()->showRequested(QString());
         QCOMPARE(fake->activations, 0);
-        emit d.popup()->view()->activateRequested(d.popup()->model()->index(d.popup()->model()->firstEntryRow()));
+        emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
         QVERIFY(fake->clipboardTexts.isEmpty());
         QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("local copy"));
     }
@@ -244,7 +247,7 @@ private slots:
         QVERIFY(d.start() == Daemon::StartResult::Ok);
         emit d.control()->ingestRequested(QStringLiteral("paste me"), {});
         emit d.control()->showRequested(QString());
-        emit d.popup()->view()->activateRequested(d.popup()->model()->index(d.popup()->model()->firstEntryRow()));
+        emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
         QVERIFY(fake->pastes.isEmpty()); // only after the popup is gone
         QTRY_COMPARE(fake->pastes, QList<PasteKeys>{PasteKeys::ShiftInsert});
     }
@@ -279,6 +282,74 @@ private slots:
         QSKIP("SendInput needs no display connection");
 #endif
         QVERIFY(!clipitto::pasteWithSyntheticKeys(PasteKeys::CtrlV)); // offscreen: no X display
+    }
+
+    void applySettingsSavesAndApplies()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        Config c = d.config();
+        c.theme = clipitto::Theme::Dark;
+        c.previewLines = 3;
+        QString error;
+        QVERIFY2(d.applySettings(c, &error), qPrintable(error));
+        QVERIFY(Config::load(options().configPath) == c); // persisted
+        QVERIFY(d.config() == c); // and live
+        QCOMPARE(QApplication::style()->name().toLower(), QStringLiteral("fusion"));
+        QCOMPARE(QApplication::palette().color(QPalette::Window).lightness() < 128, true);
+
+        c.theme = clipitto::Theme::Light;
+        QVERIFY(d.applySettings(c));
+        QCOMPARE(QApplication::palette().color(QPalette::Window).lightness() > 128, true);
+    }
+
+    void gnomeShortcutFollowsTheSetting()
+    {
+#ifndef CLIPITTO_FAKE_GSETTINGS
+        QSKIP("needs the POSIX fake gsettings");
+#else
+        QTemporaryDir store;
+        qputenv("FAKE_GSETTINGS_DIR", QFile::encodeName(store.path()));
+        DaemonOptions o = options();
+        o.session.isGnome = true;
+        o.gsettingsProgram = QStringLiteral(CLIPITTO_FAKE_GSETTINGS);
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+
+        const auto stored = [&](const QString& key) {
+            QFile f(store.filePath(QString(key).replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char(':'), QLatin1Char('_'))));
+            return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).trimmed() : QString();
+        };
+        const QString entry = QStringLiteral("org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
+                                             "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipitto/");
+
+        Config c = d.config();
+        c.hotkey = QStringLiteral("Ctrl+`");
+        QVERIFY(d.applySettings(c));
+        QCOMPARE(stored(entry + QStringLiteral(".binding")), QStringLiteral("<Control>grave"));
+        QVERIFY(stored(entry + QStringLiteral(".command")).endsWith(QLatin1String("--toggle")));
+        QVERIFY(stored(QStringLiteral("org.gnome.settings-daemon.plugins.media-keys.custom-keybindings"))
+                    .contains(QLatin1String("/custom-keybindings/clipitto/")));
+        QCOMPARE(d.status().value(QStringLiteral("shortcut")).toString(), QStringLiteral("Ctrl+` (GNOME)"));
+
+        // Editing the file and reloading applies a changed shortcut too.
+        writeConfig("hotkey = \"Ctrl+Alt+V\"\n");
+        emit d.control()->reloadRequested();
+        QCOMPARE(stored(entry + QStringLiteral(".binding")), QStringLiteral("<Control><Alt>v"));
+#endif
+    }
+
+    void nonGnomeSessionsLeaveTheShortcutAlone()
+    {
+        DaemonOptions o = options();
+        o.session.isGnome = false;
+        o.gsettingsProgram = QStringLiteral("/nonexistent/gsettings");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        Config c = d.config();
+        c.hotkey = QStringLiteral("Ctrl+`");
+        QVERIFY(d.applySettings(c));
+        QVERIFY(!d.status().contains(QStringLiteral("shortcut")));
     }
 
     void startPrunesToConfiguredLimit()

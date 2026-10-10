@@ -3,6 +3,7 @@
 
 max_history = 1000          # unsaved items kept; favorites and grouped items are never pruned
 recent_count = 20           # recent copies shown when the search box is empty
+preview_lines = 1           # text lines shown per copy (1 = the whole text squeezed on one line)
 show_saved_on_top = true    # list favorites and grouped items above recent copies
 saved_cap = 15              # at most this many saved items in that list
 max_item_bytes = 1048576    # larger copies are not recorded
@@ -13,5 +14,7 @@ click_to_copy = "single"    # single | double
 hide_on_focus_loss = true
 search_debounce_ms = 100
 backend = "auto"            # auto | gnome-ext | wl-paste | qt-clipboard
-hotkey = "Ctrl+Alt+V"       # Windows: global shortcut that opens the popup. On Linux, set the
-                            # shortcut in your desktop's settings (clipitto-shortcut on GNOME).
+hotkey = "Ctrl+Alt+V"       # shortcut that opens the popup, e.g. "Ctrl+`". Windows: ClipItTo
+                            # registers it. GNOME: changing it in Settings updates the GNOME
+                            # custom shortcut. Other desktops: bind `clipitto --toggle` yourself.
+theme = "system"            # system | light | dark

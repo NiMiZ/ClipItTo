@@ -25,6 +25,7 @@ using EnumNames = std::array<std::pair<Enum, const char*>, N>;
 constexpr EnumNames<PasteKeys, 2> kPasteKeys{{{PasteKeys::CtrlV, "ctrl+v"}, {PasteKeys::ShiftInsert, "shift+insert"}}};
 constexpr EnumNames<ClickMode, 2> kClickModes{{{ClickMode::Single, "single"}, {ClickMode::Double, "double"}}};
 // The first name of a value is the one written back; later ones are accepted aliases.
+constexpr EnumNames<Theme, 3> kThemes{{{Theme::System, "system"}, {Theme::Light, "light"}, {Theme::Dark, "dark"}}};
 constexpr EnumNames<BackendChoice, 5> kBackends{{{BackendChoice::Auto, "auto"},
                                                  {BackendChoice::GnomeExt, "gnome-ext"},
                                                  {BackendChoice::WlPaste, "wl-paste"},
@@ -163,6 +164,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     Reader r(table, warnings);
     r.integer("max_history", config.maxHistory, 10, 1'000'000);
     r.integer("recent_count", config.recentCount, 1, 500);
+    r.integer("preview_lines", config.previewLines, 1, 10);
     r.boolean("show_saved_on_top", config.showSavedOnTop);
     r.integer("saved_cap", config.savedCap, 0, 500);
     r.integer("max_item_bytes", config.maxItemBytes, 1, 64LL * 1024 * 1024);
@@ -174,6 +176,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("search_debounce_ms", config.searchDebounceMs, 0, 2000);
     r.choice("backend", config.backend, kBackends);
     r.hotkey("hotkey", config.hotkey);
+    r.choice("theme", config.theme, kThemes);
     r.warnUnknownKeys();
     return config;
 }
@@ -200,7 +203,8 @@ std::string Config::toToml() const
     std::ostringstream out;
     out << "# ClipItTo configuration\n"
         << "max_history = " << maxHistory << "          # unsaved items kept; favorites/grouped never pruned\n"
-        << "recent_count = " << recentCount << "\n"
+        << "recent_count = " << recentCount << "           # copies listed when the search box is empty\n"
+        << "preview_lines = " << previewLines << "          # text lines shown per copy\n"
         << "show_saved_on_top = " << b(showSavedOnTop) << "\n"
         << "saved_cap = " << savedCap << "\n"
         << "max_item_bytes = " << maxItemBytes << "\n"
@@ -211,7 +215,8 @@ std::string Config::toToml() const
         << "hide_on_focus_loss = " << b(hideOnFocusLoss) << "\n"
         << "search_debounce_ms = " << searchDebounceMs << "\n"
         << "backend = \"" << nameOf(kBackends, backend) << "\"            # auto | gnome-ext | wl-paste | qt-clipboard\n"
-        << "hotkey = \"" << hotkey.toStdString() << "\"      # Windows global shortcut\n";
+        << "hotkey = \"" << hotkey.toStdString() << "\"      # global shortcut that opens the popup\n"
+        << "theme = \"" << nameOf(kThemes, theme) << "\"          # system | light | dark\n";
     return out.str();
 }
 

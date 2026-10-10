@@ -7,8 +7,15 @@
 
 namespace clipitto::ui {
 
-HistoryView::HistoryView(QWidget* parent) : QListView(parent)
+HistoryView::HistoryView(QWidget* parent) : QTreeView(parent)
 {
+    setHeaderHidden(true);
+    setRootIsDecorated(false);
+    setIndentation(18);
+    setItemsExpandable(true);
+    setExpandsOnDoubleClick(false); // clicks are handled by the popup
+    setUniformRowHeights(false);
+    setAnimated(false);
     setSelectionMode(QAbstractItemView::SingleSelection);
     setEditTriggers(QAbstractItemView::NoEditTriggers);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -21,7 +28,7 @@ HistoryView::HistoryView(QWidget* parent) : QListView(parent)
     connect(this, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         const QModelIndex index = indexAt(pos);
         if (index.flags() & Qt::ItemIsEnabled) {
-            selectRow(index.row());
+            selectIndex(index);
             emit contextMenuRequested(index, viewport()->mapToGlobal(pos));
         }
     });
@@ -33,24 +40,67 @@ void HistoryView::setHistoryModel(HistoryModel* model)
     setModel(model);
 }
 
-void HistoryView::selectRow(int row)
+void HistoryView::selectIndex(const QModelIndex& index)
 {
-    if (!m_model || row < 0 || row >= m_model->rowCount()) {
-        return;
+    if (index.isValid()) {
+        setCurrentIndex(index); // SingleSelection: also selects
+        scrollTo(index);
     }
-    const QModelIndex index = m_model->index(row);
-    setCurrentIndex(index); // SingleSelection: also selects
-    scrollTo(index);
 }
 
 void HistoryView::selectFirstEntry()
 {
     if (m_model) {
-        const int first = m_model->firstEntryRow();
-        if (first >= 0) {
-            selectRow(first);
-            scrollToTop(); // keep a leading section header visible
+        selectIndex(m_model->firstEntry());
+        if (currentIndex() == firstSelectable() || currentIndex().row() <= 2) {
+            scrollToTop(); // keep the Groups row and a leading section header visible
         }
+    }
+}
+
+void HistoryView::selectFirstRow()
+{
+    selectIndex(firstSelectable());
+    scrollToTop();
+}
+
+QModelIndex HistoryView::firstSelectable() const
+{
+    if (!m_model || m_model->rowCount() == 0) {
+        return {};
+    }
+    const QModelIndex first = m_model->index(0, 0);
+    return (first.flags() & Qt::ItemIsSelectable) ? first : nextSelectable(first, true);
+}
+
+QModelIndex HistoryView::lastSelectable() const
+{
+    if (!m_model || m_model->rowCount() == 0) {
+        return {};
+    }
+    // The last visible row: descend into expanded last children.
+    QModelIndex last = m_model->index(m_model->rowCount() - 1, 0);
+    while (isExpanded(last) && m_model->rowCount(last) > 0) {
+        last = m_model->index(m_model->rowCount(last) - 1, 0, last);
+    }
+    return (last.flags() & Qt::ItemIsSelectable) ? last : nextSelectable(last, false);
+}
+
+QModelIndex HistoryView::nextSelectable(QModelIndex from, bool down) const
+{
+    for (QModelIndex i = down ? indexBelow(from) : indexAbove(from); i.isValid();
+         i = down ? indexBelow(i) : indexAbove(i)) {
+        if (i.flags() & Qt::ItemIsSelectable) {
+            return i;
+        }
+    }
+    return {};
+}
+
+void HistoryView::toggleExpanded(const QModelIndex& index)
+{
+    if (m_model && m_model->isExpandable(index)) {
+        setExpanded(index, !isExpanded(index));
     }
 }
 
@@ -62,7 +112,7 @@ void HistoryView::setEmptyText(const QString& text)
 
 void HistoryView::paintEvent(QPaintEvent* event)
 {
-    QListView::paintEvent(event);
+    QTreeView::paintEvent(event);
     if (m_model && m_model->rowCount() == 0 && !m_emptyText.isEmpty()) {
         QPainter painter(viewport());
         painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
@@ -74,36 +124,41 @@ void HistoryView::paintEvent(QPaintEvent* event)
 QModelIndex HistoryView::moveCursor(CursorAction action, Qt::KeyboardModifiers modifiers)
 {
     if (!m_model) {
-        return QListView::moveCursor(action, modifiers);
+        return QTreeView::moveCursor(action, modifiers);
     }
-    const int current = currentIndex().isValid() ? currentIndex().row() : -1;
-    int target = -1;
+    const QModelIndex current = currentIndex();
+    QModelIndex target;
     switch (action) {
     case MoveUp:
     case MovePrevious:
-        target = m_model->nextEntryRow(current, -1);
+        target = current.isValid() ? nextSelectable(current, false) : lastSelectable();
         break;
     case MoveDown:
     case MoveNext:
-        target = m_model->nextEntryRow(current, +1);
+        target = current.isValid() ? nextSelectable(current, true) : firstSelectable();
         break;
     case MoveHome:
-        target = m_model->firstEntryRow();
+        target = firstSelectable();
         break;
     case MoveEnd:
-        target = m_model->nextEntryRow(m_model->rowCount(), -1);
+        target = lastSelectable();
         break;
+    case MoveLeft:
+    case MoveRight:
+        return QTreeView::moveCursor(action, modifiers); // collapse / expand / parent / child
     default: {
-        // Page moves: let QListView pick a row, then settle on the nearest entry.
-        const QModelIndex index = QListView::moveCursor(action, modifiers);
-        if (!index.isValid() || m_model->entryAt(index.row())) {
+        // Page moves: let the tree pick a row, then settle on the nearest selectable one.
+        const QModelIndex index = QTreeView::moveCursor(action, modifiers);
+        if (!index.isValid() || (index.flags() & Qt::ItemIsSelectable)) {
             return index;
         }
-        const int down = m_model->nextEntryRow(index.row(), +1);
-        target = down >= 0 ? down : m_model->nextEntryRow(index.row(), -1);
+        target = nextSelectable(index, true);
+        if (!target.isValid()) {
+            target = nextSelectable(index, false);
+        }
     }
     }
-    return target >= 0 ? m_model->index(target) : currentIndex();
+    return target.isValid() ? target : current;
 }
 
 void HistoryView::keyPressEvent(QKeyEvent* event)
@@ -129,14 +184,25 @@ void HistoryView::keyPressEvent(QKeyEvent* event)
 
     switch (event->key()) {
     case Qt::Key_Up:
-        if (m_model && (!current.isValid() || m_model->nextEntryRow(current.row(), -1) < 0)) {
+        if (!current.isValid() || !nextSelectable(current, false).isValid()) {
             emit focusSearchRequested();
+            return;
+        }
+        break;
+    case Qt::Key_Right:
+        // Right on a collapsed group opens it (and on the Groups row from anywhere in it).
+        if (m_model && m_model->isExpandable(current) && !isExpanded(current)) {
+            expand(current);
             return;
         }
         break;
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        emit activateRequested(current);
+        if (m_model && m_model->isExpandable(current)) {
+            toggleExpanded(current);
+        } else {
+            emit activateRequested(current);
+        }
         return;
     case Qt::Key_Delete:
         emit deleteRequested(current);
@@ -157,7 +223,7 @@ void HistoryView::keyPressEvent(QKeyEvent* event)
         }
         break;
     }
-    QListView::keyPressEvent(event);
+    QTreeView::keyPressEvent(event);
 }
 
 } // namespace clipitto::ui

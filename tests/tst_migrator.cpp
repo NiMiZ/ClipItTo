@@ -78,6 +78,24 @@ private slots:
         QVERIFY(!tableExists(db, "b"));
     }
 
+    void groupsMigrationAdoptsExistingGroupsWithParents()
+    {
+        Db db(QStringLiteral(":memory:"));
+        auto migrations = builtinMigrations();
+        migrate(db, {migrations.front()}); // schema 1 only
+        db.exec("INSERT INTO clips(content, content_hash, group_name) VALUES "
+                "('a', 'h1', 'Work/Servers/Prod'), ('b', 'h2', 'Snippets'), ('c', 'h3', NULL)");
+        migrate(db);
+
+        Stmt s(db, "SELECT path FROM groups ORDER BY path");
+        QStringList paths;
+        while (s.step()) {
+            paths << s.colText(0);
+        }
+        QCOMPARE(paths, (QStringList{QStringLiteral("Snippets"), QStringLiteral("Work"), QStringLiteral("Work/Servers"),
+                                     QStringLiteral("Work/Servers/Prod")}));
+    }
+
     void newerSchemaIsRejected()
     {
         Db db(QStringLiteral(":memory:"));

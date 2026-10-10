@@ -21,6 +21,12 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
     case Qt::Key_Enter:
         emit activateRequested();
         return;
+    case Qt::Key_Right:
+        if (text().isEmpty()) {
+            emit openGroupsRequested();
+            return;
+        }
+        break;
     default:
         QLineEdit::keyPressEvent(event);
     }

@@ -27,6 +27,7 @@ void SearchController::applyConfig(const Config& config)
     m_savedCap = config.savedCap;
     m_showSavedOnTop = config.showSavedOnTop;
     m_debounce.setInterval(config.searchDebounceMs);
+    m_model.setPreviewLines(config.previewLines);
 }
 
 void SearchController::setQuery(const QString& query)
@@ -49,32 +50,33 @@ void SearchController::refresh()
 void SearchController::run()
 {
     ++m_queriesRun;
-    std::vector<HistoryModel::Row> rows;
+    std::vector<HistoryModel::Section> sections;
+    std::vector<HistoryModel::GroupData> groups;
+    std::vector<Entry> grouped;
     try {
         if (m_query.trimmed().isEmpty()) {
-            const auto saved = m_showSavedOnTop ? m_repo.saved(m_savedCap) : std::vector<Entry>{};
-            const auto recent = m_repo.recent(m_recentCount, /*unsavedOnly=*/m_showSavedOnTop);
-            if (!saved.empty()) {
-                rows.push_back({tr("Saved"), {}});
-                for (const Entry& e : saved) {
-                    rows.push_back({{}, e});
-                }
-                if (!recent.empty()) {
-                    rows.push_back({tr("Recent"), {}});
-                }
+            for (const auto& g : m_repo.groupTree()) {
+                groups.push_back({g.path, g.clipCount});
             }
-            for (const Entry& e : recent) {
-                rows.push_back({{}, e});
+            if (!groups.empty()) {
+                grouped = m_repo.groupedEntries();
+            }
+            auto saved = m_showSavedOnTop ? m_repo.saved(m_savedCap) : std::vector<Entry>{};
+            auto recent = m_repo.recent(m_recentCount, /*unsavedOnly=*/m_showSavedOnTop);
+            if (!saved.empty()) {
+                sections.push_back({tr("Saved"), std::move(saved)});
+                // A header only separates something: with nothing saved, recent stands alone.
+                sections.push_back({recent.empty() ? QString() : tr("Recent"), std::move(recent)});
+            } else {
+                sections.push_back({QString(), std::move(recent)});
             }
         } else {
-            for (const Entry& e : m_repo.search(m_query, searchLimit)) {
-                rows.push_back({{}, e});
-            }
+            sections.push_back({QString(), m_repo.search(m_query, searchLimit)});
         }
     } catch (const db::DbError& e) {
         qCWarning(lcSearch) << "query failed:" << e.what();
     }
-    m_model.setRows(std::move(rows));
+    m_model.setContent(std::move(sections), groups, grouped);
     emit updated();
 }
 

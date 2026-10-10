@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QListView>
+#include <QTreeView>
 
 class QKeyEvent;
 
@@ -8,21 +8,26 @@ namespace clipitto::ui {
 
 class HistoryModel;
 
-class HistoryView : public QListView {
+// The popup's list: copies in sections plus the expandable group tree. The delegate draws
+// the expand arrows (at the end of the row), so the tree's own branch decoration is off.
+class HistoryView : public QTreeView {
     Q_OBJECT
 
 public:
     explicit HistoryView(QWidget* parent = nullptr);
 
     void setHistoryModel(HistoryModel* model);
-    void selectRow(int row); // makes `row` current and selected, scrolling to it
-    void selectFirstEntry();
+    void selectIndex(const QModelIndex& index); // current + selected, scrolled into view
+    void selectFirstEntry(); // the first copy (what Enter in the search box copies)
+    void selectFirstRow(); // the first selectable row (the Groups row when there are groups)
+    QModelIndex firstSelectable() const;
+    void toggleExpanded(const QModelIndex& index);
     void setEmptyText(const QString& text); // shown when the model has no rows
 
 signals:
-    void focusSearchRequested(); // Up on the first entry
+    void focusSearchRequested(); // Up on the first row
     void typedText(QKeyEvent* event); // printable key or Backspace: belongs to the search bar
-    void activateRequested(const QModelIndex& index);
+    void activateRequested(const QModelIndex& index); // Enter on a copy
     void toggleFavoriteRequested(const QModelIndex& index);
     void editGroupRequested(const QModelIndex& index);
     void editNoteRequested(const QModelIndex& index);
@@ -33,8 +38,12 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     QModelIndex moveCursor(CursorAction action, Qt::KeyboardModifiers modifiers) override;
     void paintEvent(QPaintEvent* event) override;
+    void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
 
 private:
+    QModelIndex nextSelectable(QModelIndex from, bool down) const;
+    QModelIndex lastSelectable() const;
+
     HistoryModel* m_model = nullptr;
     QString m_emptyText;
 };

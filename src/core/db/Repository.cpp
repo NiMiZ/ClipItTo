@@ -1,5 +1,6 @@
 #include "db/Repository.h"
 
+#include "GroupPath.h"
 #include "db/FtsQuery.h"
 #include "db/Sqlite.h"
 
@@ -69,10 +70,7 @@ Repository::Repository(Db& db, Clock clock)
             ORDER BY last_used ASC, id ASC
             LIMIT max(0, (SELECT count(*) FROM clips WHERE is_saved = 0) - ?1)))");
 
-    m_groups = std::make_unique<Stmt>(m_db, R"(
-        SELECT DISTINCT group_name FROM clips
-        WHERE group_name IS NOT NULL AND group_name <> ''
-        ORDER BY group_name COLLATE NOCASE)");
+    m_groups = std::make_unique<Stmt>(m_db, "SELECT path FROM groups ORDER BY path COLLATE NOCASE");
 
     m_count = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips");
     m_countUnsaved = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips WHERE is_saved = 0");
@@ -220,9 +218,122 @@ void Repository::setFavorite(qint64 id, bool favorite)
 
 void Repository::setGroup(qint64 id, const QString& group)
 {
+    const QString path = group.trimmed().isEmpty() ? QString() : createGroup(group);
     m_setGroup->reset();
-    m_setGroup->bindInt(1, id).bindTextOrNull(2, group.trimmed());
+    m_setGroup->bindInt(1, id).bindTextOrNull(2, path);
     m_setGroup->run();
+}
+
+namespace {
+
+// LIKE pattern matching everything strictly below `path`.
+QString descendantsPattern(const QString& path)
+{
+    QString escaped;
+    for (const QChar c : path) {
+        if (c == QLatin1Char('\\') || c == QLatin1Char('%') || c == QLatin1Char('_')) {
+            escaped += QLatin1Char('\\');
+        }
+        escaped += c;
+    }
+    return escaped + QStringLiteral("/%");
+}
+
+} // namespace
+
+std::vector<Repository::GroupInfo> Repository::groupTree()
+{
+    Stmt s(m_db, R"(
+        SELECT g.path, (SELECT count(*) FROM clips c WHERE c.group_name = g.path)
+        FROM groups g ORDER BY g.path COLLATE NOCASE)");
+    std::vector<GroupInfo> result;
+    while (s.step()) {
+        result.push_back({s.colText(0), int(s.colInt(1))});
+    }
+    return result;
+}
+
+std::vector<Entry> Repository::groupedEntries()
+{
+    Stmt s(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
+        WHERE c.group_name IS NOT NULL AND c.group_name <> ''
+        ORDER BY c.is_favorite DESC, c.last_used DESC, c.id DESC)");
+    return collect(s);
+}
+
+QString Repository::createGroup(const QString& path)
+{
+    const QString normalized = groups::normalize(path);
+    if (normalized.isEmpty()) {
+        return {};
+    }
+    Stmt insert(m_db, "INSERT OR IGNORE INTO groups(path, created_at) VALUES (?1, ?2)");
+    for (QString level = normalized; !level.isEmpty(); level = groups::parent(level)) {
+        insert.reset();
+        insert.bindText(1, level).bindText(2, now());
+        insert.run();
+    }
+    return normalized;
+}
+
+bool Repository::renameGroup(const QString& from, const QString& to, QString* error)
+{
+    const auto fail = [&](const QString& message) {
+        if (error) {
+            *error = message;
+        }
+        return false;
+    };
+    const QString source = groups::normalize(from);
+    const QString target = groups::normalize(to);
+    if (source.isEmpty() || target.isEmpty()) {
+        return fail(QStringLiteral("a group needs a name"));
+    }
+    if (source == target) {
+        return true;
+    }
+    if (groups::isWithin(target, source)) {
+        return fail(QStringLiteral("cannot move a group into itself"));
+    }
+    if (groups().contains(target)) {
+        return fail(QStringLiteral("a group named %1 already exists").arg(groups::display(target)));
+    }
+
+    Transaction tx(m_db);
+    if (!groups::parent(target).isEmpty()) {
+        createGroup(groups::parent(target));
+    }
+    // ?1 = old prefix, ?2 = new prefix, ?3 = LIKE pattern for everything below the old one.
+    for (const char* sql : {
+             "UPDATE groups SET path = ?2 || substr(path, length(?1) + 1) "
+             "WHERE path = ?1 OR path LIKE ?3 ESCAPE '\\'",
+             "UPDATE clips SET group_name = ?2 || substr(group_name, length(?1) + 1) "
+             "WHERE group_name = ?1 OR group_name LIKE ?3 ESCAPE '\\'",
+         }) {
+        Stmt s(m_db, sql);
+        s.bindText(1, source).bindText(2, target).bindText(3, descendantsPattern(source));
+        s.run();
+    }
+    tx.commit();
+    return true;
+}
+
+void Repository::deleteGroup(const QString& path)
+{
+    const QString normalized = groups::normalize(path);
+    if (normalized.isEmpty()) {
+        return;
+    }
+    Transaction tx(m_db);
+    for (const char* sql : {
+             "UPDATE clips SET group_name = NULL WHERE group_name = ?1 OR group_name LIKE ?2 ESCAPE '\\'",
+             "DELETE FROM groups WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
+         }) {
+        Stmt s(m_db, sql);
+        s.bindText(1, normalized).bindText(2, descendantsPattern(normalized));
+        s.run();
+    }
+    tx.commit();
 }
 
 void Repository::setNote(qint64 id, const QString& note)

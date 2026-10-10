@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QPainter>
+#include <QPainterPath>
 
 namespace clipitto::ui {
 
@@ -23,6 +24,9 @@ constexpr int kHPad = 10;
 constexpr int kVPad = 6;
 constexpr int kStarWidth = 18;
 constexpr int kGap = 8;
+constexpr int kArrowBox = 16;
+
+using Kind = HistoryModel::Kind;
 
 QFont bold(QFont font)
 {
@@ -38,16 +42,51 @@ QFont caption(QFont font)
     return font;
 }
 
+int previewLineCount(const QModelIndex& index)
+{
+    const QString preview = index.data(HistoryModel::PreviewRole).toString();
+    return preview.isEmpty() ? 0 : int(preview.count(QLatin1Char('\n'))) + 1;
+}
+
+// A chevron pointing right (collapsed) or down (expanded), centered in `box`.
+void drawChevron(QPainter* painter, const QRectF& box, bool expanded, const QColor& color)
+{
+    const QPointF c = box.center();
+    const qreal s = 3.5;
+    QPainterPath path;
+    if (expanded) {
+        path.moveTo(c.x() - s, c.y() - s / 2);
+        path.lineTo(c.x(), c.y() + s / 2);
+        path.lineTo(c.x() + s, c.y() - s / 2);
+    } else {
+        path.moveTo(c.x() - s / 2, c.y() - s);
+        path.lineTo(c.x() + s / 2, c.y());
+        path.lineTo(c.x() - s / 2, c.y() + s);
+    }
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(path);
+    painter->restore();
+}
+
 } // namespace
 
 QSize HistoryDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     const QFontMetrics fm(option.font);
-    if (index.data(HistoryModel::IsHeaderRole).toBool()) {
+    switch (Kind(index.data(HistoryModel::KindRole).toInt())) {
+    case Kind::Header:
         return {0, QFontMetrics(caption(option.font)).height() + 2 * kVPad};
+    case Kind::GroupsRoot:
+    case Kind::Group:
+        return {0, fm.height() + 2 * kVPad + 2};
+    case Kind::Entry:
+        break;
     }
-    const bool twoLines = !index.data(HistoryModel::PreviewRole).toString().isEmpty();
-    return {0, (twoLines ? 2 : 1) * fm.height() + (twoLines ? 2 : 0) + 2 * kVPad + 2};
+    const int extra = previewLineCount(index);
+    return {0, (1 + extra) * fm.height() + extra * 2 + 2 * kVPad + 2};
 }
 
 void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
@@ -55,8 +94,9 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
     painter->save();
     const QRect r = option.rect;
     const QPalette& pal = option.palette;
+    const Kind kind = Kind(index.data(HistoryModel::KindRole).toInt());
 
-    if (index.data(HistoryModel::IsHeaderRole).toBool()) {
+    if (kind == Kind::Header) {
         painter->setFont(caption(option.font));
         painter->setPen(pal.color(QPalette::Disabled, QPalette::Text));
         painter->drawText(r.adjusted(kHPad, 0, -kHPad, 0), Qt::AlignLeft | Qt::AlignVCenter,
@@ -77,11 +117,38 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
     const QColor text = pal.color(selected ? QPalette::HighlightedText : QPalette::Text);
     QColor dim = text;
     dim.setAlphaF(0.6);
-
-    QRect content = r.adjusted(kHPad, kVPad, -kHPad, -kVPad);
     const QFontMetrics fm(option.font);
+    QRect content = r.adjusted(kHPad, kVPad, -kHPad, -kVPad);
 
-    // Leading star column, kept even when empty so titles line up.
+    if (kind == Kind::GroupsRoot || kind == Kind::Group) {
+        // Name, copy count, and the expand arrow at the end of the row.
+        const bool expandable = index.model()->rowCount(index) > 0;
+        const QRect arrow(content.right() - kArrowBox + 1, content.top(), kArrowBox, fm.height());
+        if (expandable) {
+            drawChevron(painter, arrow, option.state & QStyle::State_Open, kind == Kind::GroupsRoot ? text : dim);
+        }
+        int right = arrow.left() - kGap;
+        const int count = index.data(HistoryModel::CountRole).toInt();
+        const QString countText = count > 0 ? QString::number(count) : QString();
+        if (!countText.isEmpty()) {
+            const int w = fm.horizontalAdvance(countText);
+            painter->setPen(dim);
+            painter->drawText(QRect(right - w, content.top(), w, fm.height()), Qt::AlignRight | Qt::AlignVCenter,
+                              countText);
+            right -= w + kGap;
+        }
+        const QFont font = kind == Kind::GroupsRoot ? caption(option.font) : bold(option.font);
+        painter->setFont(font);
+        painter->setPen(kind == Kind::GroupsRoot && !selected ? pal.color(QPalette::Disabled, QPalette::Text) : text);
+        const QRect label(content.left(), content.top(), right - content.left(), fm.height());
+        painter->drawText(label, Qt::AlignLeft | Qt::AlignVCenter,
+                          QFontMetrics(font).elidedText(index.data(HistoryModel::TitleRole).toString(),
+                                                        Qt::ElideRight, label.width()));
+        painter->restore();
+        return;
+    }
+
+    // A copy. Leading star column, kept even when empty so titles line up.
     if (index.data(HistoryModel::FavoriteRole).toBool()) {
         painter->setPen(selected ? text : pal.color(QPalette::Link));
         painter->drawText(QRect(content.left(), content.top(), kStarWidth, fm.height()),
@@ -99,11 +166,13 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         painter->drawText(QRect(right - w, content.top(), w, fm.height()), Qt::AlignRight | Qt::AlignVCenter, age);
         right -= w + kGap;
     }
-    const QString group = index.data(HistoryModel::GroupRole).toString();
+    // Inside the group tree the group is already obvious from the position.
+    const QString group = index.parent().isValid() ? QString() : index.data(HistoryModel::GroupRole).toString();
     if (!group.isEmpty()) {
         const QFont chipFont = scaledFont(option.font, 0.85);
         const QFontMetrics cfm(chipFont);
-        const QString label = cfm.elidedText(group, Qt::ElideRight, 120);
+        const QString label = cfm.elidedText(QString(group).replace(QLatin1Char('/'), QStringLiteral(" › ")),
+                                             Qt::ElideLeft, 140);
         const int w = cfm.horizontalAdvance(label) + 12;
         const QRect chip(right - w, content.top() + (fm.height() - cfm.height() - 2) / 2, w, cfm.height() + 2);
         QColor chipBg = selected ? text : pal.color(QPalette::Highlight);
@@ -121,23 +190,21 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
 
     const QString title = index.data(HistoryModel::TitleRole).toString();
     const QString preview = index.data(HistoryModel::PreviewRole).toString();
+    const bool hasNote = index.data(HistoryModel::HasNoteRole).toBool();
     const QRect titleRect(content.left(), content.top(), right - content.left(), fm.height());
-    if (preview.isEmpty()) {
-        painter->setPen(text);
-        painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
-                          fm.elidedText(title, Qt::ElideRight, titleRect.width()));
-    } else {
-        const QFont titleFont = bold(option.font);
-        const QFontMetrics tfm(titleFont);
-        painter->setFont(titleFont);
-        painter->setPen(text);
-        painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
-                          tfm.elidedText(title, Qt::ElideRight, titleRect.width()));
-        painter->setFont(option.font);
-        painter->setPen(dim);
-        const QRect previewRect(content.left(), content.top() + fm.height() + 2, content.width(), fm.height());
-        painter->drawText(previewRect, Qt::AlignLeft | Qt::AlignVCenter,
-                          fm.elidedText(preview, Qt::ElideRight, previewRect.width()));
+    const QFont titleFont = hasNote ? bold(option.font) : option.font;
+    painter->setFont(titleFont);
+    painter->setPen(text);
+    painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
+                      QFontMetrics(titleFont).elidedText(title, Qt::ElideRight, titleRect.width()));
+    painter->setFont(option.font);
+    painter->setPen(dim);
+    int y = content.top() + fm.height() + 2;
+    for (const QString& line : preview.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+        const QRect lineRect(content.left(), y, content.width(), fm.height());
+        painter->drawText(lineRect, Qt::AlignLeft | Qt::AlignVCenter,
+                          fm.elidedText(line, Qt::ElideRight, lineRect.width()));
+        y += fm.height() + 2;
     }
     painter->restore();
 }
