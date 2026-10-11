@@ -295,7 +295,7 @@ jobs:
       - name: Install with install.ps1 and run it
         shell: pwsh
         run: |
-          $env:QT_QPA_PLATFORM = "offscreen"
+          # The real Windows platform, as users run it: the installer ships only that plugin.
           try {
             if ($env:GITHUB_REF_TYPE -eq 'tag') {
               $script = Invoke-RestMethod "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/install.ps1"
