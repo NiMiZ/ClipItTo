@@ -54,6 +54,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_position(new QComboBox(this))
     , m_encrypt(new QCheckBox(tr("Encrypt the history on disk"), this))
     , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
+    , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
     , m_tabs(new QTabWidget(this))
     , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
     , m_shortcut(new QKeySequenceEdit(this))
@@ -101,9 +102,17 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_paste->setToolTip(tr("Off: choosing a copy only puts it on the clipboard. On GNOME Wayland, "
                            "pasting needs the ClipItTo GNOME Shell extension."));
     form->addRow(tr("After choosing a copy:"), m_paste);
+    m_latest->setChecked(config.latestAfterPaste);
+    m_latest->setToolTip(tr("As if you had copied it again. Off: it keeps its place in Recent."));
+    form->addRow(QString(), m_latest);
 
     m_position->addItem(tr("Near the mouse pointer"), int(PopupPosition::Cursor));
     m_position->addItem(tr("Center of the screen"), int(PopupPosition::Center));
+    m_position->addItem(tr("Top left corner"), int(PopupPosition::TopLeft));
+    m_position->addItem(tr("Top right corner"), int(PopupPosition::TopRight));
+    m_position->addItem(tr("Bottom left corner"), int(PopupPosition::BottomLeft));
+    m_position->addItem(tr("Bottom right corner"), int(PopupPosition::BottomRight));
+    m_position->addItem(tr("Where it was last (drag it by its name)"), int(PopupPosition::Last));
     m_position->setCurrentIndex(m_position->findData(int(config.popupPosition)));
     m_position->setToolTip(tr("On Wayland desktops the desktop decides where the popup opens"));
     form->addRow(tr("Open the popup:"), m_position);
@@ -230,6 +239,7 @@ Config SettingsDialog::config() const
     c.popupPosition = PopupPosition(m_position->currentData().toInt());
     c.encryptHistory = m_encrypt->isChecked();
     c.pasteOnEnter = m_paste->isChecked();
+    c.latestAfterPaste = m_latest->isChecked();
     return c;
 }
 

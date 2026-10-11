@@ -73,6 +73,25 @@ private slots:
         QCOMPARE(c.favoritesLimit, 20);
     }
 
+    void popupPositionsAndLatestAfterPaste()
+    {
+        QVERIFY(Config{}.latestAfterPaste);
+        QVERIFY(!Config::fromToml("latest_after_paste = false").latestAfterPaste);
+        QVERIFY(Config{}.popupPosition == clipitto::PopupPosition::Cursor);
+        const std::pair<const char*, clipitto::PopupPosition> cases[] = {
+            {"top-left", clipitto::PopupPosition::TopLeft},       {"top-right", clipitto::PopupPosition::TopRight},
+            {"bottom-left", clipitto::PopupPosition::BottomLeft}, {"bottom-right", clipitto::PopupPosition::BottomRight},
+            {"center", clipitto::PopupPosition::Center},          {"last", clipitto::PopupPosition::Last},
+        };
+        for (const auto& [name, position] : cases) {
+            QStringList warnings;
+            const Config c = Config::fromToml("popup_position = \"" + std::string(name) + "\"", &warnings);
+            QVERIFY2(warnings.isEmpty(), name);
+            QVERIFY2(c.popupPosition == position, name);
+            QVERIFY(Config::fromToml(c.toToml()).popupPosition == position); // written back the same
+        }
+    }
+
     void favoritesLimitIsOneToTwenty()
     {
         QStringList warnings;

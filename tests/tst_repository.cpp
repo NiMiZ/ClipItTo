@@ -210,6 +210,91 @@ private slots:
         QCOMPARE(t.repo->setGroup(plain, QStringLiteral("Work")), Repository::Change::Done);
     }
 
+    void copyingAgainMovesToTheTopOnce_data()
+    {
+        QTest::addColumn<QString>("kind");
+        QTest::newRow("plain") << QString();
+        QTest::newRow("grouped") << QStringLiteral("group");
+        QTest::newRow("starred") << QStringLiteral("star");
+    }
+
+    void copyingAgainMovesToTheTopOnce()
+    {
+        // History try2, try1, try0; copying try0 again makes it the latest, not a second entry.
+        QFETCH(QString, kind);
+        TestDb t;
+        const auto try0 = t.repo->ingest(QStringLiteral("try0")).id;
+        const auto try1 = t.repo->ingest(QStringLiteral("try1")).id;
+        const auto try2 = t.repo->ingest(QStringLiteral("try2")).id;
+        if (kind == QLatin1String("group")) {
+            t.repo->setGroup(try0, QStringLiteral("Work"));
+        } else if (kind == QLatin1String("star")) {
+            t.repo->setFavorite(try0, true);
+        }
+        QCOMPARE(ids(t.repo->recentUnpinned(10)), (QList<qint64>{try2, try1, try0}));
+
+        const auto again = t.repo->ingest(QStringLiteral("try0"));
+        QVERIFY(!again.inserted);
+        QCOMPARE(again.id, try0);
+        QCOMPARE(t.repo->count(), 3);
+        QCOMPARE(ids(t.repo->recentUnpinned(10)), (QList<qint64>{try0, try2, try1}));
+
+        // Using it from the popup (touch) does the same.
+        t.repo->touch(try1);
+        QCOMPARE(ids(t.repo->recentUnpinned(10)), (QList<qint64>{try1, try0, try2}));
+    }
+
+    void recentLeavesOutOnlyPinnedCopies()
+    {
+        TestDb t;
+        const auto pin = t.repo->ingest(QStringLiteral("pinned")).id;
+        const auto star = t.repo->ingest(QStringLiteral("starred")).id;
+        const auto plain = t.repo->ingest(QStringLiteral("plain")).id;
+        t.repo->setPinned(pin, true);
+        t.repo->setFavorite(star, true);
+        QCOMPARE(ids(t.repo->recentUnpinned(10)), (QList<qint64>{plain, star}));
+    }
+
+    void searchFindsCopiesInCustomGroups_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::newRow("auto (trigram)") << int(Repository::SearchMode::Auto);
+        QTest::newRow("like") << int(Repository::SearchMode::ForceLike);
+    }
+
+    void searchFindsCopiesInCustomGroups()
+    {
+        QFETCH(int, mode);
+        const auto m = Repository::SearchMode(mode);
+        TestDb t;
+        const auto ssh = t.repo->ingest(QStringLiteral("ssh admin@db-01")).id;
+        const auto notes = t.repo->ingest(QStringLiteral("deploy notes")).id;
+        const auto loose = t.repo->ingest(QStringLiteral("loose copy")).id;
+        const auto hebrew = t.repo->ingest(QStringLiteral("שלום עולם")).id;
+        t.repo->setGroup(ssh, QStringLiteral("Work/Servers"));
+        t.repo->setGroup(notes, QStringLiteral("Work"));
+        t.repo->setGroup(hebrew, QStringLiteral("עבודה"));
+
+        // By the copy's text, by its group, by a parent group, and by a short query.
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("deploy"), 100, m)), (QSet<qint64>{notes}));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("Servers"), 100, m)), (QSet<qint64>{ssh}));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("work"), 100, m)), (QSet<qint64>{ssh, notes}));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("wo"), 100, m)), (QSet<qint64>{ssh, notes}));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("עבודה"), 100, m)), (QSet<qint64>{hebrew}));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("שלום"), 100, m)), (QSet<qint64>{hebrew}));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("work deploy"), 100, m)), (QSet<qint64>{notes}));
+
+        // A renamed group and a copy moved into a group are found under their new names.
+        QVERIFY(t.repo->renameGroup(QStringLiteral("Work"), QStringLiteral("Jobs")));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("Jobs"), 100, m)), (QSet<qint64>{ssh, notes}));
+        QVERIFY(t.repo->search(QStringLiteral("work"), 100, m).empty());
+        t.repo->setGroup(loose, QStringLiteral("Jobs/Servers"));
+        QCOMPARE(idSet(t.repo->search(QStringLiteral("Servers"), 100, m)), (QSet<qint64>{ssh, loose}));
+        // Grouped (saved) copies rank before others matching only by text.
+        const auto other = t.repo->ingest(QStringLiteral("Servers list, not grouped")).id;
+        QCOMPARE(t.repo->search(QStringLiteral("Servers"), 100, m).back().id, other);
+    }
+
     void groupsKeepTheUsersOrder()
     {
         TestDb t;

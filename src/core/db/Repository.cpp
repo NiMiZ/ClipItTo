@@ -50,6 +50,10 @@ Repository::Repository(Db& db, Clock clock)
         WHERE c.is_saved = 0
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
+    m_recentUnpinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
+        WHERE c.pin_position IS NULL
+        ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
+
     m_pinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
         WHERE c.pin_position IS NOT NULL
         ORDER BY c.pin_position, c.id LIMIT ?1)");
@@ -125,6 +129,13 @@ std::vector<Entry> Repository::recent(int limit, bool unsavedOnly)
     s.reset();
     s.bindInt(1, limit);
     return collect(s);
+}
+
+std::vector<Entry> Repository::recentUnpinned(int limit)
+{
+    m_recentUnpinned->reset();
+    m_recentUnpinned->bindInt(1, limit);
+    return collect(*m_recentUnpinned);
 }
 
 std::vector<Entry> Repository::pinned(int limit)

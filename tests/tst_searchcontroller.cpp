@@ -57,7 +57,9 @@ private slots:
         HistoryModel m;
         SearchController c(*t.repo, m);
         c.refresh();
-        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("one")})); // stars left Recent
+        // Recent is the whole copy history, starred copies included (also under Groups).
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("one"), QStringLiteral("work star"),
+                                         QStringLiteral("star")}));
         const QModelIndex root = m.groupsRoot();
         const QModelIndex favorites = m.index(0, 0, root);
         QCOMPARE(m.kindAt(favorites), HistoryModel::Kind::Favorites);
@@ -66,7 +68,8 @@ private slots:
         QCOMPARE(m.entryAt(m.index(0, 0, favorites))->id, star); // only the ungrouped star
         QCOMPARE(favorites.data(HistoryModel::CountRole).toInt(), 1);
         QCOMPARE(root.data(HistoryModel::CountRole).toInt(), 2);
-        QCOMPARE(m.findEntry(star).parent(), favorites);
+        QCOMPARE(m.findEntry(star).parent(), QModelIndex()); // the Recent row comes first
+        QCOMPARE(m.findEntry(star, HistoryModel::favoritesPath()).parent(), favorites);
         QCOMPARE(m.index(1, 0, root).data(HistoryModel::TitleRole).toString(), QStringLiteral("Aardvark"));
     }
 
@@ -136,8 +139,9 @@ private slots:
         HistoryModel m;
         SearchController c(*t.repo, m);
         c.refresh();
-        // Grouped copies are only in the group tree, not in a section below it.
-        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("loose")}));
+        // Grouped copies are in the group tree and, as part of the history, in Recent.
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("loose"), QStringLiteral("ssh prod"),
+                                         QStringLiteral("deploy script")}));
 
         const QModelIndex root = m.groupsRoot();
         QCOMPARE(root.row(), 0);
@@ -158,7 +162,7 @@ private slots:
         const QModelIndex servers = m.findGroup(QStringLiteral("Work/Servers"));
         QCOMPARE(m.entryAt(m.index(0, 0, servers))->id, ssh);
         QCOMPARE(m.findEntry(ssh, QStringLiteral("Work/Servers")).parent(), servers);
-        QCOMPARE(m.findEntry(ssh).parent(), servers); // no section has it
+        QCOMPARE(m.findEntry(ssh).parent(), QModelIndex()); // sections first
     }
 
     void noGroupsMeansNoGroupsRow()

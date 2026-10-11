@@ -15,8 +15,10 @@
 #include "db/Sqlite.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QRandomGenerator>
+#include <QSaveFile>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QTimer>
@@ -142,6 +144,25 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
     connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
+    // popup_position = last: where the popup closed, kept next to the history across runs.
+    const QString positionFile = QFileInfo(m_options.databasePath).dir().filePath(QStringLiteral("popup-position"));
+    if (QFile file(positionFile); file.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> xy = file.readAll().simplified().split(' ');
+        bool okX = false;
+        bool okY = false;
+        const int x = xy.value(0).toInt(&okX);
+        const int y = xy.value(1).toInt(&okY);
+        if (okX && okY) {
+            m_popup->setLastPosition(QPoint(x, y));
+        }
+    }
+    connect(m_popup.get(), &ui::PopupWindow::closedAt, this, [positionFile](QPoint topLeft) {
+        QSaveFile file(positionFile);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(QByteArray::number(topLeft.x()) + ' ' + QByteArray::number(topLeft.y()) + '\n');
+            file.commit();
+        }
+    });
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
@@ -212,10 +233,14 @@ void Daemon::onEntryActivated(const Entry& entry)
     // Runs before the popup hides: without the shell integration on Wayland, setting the
     // clipboard needs our focus.
     m_writer->setText(entry.content);
-    try {
-        m_repo->touch(entry.id);
-    } catch (const db::DbError& e) {
-        qCWarning(lcDaemon) << "failed to update last_used:" << e.what();
+    if (m_config.latestAfterPaste) {
+        // As if it had been copied again: the latest in the history. (The clipboard's echo
+        // of our own write is ignored by the capture filter either way.)
+        try {
+            m_repo->touch(entry.id);
+        } catch (const db::DbError& e) {
+            qCWarning(lcDaemon) << "failed to update last_used:" << e.what();
+        }
     }
 
     if (m_config.pasteOnEnter) {

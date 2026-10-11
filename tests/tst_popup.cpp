@@ -48,6 +48,9 @@ private:
             return QTest::qWaitForWindowActive(popup.get());
         }
 
+        // Keyboard focus into the list, the cursor staying where it is (the latest copy).
+        void enterList() { popup->view()->setFocus(); }
+
         HistoryModel* model() const { return popup->model(); }
         QModelIndex current() const { return popup->view()->currentIndex(); }
         int currentRow() const { return current().row(); }
@@ -82,20 +85,37 @@ private slots:
         QCOMPARE(f.currentRow(), 1);
     }
 
-    void downFromSearchFocusesFirstEntry()
+    void arrowsFromSearchStepFromTheLatestCopy()
     {
+        // Opened: the cursor is on the latest copy. Down goes to the next copy...
         Fixture f;
         QVERIFY(f.show());
+        QCOMPARE(f.currentContent(), QStringLiteral("ssh -J bastion app"));
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
         QCOMPARE(QApplication::focusWidget(), f.popup->view());
-        QCOMPARE(f.currentContent(), QStringLiteral("ssh -J bastion app"));
+        QCOMPARE(f.currentContent(), QStringLiteral("gamma ray")); // over the Recent header
+
+        // ...and Up goes to what is above it: the Groups row, when there are groups.
+        GroupFixture g;
+        QVERIFY(g.show());
+        QCOMPARE(g.currentContent(), QStringLiteral("ssh -J bastion app"));
+        QTest::keyClick(g.popup->searchBar(), Qt::Key_Up);
+        QCOMPARE(QApplication::focusWidget(), g.popup->view());
+        QCOMPARE(g.current(), g.model()->groupsRoot());
+
+        // With nothing above, Up stays in the search box.
+        Fixture h;
+        QVERIFY(h.show());
+        QTest::keyClick(h.popup->searchBar(), Qt::Key_Up);
+        QCOMPARE(QApplication::focusWidget(), h.popup->searchBar());
+        QCOMPARE(h.currentContent(), QStringLiteral("ssh -J bastion app"));
     }
 
     void arrowsTraverseAndSkipHeaders()
     {
         Fixture f;
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_Down); // over "#Recent"
         QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
         QTest::keyClick(f.popup->view(), Qt::Key_End);
@@ -110,7 +130,7 @@ private slots:
     {
         Fixture f;
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_Up);
         QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
     }
@@ -119,7 +139,7 @@ private slots:
     {
         Fixture f;
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClicks(f.popup->view(), QStringLiteral("bet"));
         QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
         QCOMPARE(f.popup->searchBar()->text(), QStringLiteral("bet"));
@@ -147,7 +167,7 @@ private slots:
         QCOMPARE(visibility.last().at(0).toBool(), false);
 
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_Escape);
         QVERIFY(!f.popup->isVisible());
     }
@@ -157,7 +177,7 @@ private slots:
         Fixture f;
         QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_Down);
         QTest::keyClick(f.popup->view(), Qt::Key_Down);
         QTest::keyClick(f.popup->view(), Qt::Key_Return);
@@ -205,7 +225,9 @@ private slots:
 
     void draggingTheAppNameMovesThePopupAndItReopensThere()
     {
-        Fixture f;
+        Config cfg;
+        cfg.popupPosition = clipitto::PopupPosition::Last; // reopen where it was left
+        Fixture f(cfg);
         QVERIFY(f.show());
         QWidget* handle = f.popup->dragHandle();
         QCOMPARE(qobject_cast<QLabel*>(handle)->text(), QStringLiteral("ClipItTo"));
@@ -230,6 +252,48 @@ private slots:
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Escape);
         QVERIFY(f.show());
         QCOMPARE(f.popup->pos(), before + delta); // same place, not the pointer's
+    }
+
+    void popupPositionModes_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::addColumn<QString>("expected"); // which corner of the work area it hugs
+        QTest::newRow("top-left") << int(clipitto::PopupPosition::TopLeft) << QStringLiteral("tl");
+        QTest::newRow("top-right") << int(clipitto::PopupPosition::TopRight) << QStringLiteral("tr");
+        QTest::newRow("bottom-left") << int(clipitto::PopupPosition::BottomLeft) << QStringLiteral("bl");
+        QTest::newRow("bottom-right") << int(clipitto::PopupPosition::BottomRight) << QStringLiteral("br");
+        QTest::newRow("center") << int(clipitto::PopupPosition::Center) << QStringLiteral("center");
+    }
+
+    void popupPositionModes()
+    {
+        QFETCH(int, mode);
+        QFETCH(QString, expected);
+        Config cfg;
+        cfg.popupPosition = clipitto::PopupPosition(mode);
+        Fixture f(cfg);
+        f.popup->resize(200, 150); // fits any test screen
+        QVERIFY(f.show());
+        const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
+        const QRect r(f.popup->pos(), f.popup->size());
+        const int m = 16; // margin from the edges
+        if (expected == QLatin1String("tl")) {
+            QCOMPARE(r.topLeft(), area.topLeft() + QPoint(m, m));
+        } else if (expected == QLatin1String("tr")) {
+            QCOMPARE(QPoint(r.right(), r.top()), QPoint(area.right() - m, area.top() + m));
+        } else if (expected == QLatin1String("bl")) {
+            QCOMPARE(QPoint(r.left(), r.bottom()), QPoint(area.left() + m, area.bottom() - m));
+        } else if (expected == QLatin1String("br")) {
+            QCOMPARE(r.bottomRight(), area.bottomRight() - QPoint(m, m));
+        } else {
+            QVERIFY(qAbs(r.center().x() - area.center().x()) <= 1);
+        }
+
+        // A position left by dragging doesn't override these modes.
+        f.popup->move(area.topLeft() + QPoint(3, 3));
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Escape);
+        QVERIFY(f.show());
+        QCOMPARE(QRect(f.popup->pos(), f.popup->size()), r);
     }
 
     void popupLargerThanTheScreenOpensAtItsCorner()
@@ -257,20 +321,21 @@ private slots:
         Fixture f;
         QVERIFY(f.show());
         QVERIFY(!f.model()->groupsRoot().isValid()); // no groups, no favorites yet
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_Down); // gamma ray
         QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
 
         const auto gammaId = f.t.repo->search(QStringLiteral("gamma")).front().id;
         QVERIFY(f.t.repo->get(gammaId)->favorite);
-        // It moved from Recent into Favorites, the first group, and the cursor followed it.
+        // It is in Favorites, the first group, and stays in Recent with the cursor on it.
         const QModelIndex favorites = f.model()->findGroup(HistoryModel::favoritesPath());
         QVERIFY(favorites.isValid());
         QCOMPARE(favorites.parent(), f.model()->groupsRoot());
         QCOMPARE(favorites.row(), 0);
         QCOMPARE(f.model()->rowCount(favorites), 1);
         QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
-        QCOMPARE(f.model()->pathAt(f.current()), HistoryModel::favoritesPath());
+        QVERIFY(!f.current().parent().isValid());
+        QCOMPARE(f.model()->entryAt(f.model()->index(0, 0, favorites))->content, QStringLiteral("gamma ray"));
 
         // Ctrl+S again unstars it: back in Recent, Favorites stays (empty) as the first group.
         QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
@@ -288,7 +353,7 @@ private slots:
         QStringList messages;
         f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // the Groups row
+        f.enterList(); // the Groups row
         QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha
         QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
         QVERIFY(!f.t.repo->search(QStringLiteral("alpha")).front().favorite);
@@ -300,7 +365,7 @@ private slots:
     {
         Fixture f;
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // ssh (pinned)
+        f.enterList(); // ssh (pinned)
         QTest::keyClick(f.popup->view(), Qt::Key_Down); // gamma ray
         QTest::keyClick(f.popup->view(), Qt::Key_P, Qt::ControlModifier);
         // Rows: #Pinned, ssh, gamma ray, #Recent, beta, alpha
@@ -325,7 +390,7 @@ private slots:
         QStringList messages;
         f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha, not pinned
         QTest::keyClick(f.popup->view(), Qt::Key_P, Qt::ControlModifier);
         QCOMPARE(f.t.repo->pinned(20).size(), 10u);
@@ -345,7 +410,7 @@ private slots:
             return std::optional<QString>(QStringLiteral("my title"));
         });
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha
         QTest::keyClick(f.popup->view(), Qt::Key_G, Qt::ControlModifier);
         QTest::keyClick(f.popup->view(), Qt::Key_E, Qt::ControlModifier);
@@ -363,7 +428,7 @@ private slots:
         Fixture f;
         f.popup->setNotePrompt([](QWidget*, const QString&, const QStringList&) { return std::optional<QString>(); });
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_E, Qt::ControlModifier);
         QVERIFY(f.t.repo->get(f.pinnedId)->note.isEmpty());
     }
@@ -372,7 +437,7 @@ private slots:
     {
         Fixture f;
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_Down); // gamma ray
         QTest::keyClick(f.popup->view(), Qt::Key_Delete);
         QCOMPARE(f.t.repo->count(), 3);
@@ -440,7 +505,7 @@ private slots:
         GroupFixture f;
         QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Up);
         QCOMPARE(f.current(), f.model()->groupsRoot()); // the row right under the search box
 
         auto* view = f.popup->view();
@@ -471,7 +536,7 @@ private slots:
     {
         GroupFixture f;
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Up);
         auto* view = f.popup->view();
         QTest::keyClick(view, Qt::Key_Right);
         QTest::keyClick(view, Qt::Key_Left);
@@ -502,7 +567,7 @@ private slots:
         GroupFixture f;
         QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
         QVERIFY(f.show());
-        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // Groups row
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Up); // Groups row (above the selected first copy)
         QTest::keyClick(f.popup->view(), Qt::Key_Up); // back to search
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Return);
         QCOMPARE(activated.size(), 1);

@@ -21,6 +21,7 @@ public:
     void selectFirstEntry(); // the first copy (what Enter in the search box copies)
     void selectFirstRow(); // the first selectable row (the Groups row when there are groups)
     QModelIndex firstSelectable() const;
+    QModelIndex nextSelectable(QModelIndex from, bool down) const; // invalid at either end
     void toggleExpanded(const QModelIndex& index);
     void setEmptyText(const QString& text); // shown when the model has no rows
 
@@ -43,7 +44,6 @@ protected:
     void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
 
 private:
-    QModelIndex nextSelectable(QModelIndex from, bool down) const;
     QModelIndex lastSelectable() const;
 
     HistoryModel* m_model = nullptr;

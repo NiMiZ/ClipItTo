@@ -13,7 +13,9 @@ enum class PasteKeys { CtrlV, ShiftInsert };
 enum class ClickMode { Single, Double };
 enum class BackendChoice { Auto, GnomeExt, WlPaste, QtClipboard };
 enum class Theme { System, Light, Dark };
-enum class PopupPosition { Cursor, Center };
+// Where the popup opens (X11 and Windows; Wayland compositors place windows themselves).
+// Last: where it was when it last closed, e.g. after dragging it by its name.
+enum class PopupPosition { Cursor, Center, TopLeft, TopRight, BottomLeft, BottomRight, Last };
 
 // User settings from ~/.config/clipitto/config.toml. Missing or invalid keys fall back to defaults.
 struct Config {
@@ -26,6 +28,7 @@ struct Config {
     qint64 maxItemBytes = 1024 * 1024;
     bool capturePrimary = false;
     bool pasteOnEnter = true; // choosing a copy also pastes it into the window you came from
+    bool latestAfterPaste = true; // a chosen copy becomes the latest in the history, as if copied
     PasteKeys pasteKeys = PasteKeys::CtrlV;
     ClickMode clickToCopy = ClickMode::Single;
     bool hideOnFocusLoss = true;

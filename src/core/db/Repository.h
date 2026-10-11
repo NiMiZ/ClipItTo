@@ -60,6 +60,9 @@ public:
 
     // Newest first. With unsavedOnly, pinned, starred and grouped items are excluded.
     std::vector<Entry> recent(int limit, bool unsavedOnly);
+    // The copy history: newest (last copied or pasted) first, each text once, leaving out
+    // pinned copies (the popup lists those above). Starred and grouped copies are included.
+    std::vector<Entry> recentUnpinned(int limit);
     // Pinned copies in their pinned order.
     std::vector<Entry> pinned(int limit);
     // Starred copies without a group (the Favorites group), newest first.
@@ -122,6 +125,7 @@ private:
     std::unique_ptr<Stmt> m_ingest;
     std::unique_ptr<Stmt> m_recentAll;
     std::unique_ptr<Stmt> m_recentUnsaved;
+    std::unique_ptr<Stmt> m_recentUnpinned;
     std::unique_ptr<Stmt> m_pinned;
     std::unique_ptr<Stmt> m_searchFts;
     std::unique_ptr<Stmt> m_get;

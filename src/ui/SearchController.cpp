@@ -75,9 +75,10 @@ void SearchController::run()
             }
             favorites = m_repo.favorites();
             auto pinned = m_showSavedOnTop ? m_repo.pinned(m_savedCap) : std::vector<Entry>{};
-            // Pinned copies are listed above, starred and grouped ones in the group tree, so
-            // Recent leaves them out (unless the Pinned list is turned off: then it has them all).
-            auto recent = m_repo.recent(m_recentCount, /*unsavedOnly=*/m_showSavedOnTop);
+            // Recent is the copy history (starred and grouped copies too, also found in the
+            // group tree); pinned copies are listed above it, so it leaves those out.
+            auto recent = m_showSavedOnTop ? m_repo.recentUnpinned(m_recentCount)
+                                           : m_repo.recent(m_recentCount, /*unsavedOnly=*/false);
             if (!pinned.empty()) {
                 sections.push_back({tr("Pinned"), std::move(pinned)});
                 // A header only separates something: with nothing pinned, recent stands alone.

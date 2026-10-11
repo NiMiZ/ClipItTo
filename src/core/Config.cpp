@@ -26,8 +26,13 @@ using EnumNames = std::array<std::pair<Enum, const char*>, N>;
 constexpr EnumNames<PasteKeys, 2> kPasteKeys{{{PasteKeys::CtrlV, "ctrl+v"}, {PasteKeys::ShiftInsert, "shift+insert"}}};
 constexpr EnumNames<ClickMode, 2> kClickModes{{{ClickMode::Single, "single"}, {ClickMode::Double, "double"}}};
 // The first name of a value is the one written back; later ones are accepted aliases.
-constexpr EnumNames<PopupPosition, 2> kPopupPositions{{{PopupPosition::Cursor, "cursor"},
-                                                       {PopupPosition::Center, "center"}}};
+constexpr EnumNames<PopupPosition, 7> kPopupPositions{{{PopupPosition::Cursor, "cursor"},
+                                                       {PopupPosition::Center, "center"},
+                                                       {PopupPosition::TopLeft, "top-left"},
+                                                       {PopupPosition::TopRight, "top-right"},
+                                                       {PopupPosition::BottomLeft, "bottom-left"},
+                                                       {PopupPosition::BottomRight, "bottom-right"},
+                                                       {PopupPosition::Last, "last"}}};
 constexpr EnumNames<Theme, 3> kThemes{{{Theme::System, "system"}, {Theme::Light, "light"}, {Theme::Dark, "dark"}}};
 constexpr EnumNames<BackendChoice, 5> kBackends{{{BackendChoice::Auto, "auto"},
                                                  {BackendChoice::GnomeExt, "gnome-ext"},
@@ -174,6 +179,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("max_item_bytes", config.maxItemBytes, 1, 64LL * 1024 * 1024);
     r.boolean("capture_primary", config.capturePrimary);
     r.boolean("paste_on_enter", config.pasteOnEnter);
+    r.boolean("latest_after_paste", config.latestAfterPaste);
     r.choice("paste_keys", config.pasteKeys, kPasteKeys);
     r.choice("click_to_copy", config.clickToCopy, kClickModes);
     r.boolean("hide_on_focus_loss", config.hideOnFocusLoss);
@@ -241,6 +247,7 @@ std::vector<Line> lines(const Config& c)
         {"max_item_bytes", std::to_string(c.maxItemBytes), ""},
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},
+        {"latest_after_paste", tomlBool(c.latestAfterPaste), "a chosen copy becomes the latest"},
         {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert"},
         {"click_to_copy", tomlString(nameOf(kClickModes, c.clickToCopy)), "single | double"},
         {"hide_on_focus_loss", tomlBool(c.hideOnFocusLoss), ""},
@@ -248,7 +255,8 @@ std::vector<Line> lines(const Config& c)
         {"backend", tomlString(nameOf(kBackends, c.backend)), "auto | gnome-ext | wl-paste | qt-clipboard"},
         {"hotkey", tomlString(c.hotkey.toStdString()), "global shortcut that opens the popup"},
         {"theme", tomlString(nameOf(kThemes, c.theme)), "system | light | dark"},
-        {"popup_position", tomlString(nameOf(kPopupPositions, c.popupPosition)), "cursor | center"},
+        {"popup_position", tomlString(nameOf(kPopupPositions, c.popupPosition)),
+         "cursor | center | top-left | top-right | bottom-left | bottom-right | last"},
         {"encrypt_history", tomlBool(c.encryptHistory), "encrypt history.db; key kept in the system keyring"},
     };
 }

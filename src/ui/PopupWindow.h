@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Config.h"
 #include "Entry.h"
 #include "HistoryModel.h"
 #include "Prompts.h"
@@ -45,6 +46,9 @@ public:
     ~PopupWindow() override;
 
     void applyConfig(const Config& config);
+    // Where it last closed, e.g. remembered from an earlier run (popup_position = last).
+    void setLastPosition(QPoint topLeft) { m_lastPosition = topLeft; }
+    std::optional<QPoint> lastPosition() const { return m_lastPosition; }
 
     void showPopup(const QString& activationToken = {});
     void hidePopup();
@@ -84,6 +88,7 @@ public:
 signals:
     void entryActivated(const clipitto::Entry& entry);
     void aboutToShow(); // before the popup takes focus (the previous window still has it)
+    void closedAt(QPoint topLeft); // where it was when it hid (for popup_position = last)
     void visibilityChanged(bool visible);
     void settingsRequested();
 
@@ -138,8 +143,8 @@ private:
     Notify m_notify;
     bool m_hideOnFocusLoss = true;
     bool m_singleClick = true;
-    bool m_centered = false; // popup_position = center
-    std::optional<QPoint> m_userPosition; // where the user dragged the popup; reused while running
+    PopupPosition m_position = PopupPosition::Cursor;
+    std::optional<QPoint> m_lastPosition; // where it last closed
     QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss
     std::optional<Selection> m_restore; // reselected after the next refresh

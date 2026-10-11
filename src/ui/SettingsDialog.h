@@ -74,6 +74,7 @@ public:
     QComboBox* positionBox() const { return m_position; }
     QCheckBox* encryptBox() const { return m_encrypt; }
     QCheckBox* pasteBox() const { return m_paste; }
+    QCheckBox* latestBox() const { return m_latest; }
     QDialogButtonBox* buttons() const { return m_buttons; }
     QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
@@ -97,6 +98,7 @@ private:
     QComboBox* m_position;
     QCheckBox* m_encrypt;
     QCheckBox* m_paste;
+    QCheckBox* m_latest;
     QTabWidget* m_tabs;
     QDialogButtonBox* m_buttons;
     QKeySequenceEdit* m_shortcut;

@@ -19,8 +19,10 @@ public:
 
     Verdict check(const QString& text, const QStringList& mimeTypes) const;
 
-    // Call right before ClipItTo itself puts text on the clipboard: the echo that the
-    // capture backend reports within ownWriteWindowMs is then ignored.
+    // Call right before ClipItTo itself puts text on the clipboard: every echo of it that the
+    // capture backend reports within ownWriteWindowMs is then ignored (Windows may report one
+    // write more than once, the last after the native reader's retries), so pasting never
+    // reorders the history by itself; latest_after_paste does that explicitly.
     void noteOwnWrite(const QString& text);
 
     void setMaxBytes(qint64 maxBytes) { m_maxBytes = maxBytes; }
@@ -28,7 +30,7 @@ public:
     // Password managers mark secrets with these MIME types (KeePassXC, KDE Klipper convention, ...).
     static bool isSensitive(const QStringList& mimeTypes);
 
-    static constexpr qint64 ownWriteWindowMs = 500;
+    static constexpr qint64 ownWriteWindowMs = 1000;
 
 private:
     qint64 m_maxBytes;

@@ -79,7 +79,7 @@ private:
 // popup (a frameless window has no title bar to drag).
 class DragHandle : public QLabel {
 public:
-    DragHandle(std::function<void()> moved, QWidget* parent) : QLabel(parent), m_moved(std::move(moved))
+    explicit DragHandle(QWidget* parent) : QLabel(parent)
     {
         setCursor(Qt::OpenHandCursor);
         setToolTip(PopupWindow::tr("Drag to move the window"));
@@ -113,7 +113,6 @@ protected:
         }
         // Moved by us, not the window manager, so the popup keeps keyboard focus.
         window()->move(event->globalPosition().toPoint() - m_grab);
-        m_moved();
     }
 
     void mouseReleaseEvent(QMouseEvent* event) override
@@ -124,7 +123,6 @@ protected:
     }
 
 private:
-    std::function<void()> m_moved;
     QPoint m_grab; // pointer position relative to the window's top-left corner
     bool m_dragging = false;
 };
@@ -174,7 +172,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_controller(new SearchController(repo, *m_model, this))
     , m_search(new SearchBar(this))
     , m_settingsButton(new QToolButton(this))
-    , m_dragHandle(new DragHandle([this] { m_userPosition = pos(); }, this))
+    , m_dragHandle(new DragHandle(this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
     , m_groupPrompt(askGroup)
@@ -218,7 +216,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     const int iconSize = handle->fontMetrics().height();
     handle->setText(QStringLiteral("ClipItTo"));
     handle->setFont(scaledFont(handle->font(), 0.9));
-    auto* icon = new DragHandle([this] { m_userPosition = pos(); }, this);
+    auto* icon = new DragHandle(this);
     icon->setPixmap(appIcon(currentThemeIsDark()).pixmap(iconSize, iconSize));
     onThemeApplied([icon = QPointer<QLabel>(icon), iconSize] {
         if (icon) {
@@ -251,6 +249,21 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     connect(m_search, &SearchBar::focusListRequested, this, [this] {
         m_view->setFocus();
         m_view->selectFirstRow(); // the row right under the search box (Groups, if any)
+    });
+    // Up/Down in the search box move the cursor from where it is: when the popup opens it is
+    // on the latest copy, so Down goes to the next copy and Up to the Groups row above it.
+    connect(m_search, &SearchBar::stepRequested, this, [this](int step) {
+        const QModelIndex current = m_view->currentIndex();
+        QModelIndex target = current.isValid() ? m_view->nextSelectable(current, step > 0)
+                                               : (step > 0 ? m_view->firstSelectable() : QModelIndex());
+        if (!target.isValid()) {
+            if (step < 0 || !current.isValid()) {
+                return; // nothing above: stay in the search box
+            }
+            target = current; // already the last row
+        }
+        m_view->setFocus();
+        m_view->selectIndex(target);
     });
     connect(m_search, &SearchBar::openGroupsRequested, this, &PopupWindow::openGroups);
     connect(m_search, &SearchBar::activateRequested, this, [this] {
@@ -329,7 +342,7 @@ void PopupWindow::applyConfig(const Config& config)
     m_controller->applyConfig(config);
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
-    m_centered = config.popupPosition == PopupPosition::Center;
+    m_position = config.popupPosition;
     if (isVisible()) {
         refresh(); // preview lines or counts may have changed
     }
@@ -441,20 +454,40 @@ void PopupWindow::placeOnScreen()
     if (!screen) {
         return;
     }
+    // Center and the corners use the screen the pointer is on.
     const QRect area = screen->availableGeometry();
-    if (m_userPosition) {
-        // Where the user dragged it, as long as that is still on a screen.
-        const QRect wanted(*m_userPosition, size());
-        if (QScreen* there = QGuiApplication::screenAt(wanted.center())) {
-            move(keepOnScreen(wanted.topLeft(), size(), there->availableGeometry()));
-            return;
+    constexpr int margin = 16;
+    switch (m_position) {
+    case PopupPosition::Last:
+        if (m_lastPosition) {
+            // As long as that place is still on a screen; else near the pointer.
+            const QRect wanted(*m_lastPosition, size());
+            if (QScreen* there = QGuiApplication::screenAt(wanted.center())) {
+                move(keepOnScreen(wanted.topLeft(), size(), there->availableGeometry()));
+                return;
+            }
         }
-        m_userPosition.reset(); // that screen is gone
-    }
-    if (m_centered) {
-        // Same place every time: centered horizontally, in the upper third.
-        move(area.left() + (area.width() - width()) / 2, area.top() + (area.height() - height()) / 3);
+        break;
+    case PopupPosition::Center:
+        // Centered horizontally, in the upper third: where the eye looks first.
+        move(keepOnScreen(QPoint(area.left() + (area.width() - width()) / 2, area.top() + (area.height() - height()) / 3),
+                          size(), area));
         return;
+    case PopupPosition::TopLeft:
+        move(keepOnScreen(area.topLeft() + QPoint(margin, margin), size(), area));
+        return;
+    case PopupPosition::TopRight:
+        move(keepOnScreen(QPoint(area.right() + 1 - margin - width(), area.top() + margin), size(), area));
+        return;
+    case PopupPosition::BottomLeft:
+        move(keepOnScreen(QPoint(area.left() + margin, area.bottom() + 1 - margin - height()), size(), area));
+        return;
+    case PopupPosition::BottomRight:
+        move(keepOnScreen(QPoint(area.right() + 1 - margin - width(), area.bottom() + 1 - margin - height()), size(),
+                          area));
+        return;
+    case PopupPosition::Cursor:
+        break;
     }
     move(keepOnScreen(cursor - QPoint(width() / 2, 24), size(), area));
 }
@@ -905,6 +938,10 @@ void PopupWindow::showEvent(QShowEvent* event)
 void PopupWindow::hideEvent(QHideEvent* event)
 {
     QWidget::hideEvent(event);
+    if (QGuiApplication::platformName() != QLatin1String("wayland") && m_lastPosition != pos()) {
+        m_lastPosition = pos(); // wherever it was placed or dragged to
+        emit closedAt(pos());
+    }
     emit visibilityChanged(false);
 }
 

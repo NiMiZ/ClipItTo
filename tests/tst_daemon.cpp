@@ -1,3 +1,4 @@
+#include "ClipFilter.h"
 #include "ControlChannel.h"
 #include "Daemon.h"
 #include "DesktopIntegration.h"
@@ -6,6 +7,7 @@
 #include "HistoryModel.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
+#include "SearchBar.h"
 #include "SyntheticPaste.h"
 #include "db/Repository.h"
 
@@ -239,6 +241,86 @@ private slots:
         emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
         QVERIFY(fake->clipboardTexts.isEmpty());
         QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("local copy"));
+    }
+
+    void searchPasteAndReopenShowsTheHistoryRight()
+    {
+        // try0, try1, try2 copied (try0 also in a group); search "try0", Enter (copy + paste),
+        // reopen: try0 is the latest, listed once, and the history holds three copies.
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        for (const char* text : {"try0", "try1", "try2"}) {
+            emit d.control()->ingestRequested(QString::fromLatin1(text), {});
+        }
+        const qint64 try0 = d.repository()->search(QStringLiteral("try0")).front().id;
+        d.repository()->setGroup(try0, QStringLiteral("Work"));
+
+        auto* popup = d.popup();
+        emit d.control()->showRequested(QString());
+        QTest::keyClicks(popup->searchBar(), QStringLiteral("try0"));
+        QTest::keyClick(popup->searchBar(), Qt::Key_Return);
+        QVERIFY(!popup->isVisible());
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("try0"));
+        QTest::qWait(100); // the clipboard change comes back through capture: no new entry
+
+        emit d.control()->showRequested(QString());
+        QVERIFY(popup->searchBar()->text().isEmpty());
+        QStringList rows; // top-level copies, in order
+        for (int i = 0; i < popup->model()->rowCount(); ++i) {
+            if (const auto* e = popup->model()->entryAt(popup->model()->index(i, 0))) {
+                rows << e->content;
+            }
+        }
+        QCOMPARE(rows, (QStringList{"try0", "try2", "try1"}));
+        QCOMPARE(popup->model()->entryAt(popup->view()->currentIndex())->content, QStringLiteral("try0"));
+        QCOMPARE(d.repository()->count(), 3);
+
+        // Copying try0 again (another app, later than our paste's echo) keeps one entry and
+        // makes it the latest.
+        QTest::qWait(int(clipitto::ClipFilter::ownWriteWindowMs));
+        emit d.control()->ingestRequested(QStringLiteral("try1"), {});
+        emit d.control()->ingestRequested(QStringLiteral("try0"), {});
+        QCOMPARE(d.repository()->count(), 3);
+        QCOMPARE(d.repository()->recentUnpinned(10).front().content, QStringLiteral("try0"));
+    }
+
+    void latestAfterPasteCanBeTurnedOff()
+    {
+        writeConfig("latest_after_paste = false\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        for (const char* text : {"try0", "try1", "try2"}) {
+            emit d.control()->ingestRequested(QString::fromLatin1(text), {});
+        }
+        emit d.control()->showRequested(QString());
+        QTest::keyClicks(d.popup()->searchBar(), QStringLiteral("try0"));
+        QTest::keyClick(d.popup()->searchBar(), Qt::Key_Return);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("try0")); // still copied
+        QTest::qWait(100); // the clipboard's echo must not move it either
+        QStringList order;
+        for (const auto& e : d.repository()->recentUnpinned(10)) {
+            order << e.content;
+        }
+        QCOMPARE(order, (QStringList{"try2", "try1", "try0"}));
+    }
+
+    void lastPopupPositionSurvivesARestart()
+    {
+        writeConfig("popup_position = \"last\"\n");
+        {
+            Daemon d(options(), std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            emit d.control()->showRequested(QString());
+            d.popup()->resize(200, 150);
+            d.popup()->move(40, 30); // e.g. dragged there
+            emit d.control()->hideRequested();
+        }
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QCOMPARE(d.popup()->lastPosition(), std::optional<QPoint>(QPoint(40, 30)));
+        d.popup()->resize(200, 150);
+        emit d.control()->showRequested(QString());
+        QCOMPARE(d.popup()->pos(), QPoint(40, 30));
     }
 
     void pasteOnEnterUsesIntegration()

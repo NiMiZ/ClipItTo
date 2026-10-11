@@ -14,6 +14,11 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
 {
     switch (event->key()) {
     case Qt::Key_Down:
+        emit stepRequested(1);
+        return;
+    case Qt::Key_Up:
+        emit stepRequested(-1);
+        return;
     case Qt::Key_PageDown:
         emit focusListRequested();
         return;

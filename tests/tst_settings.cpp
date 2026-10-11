@@ -70,6 +70,12 @@ private slots:
         d.copiesBox()->setValue(50);
         d.linesBox()->setValue(3);
         const Config edited = d.config();
+        QVERIFY(d.latestBox()->isChecked()); // a chosen copy becomes the latest by default
+        d.latestBox()->setChecked(false);
+        QVERIFY(!d.config().latestAfterPaste);
+        QCOMPARE(d.positionBox()->count(), 7); // pointer, center, four corners, last place
+        d.positionBox()->setCurrentIndex(d.positionBox()->findData(int(clipitto::PopupPosition::BottomRight)));
+        QVERIFY(d.config().popupPosition == clipitto::PopupPosition::BottomRight);
         QVERIFY(d.pasteBox()->isChecked()); // pasting is the default
         d.pasteBox()->setChecked(false);
         QVERIFY(!d.config().pasteOnEnter);
