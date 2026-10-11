@@ -107,10 +107,12 @@ jobs:
           $out = ctest --preset windows --output-on-failure 2>&1 | Out-String
           Write-Host $out
           if ($LASTEXITCODE -ne 0) {
-            # The failing checks as an annotation: readable without opening the log.
-            $lines = ($out -split "`r?`n" | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|\*\*\*Failed|Exception|Timeout' } |
-                      Select-Object -First 40) -join '%0A'
-            Write-Host "::error title=Windows tests failed::$lines"
+            # The failing checks as an annotation, readable without opening the log: run the
+            # failed suites again verbosely and keep their failure lines (or their last lines).
+            $rerun = (ctest --preset windows --rerun-failed --output-on-failure -V 2>&1 | Out-String) -split "`r?`n"
+            $lines = $rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|Exception|Timeout' } | Select-Object -First 40
+            if (-not $lines) { $lines = $rerun | Select-Object -Last 40 }
+            Write-Host "::error title=Windows tests failed::$(($lines -join '%0A') -replace '::', ': :')"
             exit 1
           }
 
