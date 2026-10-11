@@ -454,9 +454,11 @@ void PopupWindow::placeOnScreen()
     if (!screen) {
         return;
     }
-    // Center and the corners use the screen the pointer is on.
+    // Center and the corners use the screen the pointer is on. A corner keeps 5% of the
+    // screen's width (and height) away from the sides it is near, not glued to the edge.
     const QRect area = screen->availableGeometry();
-    constexpr int margin = 16;
+    const int marginX = area.width() * 5 / 100;
+    const int marginY = area.height() * 5 / 100;
     switch (m_position) {
     case PopupPosition::Last:
         if (m_lastPosition) {
@@ -474,17 +476,17 @@ void PopupWindow::placeOnScreen()
                           size(), area));
         return;
     case PopupPosition::TopLeft:
-        move(keepOnScreen(area.topLeft() + QPoint(margin, margin), size(), area));
+        move(keepOnScreen(area.topLeft() + QPoint(marginX, marginY), size(), area));
         return;
     case PopupPosition::TopRight:
-        move(keepOnScreen(QPoint(area.right() + 1 - margin - width(), area.top() + margin), size(), area));
+        move(keepOnScreen(QPoint(area.right() + 1 - marginX - width(), area.top() + marginY), size(), area));
         return;
     case PopupPosition::BottomLeft:
-        move(keepOnScreen(QPoint(area.left() + margin, area.bottom() + 1 - margin - height()), size(), area));
+        move(keepOnScreen(QPoint(area.left() + marginX, area.bottom() + 1 - marginY - height()), size(), area));
         return;
     case PopupPosition::BottomRight:
-        move(keepOnScreen(QPoint(area.right() + 1 - margin - width(), area.bottom() + 1 - margin - height()), size(),
-                          area));
+        move(keepOnScreen(QPoint(area.right() + 1 - marginX - width(), area.bottom() + 1 - marginY - height()),
+                          size(), area));
         return;
     case PopupPosition::Cursor:
         break;

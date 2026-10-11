@@ -239,9 +239,17 @@ Settings are in `%APPDATA%\clipitto\config.toml` (same keys as
 shortcut), history in `%LOCALAPPDATA%\clipitto\history.db`. `clipitto.exe --status`,
 `--reload` and `--quit` (in the install folder's `bin`) work as on Linux.
 
-**Build from source:** Visual Studio 2022 Build Tools (C++ workload), Qt 6.5+ for MSVC and
-[vcpkg](https://vcpkg.io), which builds SQLite and toml++ from [vcpkg.json](vcpkg.json).
-From a *Developer PowerShell for VS*:
+**Build from source:** Visual Studio 2022 or newer, or its Build Tools, with the *Desktop
+development with C++* workload; Qt 6.5+ for MSVC; and [vcpkg](https://vcpkg.io), which builds
+toml++ from [vcpkg.json](vcpkg.json). The script finds them (Qt and vcpkg in `D:\` or `C:\`, or
+`QT_ROOT_DIR` / `VCPKG_ROOT`), sets up the compiler environment, builds and runs the tests:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1          # build + tests
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Stage   # + a runnable copy in build\windows-stage
+```
+
+By hand, from a *Developer PowerShell for VS*:
 
 ```powershell
 $env:VCPKG_ROOT = "C:\src\vcpkg"; $env:QT_ROOT_DIR = "C:\Qt\6.5.3\msvc2019_64"

@@ -276,15 +276,17 @@ private slots:
         QVERIFY(f.show());
         const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
         const QRect r(f.popup->pos(), f.popup->size());
-        const int m = 16; // margin from the edges
+        // 5% of the screen's width / height away from the sides it is near.
+        const int mx = area.width() * 5 / 100;
+        const int my = area.height() * 5 / 100;
         if (expected == QLatin1String("tl")) {
-            QCOMPARE(r.topLeft(), area.topLeft() + QPoint(m, m));
+            QCOMPARE(r.topLeft(), area.topLeft() + QPoint(mx, my));
         } else if (expected == QLatin1String("tr")) {
-            QCOMPARE(QPoint(r.right(), r.top()), QPoint(area.right() - m, area.top() + m));
+            QCOMPARE(QPoint(r.right(), r.top()), QPoint(area.right() - mx, area.top() + my));
         } else if (expected == QLatin1String("bl")) {
-            QCOMPARE(QPoint(r.left(), r.bottom()), QPoint(area.left() + m, area.bottom() - m));
+            QCOMPARE(QPoint(r.left(), r.bottom()), QPoint(area.left() + mx, area.bottom() - my));
         } else if (expected == QLatin1String("br")) {
-            QCOMPARE(r.bottomRight(), area.bottomRight() - QPoint(m, m));
+            QCOMPARE(r.bottomRight(), area.bottomRight() - QPoint(mx, my));
         } else {
             QVERIFY(qAbs(r.center().x() - area.center().x()) <= 1);
         }
