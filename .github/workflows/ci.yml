@@ -111,8 +111,16 @@ jobs:
             # failed suites again verbosely and keep their failure lines (or their last lines).
             $rerun = (ctest --preset windows --rerun-failed --output-on-failure -V 2>&1 | Out-String) -split "`r?`n"
             $lines = @($rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|\*\*\*Exception' } | Select-Object -First 30)
-            $lines += '--- last lines ---'
-            $lines += @($rerun | Where-Object { $_.Trim() } | Select-Object -Last 25)
+            # Run each failed test program directly too: a crash or a missing DLL prints nothing,
+            # so its exit code (in hex) is the clue.
+            foreach ($command in ($rerun | Select-String -Pattern 'Test command: (.+\.exe)' | ForEach-Object { $_.Matches[0].Groups[1].Value })) {
+              Push-Location build\windows\tests
+              $direct = & $command -o -,txt 2>&1 | Out-String
+              $code = $LASTEXITCODE
+              Pop-Location
+              $lines += ('{0} exited with 0x{1:X8}' -f (Split-Path $command -Leaf), $code)
+              $lines += @(($direct -split "`r?`n") | Where-Object { $_.Trim() } | Select-Object -Last 20)
+            }
             Write-Host "::error title=Windows tests failed::$(($lines -join '%0A') -replace '::', ': :')"
             exit 1
           }
