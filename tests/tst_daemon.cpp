@@ -81,6 +81,7 @@ private:
         DaemonOptions o;
         o.configPath = m_dir.filePath(QStringLiteral("config.toml"));
         o.databasePath = m_dir.filePath(QStringLiteral("data/history.db"));
+        o.syntheticPaste = [](PasteKeys) { return false; }; // never type real keys on the test machine
         return o;
     }
 

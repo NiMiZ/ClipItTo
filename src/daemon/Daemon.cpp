@@ -223,7 +223,8 @@ void Daemon::onEntryActivated(const Entry& entry)
         QTimer::singleShot(80, this, [this] {
             if (integrationAvailable()) {
                 m_integration->paste(m_config.pasteKeys);
-            } else if (!pasteWithSyntheticKeys(m_config.pasteKeys)) {
+            } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(m_config.pasteKeys)
+                                                  : pasteWithSyntheticKeys(m_config.pasteKeys))) {
                 qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
                                     "(needs the GNOME Shell extension on Wayland)";
             }

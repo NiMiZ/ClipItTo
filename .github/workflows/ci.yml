@@ -102,7 +102,17 @@ jobs:
       - name: Build
         run: cmake --build --preset windows
       - name: Test
-        run: ctest --preset windows
+        shell: pwsh
+        run: |
+          $out = ctest --preset windows --output-on-failure 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            # The failing checks as an annotation: readable without opening the log.
+            $lines = ($out -split "`r?`n" | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|\*\*\*Failed|Exception|Timeout' } |
+                      Select-Object -First 40) -join '%0A'
+            Write-Host "::error title=Windows tests failed::$lines"
+            exit 1
+          }
 
       - name: Stage (windeployqt)
         shell: pwsh

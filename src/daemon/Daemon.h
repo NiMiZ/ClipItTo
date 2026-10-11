@@ -12,6 +12,7 @@
 #include <QVariantMap>
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -37,6 +38,9 @@ struct DaemonOptions {
     QString wlPasteProgram = QStringLiteral("wl-paste");
     QString gsettingsProgram = QStringLiteral("gsettings"); // GNOME shortcut updates
     std::shared_ptr<KeyStore> keyStore; // holds the history key; null: encryption unavailable
+    // Pastes with synthetic keys where there is no desktop integration (tests replace it, so
+    // they never type real keys); returns false where that isn't possible.
+    std::function<bool(PasteKeys)> syntheticPaste;
 };
 
 // Owns everything that lives for the whole session: config, database, capture, the popup,
