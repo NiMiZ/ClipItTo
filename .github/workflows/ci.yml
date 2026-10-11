@@ -109,8 +109,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             # The failing checks as an annotation, readable without opening the log: run the
             # failed suites again verbosely and keep their failure lines (or their last lines).
+            $first = @(($out -split "`r?`n") | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QFATAL|\*\*\*' } | Select-Object -First 30)
             $rerun = (ctest --preset windows --rerun-failed --output-on-failure -V 2>&1 | Out-String) -split "`r?`n"
-            $lines = @($rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|\*\*\*Exception' } | Select-Object -First 30)
+            $lines = @('--- first run ---') + $first + @('--- rerun ---')
+            $lines += @($rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|\*\*\*Exception' } | Select-Object -First 30)
             # Run each failed test program directly too: a crash or a missing DLL prints nothing,
             # so its exit code (in hex) is the clue.
             foreach ($command in ($rerun | Select-String -Pattern 'Test command: (.+\.exe)' | ForEach-Object { $_.Matches[0].Groups[1].Value })) {
