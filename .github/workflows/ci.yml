@@ -109,7 +109,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             # The failing checks as an annotation, readable without opening the log: run the
             # failed suites again verbosely and keep their failure lines (or their last lines).
-            $first = @(($out -split "`r?`n") | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QFATAL|\*\*\*' } | Select-Object -First 30)
+            # Everything a failed suite printed in the first run (up to its "***Failed" line).
+            $all = @($out -split "`r?`n")
+            $first = @()
+            for ($i = 0; $i -lt $all.Count; $i++) {
+              if ($all[$i] -match '\*\*\*(Failed|Exception)') {
+                $start = $i
+                while ($start -gt 0 -and $all[$start - 1] -notmatch 'Test +#\d+:') { $start-- }
+                $first += @($all[[Math]::Max($start, $i - 40)..$i] | Where-Object { $_.Trim() })
+              }
+            }
             $rerun = (ctest --preset windows --rerun-failed --output-on-failure -V 2>&1 | Out-String) -split "`r?`n"
             $lines = @('--- first run ---') + $first + @('--- rerun ---')
             $lines += @($rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|\*\*\*Exception' } | Select-Object -First 30)
