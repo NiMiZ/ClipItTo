@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QLabel>
 #include <QMenu>
+#include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
 #include <QToolButton>
@@ -208,17 +209,22 @@ private slots:
         QVERIFY(f.show());
         QWidget* handle = f.popup->dragHandle();
         QCOMPARE(qobject_cast<QLabel*>(handle)->text(), QStringLiteral("ClipItTo"));
+        // Drag it to the middle of the screen: a place it fits whatever the screen size (a
+        // reopened popup is kept fully on screen).
         const QPoint before = f.popup->pos();
+        const QRect area = f.popup->screen()->availableGeometry();
+        const QPoint delta = area.center() - f.popup->frameGeometry().center();
+        QVERIFY(!delta.isNull());
         const QPoint grab = handle->rect().center();
         QTest::mousePress(handle, Qt::LeftButton, {}, grab);
-        QTest::mouseMove(handle, grab + QPoint(40, 30));
-        QTest::mouseRelease(handle, Qt::LeftButton, {}, grab + QPoint(40, 30));
-        QCOMPARE(f.popup->pos(), before + QPoint(40, 30));
+        QTest::mouseMove(handle, grab + delta);
+        QTest::mouseRelease(handle, Qt::LeftButton, {}, grab + delta);
+        QCOMPARE(f.popup->pos(), before + delta);
         QVERIFY(f.popup->isVisible()); // dragging doesn't close it
 
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Escape);
         QVERIFY(f.show());
-        QCOMPARE(f.popup->pos(), before + QPoint(40, 30)); // same place, not the pointer's
+        QCOMPARE(f.popup->pos(), before + delta); // same place, not the pointer's
     }
 
     void choosingACopyHidesThePopup()
