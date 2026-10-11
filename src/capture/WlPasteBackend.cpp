@@ -26,6 +26,22 @@ bool hasText(const QStringList& mimeTypes)
 
 } // namespace
 
+QString WlPasteBackend::textType(const QStringList& mimeTypes)
+{
+    // UTF-8 first: the legacy X11 "STRING" target is Latin-1, so Hebrew, Cyrillic, emoji...
+    // would arrive as '?'. wl-paste's own "text" pick takes whichever text type comes first.
+    static const QStringList preferred = {QStringLiteral("text/plain;charset=utf-8"), QStringLiteral("UTF8_STRING"),
+                                          QStringLiteral("text/plain")};
+    for (const QString& type : preferred) {
+        for (const QString& offered : mimeTypes) {
+            if (offered.compare(type, Qt::CaseInsensitive) == 0) {
+                return offered;
+            }
+        }
+    }
+    return QStringLiteral("text");
+}
+
 WlPasteBackend::WlPasteBackend(QString program, QObject* parent)
     : CaptureBackend(parent)
     , m_program(std::move(program))
@@ -155,7 +171,7 @@ void WlPasteBackend::fetchText(const QStringList& mimeTypes)
             fetchDone();
         }
     });
-    text->start(m_program, {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text")});
+    text->start(m_program, {QStringLiteral("--no-newline"), QStringLiteral("--type"), textType(mimeTypes)});
 }
 
 void WlPasteBackend::fetchDone()

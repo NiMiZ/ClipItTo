@@ -28,19 +28,59 @@ class TestSearchController : public QObject {
     Q_OBJECT
 
 private slots:
-    void defaultViewShowsSavedThenRecent()
+    void defaultViewShowsPinnedThenRecent()
     {
         TestDb t;
-        const auto fav = t.repo->ingest(QStringLiteral("fav")).id;
+        const auto pin = t.repo->ingest(QStringLiteral("pin")).id;
         t.repo->ingest(QStringLiteral("one"));
         t.repo->ingest(QStringLiteral("two"));
-        t.repo->setFavorite(fav, true);
+        t.repo->setPinned(pin, true);
 
         HistoryModel m;
         SearchController c(*t.repo, m);
         c.refresh();
-        QCOMPARE(titles(m), (QStringList{QStringLiteral("#Saved"), QStringLiteral("fav"), QStringLiteral("#Recent"),
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("#Pinned"), QStringLiteral("pin"), QStringLiteral("#Recent"),
                                          QStringLiteral("two"), QStringLiteral("one")}));
+    }
+
+    void starredCopiesAreInFavoritesTheFirstGroup()
+    {
+        TestDb t;
+        const auto star = t.repo->ingest(QStringLiteral("star")).id;
+        const auto workStar = t.repo->ingest(QStringLiteral("work star")).id;
+        t.repo->ingest(QStringLiteral("one"));
+        t.repo->setFavorite(star, true);
+        t.repo->setGroup(workStar, QStringLiteral("Work"));
+        t.repo->setFavorite(workStar, true);
+        t.repo->createGroup(QStringLiteral("Aardvark")); // sorts before "Favorites" by name
+
+        HistoryModel m;
+        SearchController c(*t.repo, m);
+        c.refresh();
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("one")})); // stars left Recent
+        const QModelIndex root = m.groupsRoot();
+        const QModelIndex favorites = m.index(0, 0, root);
+        QCOMPARE(m.kindAt(favorites), HistoryModel::Kind::Favorites);
+        QCOMPARE(favorites, m.findGroup(HistoryModel::favoritesPath()));
+        QCOMPARE(m.rowCount(favorites), 1);
+        QCOMPARE(m.entryAt(m.index(0, 0, favorites))->id, star); // only the ungrouped star
+        QCOMPARE(favorites.data(HistoryModel::CountRole).toInt(), 1);
+        QCOMPARE(root.data(HistoryModel::CountRole).toInt(), 2);
+        QCOMPARE(m.findEntry(star).parent(), favorites);
+        QCOMPARE(m.index(1, 0, root).data(HistoryModel::TitleRole).toString(), QStringLiteral("Aardvark"));
+    }
+
+    void favoritesRowShowsEvenWhenEmptyOnceThereAreGroups()
+    {
+        TestDb t;
+        t.repo->createGroup(QStringLiteral("Work"));
+        HistoryModel m;
+        SearchController c(*t.repo, m);
+        c.refresh();
+        const QModelIndex favorites = m.findGroup(HistoryModel::favoritesPath());
+        QVERIFY(favorites.isValid());
+        QCOMPARE(favorites.row(), 0);
+        QVERIFY(!m.isExpandable(favorites));
     }
 
     void defaultViewWithoutSavedHasNoHeaders()
@@ -59,7 +99,7 @@ private slots:
         TestDb t;
         const auto fav = t.repo->ingest(QStringLiteral("fav")).id;
         t.repo->ingest(QStringLiteral("one"));
-        t.repo->setFavorite(fav, true);
+        t.repo->setPinned(fav, true);
 
         Config cfg;
         cfg.showSavedOnTop = false;
@@ -96,16 +136,16 @@ private slots:
         HistoryModel m;
         SearchController c(*t.repo, m);
         c.refresh();
-        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("#Saved"), QStringLiteral("ssh prod"),
-                                         QStringLiteral("deploy script"), QStringLiteral("#Recent"),
-                                         QStringLiteral("loose")}));
+        // Grouped copies are only in the group tree, not in a section below it.
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("Groups"), QStringLiteral("loose")}));
 
         const QModelIndex root = m.groupsRoot();
         QCOMPARE(root.row(), 0);
         QCOMPARE(root.data(HistoryModel::CountRole).toInt(), 2);
-        QCOMPARE(m.rowCount(root), 2);
-        QCOMPARE(m.index(0, 0, root).data(HistoryModel::TitleRole).toString(), QStringLiteral("Empty"));
-        QVERIFY(!m.isExpandable(m.index(0, 0, root))); // nothing inside
+        QCOMPARE(m.rowCount(root), 3); // Favorites (always first), then the groups by name
+        QCOMPARE(m.kindAt(m.index(0, 0, root)), HistoryModel::Kind::Favorites);
+        QCOMPARE(m.index(1, 0, root).data(HistoryModel::TitleRole).toString(), QStringLiteral("Empty"));
+        QVERIFY(!m.isExpandable(m.index(1, 0, root))); // nothing inside
 
         const QModelIndex work = m.findGroup(QStringLiteral("Work"));
         QCOMPARE(work.parent(), root);
@@ -118,7 +158,7 @@ private slots:
         const QModelIndex servers = m.findGroup(QStringLiteral("Work/Servers"));
         QCOMPARE(m.entryAt(m.index(0, 0, servers))->id, ssh);
         QCOMPARE(m.findEntry(ssh, QStringLiteral("Work/Servers")).parent(), servers);
-        QCOMPARE(m.findEntry(ssh).parent(), QModelIndex()); // sections are preferred
+        QCOMPARE(m.findEntry(ssh).parent(), servers); // no section has it
     }
 
     void noGroupsMeansNoGroupsRow()

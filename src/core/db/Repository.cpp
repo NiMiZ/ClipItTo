@@ -5,13 +5,17 @@
 #include "db/Sqlite.h"
 
 #include <QCryptographicHash>
+#include <QHash>
+
+#include <algorithm>
 
 namespace clipitto::db {
 
 namespace {
 
 // Column order read by readEntry().
-#define CLIP_COLUMNS "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used"
+#define CLIP_COLUMNS \
+    "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position"
 
 Entry readEntry(const Stmt& s)
 {
@@ -23,6 +27,7 @@ Entry readEntry(const Stmt& s)
     e.favorite = s.colInt(4) != 0;
     e.createdAt = QDateTime::fromString(s.colText(5), Qt::ISODateWithMs);
     e.lastUsed = QDateTime::fromString(s.colText(6), Qt::ISODateWithMs);
+    e.pinPosition = s.colIsNull(7) ? -1 : int(s.colInt(7));
     return e;
 }
 
@@ -45,9 +50,9 @@ Repository::Repository(Db& db, Clock clock)
         WHERE c.is_saved = 0
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
-    m_saved = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
-        WHERE c.is_saved = 1
-        ORDER BY c.is_favorite DESC, c.last_used DESC, c.id DESC LIMIT ?1)");
+    m_pinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
+        WHERE c.pin_position IS NOT NULL
+        ORDER BY c.pin_position, c.id LIMIT ?1)");
 
     // bm25 column weights: note 10, group 5, content 1 (lower score = better match).
     m_searchFts = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"(,
@@ -69,8 +74,6 @@ Repository::Repository(Db& db, Clock clock)
             SELECT id FROM clips WHERE is_saved = 0
             ORDER BY last_used ASC, id ASC
             LIMIT max(0, (SELECT count(*) FROM clips WHERE is_saved = 0) - ?1)))");
-
-    m_groups = std::make_unique<Stmt>(m_db, "SELECT path FROM groups ORDER BY path COLLATE NOCASE");
 
     m_count = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips");
     m_countUnsaved = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips WHERE is_saved = 0");
@@ -124,11 +127,19 @@ std::vector<Entry> Repository::recent(int limit, bool unsavedOnly)
     return collect(s);
 }
 
-std::vector<Entry> Repository::saved(int limit)
+std::vector<Entry> Repository::pinned(int limit)
 {
-    m_saved->reset();
-    m_saved->bindInt(1, limit);
-    return collect(*m_saved);
+    m_pinned->reset();
+    m_pinned->bindInt(1, limit);
+    return collect(*m_pinned);
+}
+
+std::vector<Entry> Repository::favorites()
+{
+    Stmt s(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
+        WHERE c.is_favorite = 1 AND (c.group_name IS NULL OR c.group_name = '')
+        ORDER BY c.last_used DESC, c.id DESC)");
+    return collect(s);
 }
 
 std::vector<Entry> Repository::search(const QString& query, int limit, SearchMode mode)
@@ -209,19 +220,113 @@ void Repository::touch(qint64 id)
     m_touch->run();
 }
 
-void Repository::setFavorite(qint64 id, bool favorite)
+int Repository::starsIn(const QString& group)
 {
+    Stmt s(m_db, group.isEmpty()
+                     ? "SELECT count(*) FROM clips WHERE is_favorite = 1 AND (group_name IS NULL OR group_name = '')"
+                     : "SELECT count(*) FROM clips WHERE is_favorite = 1 AND group_name = ?1");
+    if (!group.isEmpty()) {
+        s.bindText(1, group);
+    }
+    s.step();
+    return int(s.colInt(0));
+}
+
+Repository::Change Repository::roomForStar(const QString& group)
+{
+    if (group.isEmpty()) {
+        return starsIn(group) < m_limits.favorites ? Change::Done : Change::FavoritesFull;
+    }
+    return starsIn(group) < m_limits.starsPerGroup ? Change::Done : Change::GroupStarsFull;
+}
+
+Repository::Change Repository::setFavorite(qint64 id, bool favorite)
+{
+    const auto e = get(id);
+    if (!e || e->favorite == favorite) {
+        return Change::Done;
+    }
+    if (favorite) {
+        if (const Change room = roomForStar(e->group); room != Change::Done) {
+            return room;
+        }
+    }
     m_setFavorite->reset();
     m_setFavorite->bindInt(1, id).bindInt(2, favorite ? 1 : 0);
     m_setFavorite->run();
+    return Change::Done;
 }
 
-void Repository::setGroup(qint64 id, const QString& group)
+Repository::Change Repository::setGroup(qint64 id, const QString& group)
 {
-    const QString path = group.trimmed().isEmpty() ? QString() : createGroup(group);
+    const QString target = groups::normalize(group);
+    const auto e = get(id);
+    if (!e) {
+        return Change::Done;
+    }
+    if (e->favorite && e->group != target) {
+        // The star moves with the clip: into the target group, or into Favorites.
+        if (const Change room = roomForStar(target); room != Change::Done) {
+            return room;
+        }
+    }
+    if (!target.isEmpty()) {
+        createGroup(target);
+    }
     m_setGroup->reset();
-    m_setGroup->bindInt(1, id).bindTextOrNull(2, path);
+    m_setGroup->bindInt(1, id).bindTextOrNull(2, target);
     m_setGroup->run();
+    return Change::Done;
+}
+
+Repository::Change Repository::setPinned(qint64 id, bool pin)
+{
+    const auto e = get(id);
+    if (!e || e->pinned() == pin) {
+        return Change::Done;
+    }
+    if (!pin) {
+        Stmt s(m_db, "UPDATE clips SET pin_position = NULL WHERE id = ?1");
+        s.bindInt(1, id).run();
+        return Change::Done;
+    }
+    Stmt count(m_db, "SELECT count(*), coalesce(max(pin_position) + 1, 0) FROM clips WHERE pin_position IS NOT NULL");
+    count.step();
+    if (count.colInt(0) >= m_limits.pins) {
+        return Change::PinsFull;
+    }
+    const qint64 position = count.colInt(1);
+    count.reset();
+    Stmt s(m_db, "UPDATE clips SET pin_position = ?2 WHERE id = ?1");
+    s.bindInt(1, id).bindInt(2, position).run();
+    return Change::Done;
+}
+
+bool Repository::movePinned(qint64 id, int delta)
+{
+    std::vector<qint64> order;
+    for (const Entry& e : pinned(m_limits.pins + 1000)) { // everything pinned, even over a lowered cap
+        order.push_back(e.id);
+    }
+    const auto it = std::find(order.begin(), order.end(), id);
+    if (it == order.end()) {
+        return false;
+    }
+    const auto from = std::size_t(it - order.begin());
+    const qint64 to = qint64(from) + delta;
+    if (delta == 0 || to < 0 || to >= qint64(order.size())) {
+        return false;
+    }
+    std::swap(order[from], order[std::size_t(to)]);
+    Transaction tx(m_db);
+    Stmt s(m_db, "UPDATE clips SET pin_position = ?2 WHERE id = ?1");
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        s.reset();
+        s.bindInt(1, order[i]).bindInt(2, qint64(i));
+        s.run();
+    }
+    tx.commit();
+    return true;
 }
 
 namespace {
@@ -243,13 +348,43 @@ QString descendantsPattern(const QString& path)
 
 std::vector<Repository::GroupInfo> Repository::groupTree()
 {
+    struct Row {
+        GroupInfo info;
+        qint64 position; // -1 = unordered
+    };
     Stmt s(m_db, R"(
-        SELECT g.path, (SELECT count(*) FROM clips c WHERE c.group_name = g.path)
-        FROM groups g ORDER BY g.path COLLATE NOCASE)");
-    std::vector<GroupInfo> result;
+        SELECT g.path, (SELECT count(*) FROM clips c WHERE c.group_name = g.path), g.position
+        FROM groups g)");
+    QHash<QString, std::vector<Row>> children; // parent path ("" = top level) -> its groups
     while (s.step()) {
-        result.push_back({s.colText(0), int(s.colInt(1))});
+        const QString path = s.colText(0);
+        children[groups::parent(path)].push_back({{path, int(s.colInt(1))}, s.colIsNull(2) ? -1 : s.colInt(2)});
     }
+    for (auto& siblings : children) {
+        // Ordered groups first, in their order; the rest after them, by name.
+        std::sort(siblings.begin(), siblings.end(), [](const Row& a, const Row& b) {
+            if ((a.position < 0) != (b.position < 0)) {
+                return a.position >= 0;
+            }
+            if (a.position != b.position) {
+                return a.position < b.position;
+            }
+            return QString::compare(groups::leaf(a.info.path), groups::leaf(b.info.path), Qt::CaseInsensitive) < 0;
+        });
+    }
+    // Depth first, so every parent comes before its children.
+    std::vector<GroupInfo> result;
+    const std::function<void(const QString&)> visit = [&](const QString& parent) {
+        const auto it = children.constFind(parent);
+        if (it == children.constEnd()) {
+            return;
+        }
+        for (const Row& row : *it) {
+            result.push_back(row.info);
+            visit(row.info.path);
+        }
+    };
+    visit(QString());
     return result;
 }
 
@@ -314,6 +449,11 @@ bool Repository::renameGroup(const QString& from, const QString& to, QString* er
         s.bindText(1, source).bindText(2, target).bindText(3, descendantsPattern(source));
         s.run();
     }
+    if (groups::parent(target) != groups::parent(source)) {
+        // Its place among the old siblings means nothing among the new ones: go last.
+        Stmt s(m_db, "UPDATE groups SET position = NULL WHERE path = ?1");
+        s.bindText(1, target).run();
+    }
     tx.commit();
     return true;
 }
@@ -361,12 +501,38 @@ qint64 Repository::prune(int maxUnsaved)
 QStringList Repository::groups()
 {
     QStringList result;
-    m_groups->reset();
-    while (m_groups->step()) {
-        result << m_groups->colText(0);
+    for (const GroupInfo& g : groupTree()) {
+        result << g.path;
     }
-    m_groups->reset();
     return result;
+}
+
+bool Repository::moveGroup(const QString& path, int delta)
+{
+    const QString normalized = groups::normalize(path);
+    const QString parent = groups::parent(normalized);
+    QStringList siblings; // in their current order
+    for (const GroupInfo& g : groupTree()) {
+        if (groups::parent(g.path) == parent) {
+            siblings << g.path;
+        }
+    }
+    const qsizetype from = siblings.indexOf(normalized);
+    const qsizetype to = from + delta;
+    if (from < 0 || delta == 0 || to < 0 || to >= siblings.size()) {
+        return false;
+    }
+    siblings.swapItemsAt(from, to);
+    // Number every sibling, so the order no longer depends on names.
+    Transaction tx(m_db);
+    Stmt s(m_db, "UPDATE groups SET position = ?2 WHERE path = ?1");
+    for (qsizetype i = 0; i < siblings.size(); ++i) {
+        s.reset();
+        s.bindText(1, siblings[i]).bindInt(2, i);
+        s.run();
+    }
+    tx.commit();
+    return true;
 }
 
 qint64 Repository::count()

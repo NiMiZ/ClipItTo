@@ -4,6 +4,8 @@
 
 #include <QPalette>
 
+#include <functional>
+
 namespace clipitto::ui {
 
 // Applies the theme to the whole application. Light and Dark use the Fusion style with a
@@ -16,5 +18,13 @@ void applyTheme(Theme theme);
 bool systemPrefersDark();
 
 QPalette darkPalette();
+
+// Whether the applied theme is dark (for System: what the desktop prefers right now).
+bool currentThemeIsDark();
+
+// Calls `callback` after every theme change: applyTheme(), and the desktop switching between
+// light and dark while the theme is System (Qt 6.5+). For things outside the palette, like
+// the tray icon.
+void onThemeApplied(std::function<void()> callback);
 
 } // namespace clipitto::ui

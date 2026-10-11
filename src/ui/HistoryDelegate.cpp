@@ -81,6 +81,7 @@ QSize HistoryDelegate::sizeHint(const QStyleOptionViewItem& option, const QModel
         return {0, QFontMetrics(caption(option.font)).height() + 2 * kVPad};
     case Kind::GroupsRoot:
     case Kind::Group:
+    case Kind::Favorites:
         return {0, fm.height() + 2 * kVPad + 2};
     case Kind::Entry:
         break;
@@ -120,7 +121,7 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
     const QFontMetrics fm(option.font);
     QRect content = r.adjusted(kHPad, kVPad, -kHPad, -kVPad);
 
-    if (kind == Kind::GroupsRoot || kind == Kind::Group) {
+    if (kind == Kind::GroupsRoot || kind == Kind::Group || kind == Kind::Favorites) {
         // Name, copy count, and the expand arrow at the end of the row.
         const bool expandable = index.model()->rowCount(index) > 0;
         const QRect arrow(content.right() - kArrowBox + 1, content.top(), kArrowBox, fm.height());
@@ -137,10 +138,18 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
                               countText);
             right -= w + kGap;
         }
+        int left = content.left();
+        if (kind == Kind::Favorites) {
+            const QString star = QStringLiteral("★");
+            painter->setPen(selected ? text : pal.color(QPalette::Link));
+            painter->drawText(QRect(left, content.top(), kStarWidth, fm.height()), Qt::AlignLeft | Qt::AlignVCenter,
+                              star);
+            left += kStarWidth;
+        }
         const QFont font = kind == Kind::GroupsRoot ? caption(option.font) : bold(option.font);
         painter->setFont(font);
         painter->setPen(kind == Kind::GroupsRoot && !selected ? pal.color(QPalette::Disabled, QPalette::Text) : text);
-        const QRect label(content.left(), content.top(), right - content.left(), fm.height());
+        const QRect label(left, content.top(), right - left, fm.height());
         painter->drawText(label, Qt::AlignLeft | Qt::AlignVCenter,
                           QFontMetrics(font).elidedText(index.data(HistoryModel::TitleRole).toString(),
                                                         Qt::ElideRight, label.width()));

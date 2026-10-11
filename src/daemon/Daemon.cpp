@@ -42,6 +42,13 @@ QString displayName(SessionEnv::Display display)
     return QStringLiteral("unknown");
 }
 
+db::Repository::Limits repositoryLimits(const Config& config)
+{
+    db::Repository::Limits limits;
+    limits.favorites = config.favoritesLimit;
+    return limits;
+}
+
 } // namespace
 
 Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
@@ -105,6 +112,7 @@ Daemon::StartResult Daemon::start(QString* error)
         openHistory();
         db::migrate(*m_db);
         m_repo = std::make_unique<db::Repository>(*m_db);
+        m_repo->setLimits(repositoryLimits(m_config));
         m_repo->prune(m_config.maxHistory); // the limit may have been lowered since last run
     } catch (const db::DbError& e) {
         m_repo.reset();
@@ -133,6 +141,7 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_control, &ControlChannel::hideRequested, m_popup.get(), &ui::PopupWindow::hidePopup);
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
+    connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
@@ -492,6 +501,7 @@ void Daemon::reload(bool forceShortcut)
         return;
     }
     m_pipeline->setLimits(m_config.maxHistory, m_config.maxItemBytes);
+    m_repo->setLimits(repositoryLimits(m_config));
     if (m_config.theme != previous.theme) {
         ui::applyTheme(m_config.theme);
     }

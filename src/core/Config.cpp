@@ -170,6 +170,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("preview_lines", config.previewLines, 1, 10);
     r.boolean("show_saved_on_top", config.showSavedOnTop);
     r.integer("saved_cap", config.savedCap, 0, 500);
+    r.integer("favorites_limit", config.favoritesLimit, 1, 20);
     r.integer("max_item_bytes", config.maxItemBytes, 1, 64LL * 1024 * 1024);
     r.boolean("capture_primary", config.capturePrimary);
     r.boolean("paste_on_enter", config.pasteOnEnter);
@@ -231,14 +232,15 @@ std::string tomlBool(bool v)
 std::vector<Line> lines(const Config& c)
 {
     return {
-        {"max_history", std::to_string(c.maxHistory), "unsaved copies kept; favorites and grouped ones are never pruned"},
+        {"max_history", std::to_string(c.maxHistory), "unsaved copies kept; pinned, starred and grouped ones are kept"},
         {"recent_count", std::to_string(c.recentCount), "copies listed when the search box is empty"},
         {"preview_lines", std::to_string(c.previewLines), "text lines shown per copy"},
-        {"show_saved_on_top", tomlBool(c.showSavedOnTop), ""},
+        {"show_saved_on_top", tomlBool(c.showSavedOnTop), "list pinned copies above recent ones"},
         {"saved_cap", std::to_string(c.savedCap), ""},
+        {"favorites_limit", std::to_string(c.favoritesLimit), "starred copies without a group (1-20)"},
         {"max_item_bytes", std::to_string(c.maxItemBytes), ""},
         {"capture_primary", tomlBool(c.capturePrimary), ""},
-        {"paste_on_enter", tomlBool(c.pasteOnEnter), ""},
+        {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},
         {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert"},
         {"click_to_copy", tomlString(nameOf(kClickModes, c.clickToCopy)), "single | double"},
         {"hide_on_focus_loss", tomlBool(c.hideOnFocusLoss), ""},

@@ -20,7 +20,7 @@ private slots:
         QCOMPARE(c.maxHistory, 1000);
         QCOMPARE(c.recentCount, 20);
         QVERIFY(c.showSavedOnTop);
-        QVERIFY(!c.pasteOnEnter);
+        QVERIFY(c.pasteOnEnter); // paste after choosing is the default
         QVERIFY(c.clickToCopy == ClickMode::Single);
         QVERIFY(c.backend == BackendChoice::Auto);
     }
@@ -43,7 +43,7 @@ private slots:
             saved_cap = 5
             max_item_bytes = 4096
             capture_primary = true
-            paste_on_enter = true
+            paste_on_enter = false
             paste_keys = "shift+insert"
             click_to_copy = "double"
             hide_on_focus_loss = false
@@ -52,6 +52,7 @@ private slots:
             preview_lines = 3
             theme = "dark"
             hotkey = "ctrl+`"
+            favorites_limit = 20
         )", &warnings);
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1String("; "))));
         QCOMPARE(c.maxHistory, 250);
@@ -60,7 +61,7 @@ private slots:
         QCOMPARE(c.savedCap, 5);
         QCOMPARE(c.maxItemBytes, 4096);
         QVERIFY(c.capturePrimary);
-        QVERIFY(c.pasteOnEnter);
+        QVERIFY(!c.pasteOnEnter);
         QVERIFY(c.pasteKeys == PasteKeys::ShiftInsert);
         QVERIFY(c.clickToCopy == ClickMode::Double);
         QVERIFY(!c.hideOnFocusLoss);
@@ -69,6 +70,17 @@ private slots:
         QCOMPARE(c.previewLines, 3);
         QVERIFY(c.theme == clipitto::Theme::Dark);
         QCOMPARE(c.hotkey, QStringLiteral("Ctrl+`")); // normalized
+        QCOMPARE(c.favoritesLimit, 20);
+    }
+
+    void favoritesLimitIsOneToTwenty()
+    {
+        QStringList warnings;
+        QCOMPARE(Config{}.favoritesLimit, 10);
+        QCOMPARE(Config::fromToml("favorites_limit = 21", &warnings).favoritesLimit, 10);
+        QCOMPARE(warnings.size(), 1);
+        QCOMPARE(Config::fromToml("favorites_limit = 0").favoritesLimit, 10);
+        QCOMPARE(Config::fromToml("favorites_limit = 1").favoritesLimit, 1);
     }
 
     void invalidValuesKeepDefaultsAndWarn()
@@ -185,7 +197,7 @@ private slots:
 
         Config c;
         c.maxHistory = 42;
-        c.pasteOnEnter = true;
+        c.pasteOnEnter = false;
         c.pasteKeys = PasteKeys::ShiftInsert;
         c.backend = BackendChoice::QtClipboard;
         c.theme = clipitto::Theme::Light;

@@ -2,8 +2,8 @@
 Clipboard manager with history, groups and favorites for Linux and Windows
 
 Press a shortcut, type a few letters, press Enter: the clip is back on your clipboard.
-Favorites and grouped clips are never pruned and are listed first; notes give clips a
-readable title.
+Pin up to 10 clips to the top, star clips into Favorites, sort clips into your own groups
+(none of these are ever pruned), and give clips a readable title with a note.
 
 ## Download for Ubuntu 24.04+
 
@@ -16,7 +16,7 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it yourself:
-`sudo apt install ./clipitto_0.1.0_amd64.deb`. [install.sh](install.sh) also takes
+`sudo apt install ./clipitto_0.2.0_amd64.deb`. [install.sh](install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
@@ -63,7 +63,7 @@ Build the package (see [Building](#building) for the dependencies) and install i
 ```bash
 cmake --preset deb && cmake --build --preset deb
 (cd build/deb && cpack)
-sudo apt install ./build/deb/clipitto_0.1.0_amd64.deb
+sudo apt install ./build/deb/clipitto_0.2.0_amd64.deb
 ```
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run:
@@ -91,7 +91,9 @@ clipitto-setup
 | `↓` / `↑` | move between the search bar and the list |
 | `Enter` / click | copy the entry back to the clipboard and close (on a group: open/close it) |
 | `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
-| `Ctrl+S` / `Ctrl+G` / `Ctrl+E` | favorite / assign group (on a group: rename) / edit note |
+| `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
+| `Ctrl+G` / `Ctrl+E` | assign group (on a group: rename) / edit note |
+| `Alt+↑` / `Alt+↓` | move a group, or a pinned copy, up or down |
 | `Del` | delete the entry (on a group: delete the group, its copies are kept) |
 | right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |
 | `Ctrl+,` or ⚙ | settings |
@@ -99,14 +101,22 @@ clipitto-setup
 
 **Groups** sit collapsed right under the search box. Open them to browse your groups as a
 tree: each group lists its sub-groups, then its copies. Put a copy in a group with `Ctrl+G`
-and a path such as `Work/Servers` (missing groups are created). Grouped and favorite copies
-are never pruned and are also listed under *Saved*.
+and a path such as `Work/Servers` (missing groups are created). Groups appear in the order
+you give them (`Alt+↑/↓`, or Move up/down in Settings); new ones go last.
+
+**Stars** (`Ctrl+S`): a starred copy that is in no group is kept in **★ Favorites**, which is
+always the first group (up to 10 copies; Settings allows up to 20). A starred copy in a group
+is listed first in that group, up to 10 per group. Moving a starred copy into a group, or out
+of one, takes its star along; ClipItTo tells you when the target is full.
+
+**Pinned** (`Ctrl+P`): up to 10 copies listed at the top, above *Recent*, in the order you
+pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are never pruned.
 
 **Settings** (⚙): theme (system / light / dark), how many copies are listed, how many text
-lines each copy shows, where the popup opens (near the pointer or centered), the shortcut
+lines each copy shows, how many Favorites to keep, where the popup opens (near the pointer or centered), the shortcut
 (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows ClipItTo registers it, on GNOME it
 becomes the GNOME keyboard shortcut), history encryption, and group management (new,
-sub-group, rename/move, delete; saved immediately). Saving keeps your own comments and
+sub-group, rename/move, delete, move up/down; saved immediately). Saving keeps your own comments and
 layout in `config.toml`.
 
 ### Encrypted history
@@ -145,7 +155,9 @@ clipitto --reload                       # after editing ~/.config/clipitto/confi
 
 Settings: see [config.example.toml](data/config.example.toml) (installed under
 `/usr/share/doc/clipitto/`). History lives in `~/.local/share/clipitto/history.db`.
-With `paste_on_enter = true`, Enter also pastes into the window you came from.
+Choosing a copy also pastes it into the window you came from; turn that off in Settings
+(*After choosing a copy: Paste it into the window I came from*) or with `paste_on_enter = false` to only copy it. On GNOME Wayland
+pasting needs the bundled extension.
 
 ### How capture works per session
 

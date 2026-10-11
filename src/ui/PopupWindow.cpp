@@ -1,11 +1,13 @@
 #include "PopupWindow.h"
 
+#include "AppIcon.h"
 #include "Config.h"
 #include "GroupPath.h"
 #include "HistoryDelegate.h"
 #include "HistoryView.h"
 #include "SearchBar.h"
 #include "SearchController.h"
+#include "Theme.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -18,11 +20,14 @@
 #include <QLabel>
 #include <QLoggingCategory>
 #include <QMenu>
+#include <QMouseEvent>
+#include <QPointer>
 #include <QMessageBox>
 #include <QScreen>
 #include <QShortcut>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWindow>
 
 #include <utility>
 
@@ -69,10 +74,85 @@ private:
     int& m_depth;
 };
 
+// The app name at the start of the search row. Dragging it with the left button moves the
+// popup (a frameless window has no title bar to drag).
+class DragHandle : public QLabel {
+public:
+    DragHandle(std::function<void()> moved, QWidget* parent) : QLabel(parent), m_moved(std::move(moved))
+    {
+        setCursor(Qt::OpenHandCursor);
+        setToolTip(PopupWindow::tr("Drag to move the window"));
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        if (event->button() != Qt::LeftButton) {
+            QLabel::mousePressEvent(event);
+            return;
+        }
+        m_grab = event->globalPosition().toPoint() - window()->pos();
+        m_dragging = true;
+        setCursor(Qt::ClosedHandCursor);
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override
+    {
+        if (!m_dragging) {
+            return;
+        }
+        if (QGuiApplication::platformName() == QLatin1String("wayland")) {
+            // Only the compositor may move a Wayland window; it takes over the drag.
+            m_dragging = false;
+            setCursor(Qt::OpenHandCursor);
+            if (QWindow* handle = window()->windowHandle()) {
+                handle->startSystemMove();
+            }
+            return;
+        }
+        // Moved by us, not the window manager, so the popup keeps keyboard focus.
+        window()->move(event->globalPosition().toPoint() - m_grab);
+        m_moved();
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override
+    {
+        m_dragging = false;
+        setCursor(Qt::OpenHandCursor);
+        QLabel::mouseReleaseEvent(event);
+    }
+
+private:
+    std::function<void()> m_moved;
+    QPoint m_grab; // pointer position relative to the window's top-left corner
+    bool m_dragging = false;
+};
+
 // "" stands for the Groups row in the expanded set.
 QString expandKey(const HistoryModel& model, const QModelIndex& index)
 {
     return model.kindAt(index) == Kind::GroupsRoot ? QString() : model.pathAt(index);
+}
+
+// Why a star, pin or group change was refused; empty when it was done. `group` is where
+// the star would have gone.
+QString refusal(db::Repository::Change change, const db::Repository::Limits& limits, const QString& group)
+{
+    switch (change) {
+    case db::Repository::Change::Done:
+        break;
+    case db::Repository::Change::FavoritesFull:
+        return PopupWindow::tr("Favorites already has %1 starred copies. Unstar one first, or allow more "
+                               "in Settings (up to 20).")
+            .arg(limits.favorites);
+    case db::Repository::Change::GroupStarsFull:
+        return PopupWindow::tr("%1 already has %2 starred copies. Unstar one there first.")
+            .arg(groups::display(group))
+            .arg(limits.starsPerGroup);
+    case db::Repository::Change::PinsFull:
+        return PopupWindow::tr("You can pin up to %1 copies. Unpin one first.").arg(limits.pins);
+    }
+    return {};
 }
 
 } // namespace
@@ -84,6 +164,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_controller(new SearchController(repo, *m_model, this))
     , m_search(new SearchBar(this))
     , m_settingsButton(new QToolButton(this))
+    , m_dragHandle(new DragHandle([this] { m_userPosition = pos(); }, this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
     , m_groupPrompt(askGroup)
@@ -114,14 +195,30 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     auto* settingsShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma), this);
     connect(settingsShortcut, &QShortcut::activated, this, &PopupWindow::settingsRequested);
 
-    m_footer->setText(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+G group · Ctrl+E note · Del remove · Esc close"));
+    m_footer->setText(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+P pin · Ctrl+G group · Ctrl+E note · "
+                         "Alt+↑↓ move · Del remove"));
+    m_footer->setToolTip(tr("Alt+↑/↓ moves a group, or a pinned copy, up or down. Esc closes."));
     m_footer->setFont(scaledFont(m_footer->font(), 0.85));
     m_footer->setEnabled(false); // dim
 
     auto* frame = new QFrame(this);
     frame->setFrameShape(QFrame::StyledPanel);
+    auto* handle = static_cast<QLabel*>(m_dragHandle);
+    const int iconSize = handle->fontMetrics().height();
+    handle->setText(QStringLiteral("ClipItTo"));
+    handle->setFont(scaledFont(handle->font(), 0.9));
+    auto* icon = new DragHandle([this] { m_userPosition = pos(); }, this);
+    icon->setPixmap(appIcon(currentThemeIsDark()).pixmap(iconSize, iconSize));
+    onThemeApplied([icon = QPointer<QLabel>(icon), iconSize] {
+        if (icon) {
+            icon->setPixmap(appIcon(currentThemeIsDark()).pixmap(iconSize, iconSize));
+        }
+    });
     auto* top = new QHBoxLayout;
     top->setSpacing(4);
+    top->addWidget(icon);
+    top->addWidget(m_dragHandle);
+    top->addSpacing(4);
     top->addWidget(m_search, 1);
     top->addWidget(m_settingsButton);
     auto* inner = new QVBoxLayout(frame);
@@ -184,6 +281,12 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
             toggleFavorite(e->id);
         }
     });
+    connect(m_view, &HistoryView::togglePinRequested, this, [this](const QModelIndex& index) {
+        if (const Entry* e = entryFor(index)) {
+            togglePin(e->id);
+        }
+    });
+    connect(m_view, &HistoryView::moveRequested, this, &PopupWindow::moveItem);
     connect(m_view, &HistoryView::editGroupRequested, this, [this](const QModelIndex& index) {
         if (const Entry* e = entryFor(index)) {
             editGroup(e->id);
@@ -224,6 +327,7 @@ void PopupWindow::applyConfig(const Config& config)
 void PopupWindow::showPopup(const QString& activationToken)
 {
     if (!isVisible()) {
+        emit aboutToShow();
         m_restore.reset();
         m_expanded.clear(); // the group tree starts collapsed
         if (isBusy()) {
@@ -327,6 +431,17 @@ void PopupWindow::placeOnScreen()
         return;
     }
     const QRect area = screen->availableGeometry();
+    if (m_userPosition) {
+        // Where the user dragged it, as long as that is still on a screen.
+        const QRect wanted(*m_userPosition, size());
+        if (QScreen* there = QGuiApplication::screenAt(wanted.center())) {
+            const QRect bounds = there->availableGeometry();
+            move(qBound(bounds.left(), wanted.left(), bounds.right() - width()),
+                 qBound(bounds.top(), wanted.top(), bounds.bottom() - height()));
+            return;
+        }
+        m_userPosition.reset(); // that screen is gone
+    }
     if (m_centered) {
         // Same place every time: centered horizontally, in the upper third.
         move(area.left() + (area.width() - width()) / 2, area.top() + (area.height() - height()) / 3);
@@ -383,14 +498,87 @@ void PopupWindow::openGroups()
 
 void PopupWindow::toggleFavorite(qint64 id)
 {
+    Selection follow = selectionOf(m_view->currentIndex());
+    QString problem;
     try {
         if (const auto e = m_repo.get(id)) {
-            m_repo.setFavorite(id, !e->favorite);
+            problem = refusal(m_repo.setFavorite(id, !e->favorite), m_repo.limits(), e->group);
+            if (problem.isEmpty() && e->group.isEmpty() && follow.path == HistoryModel::favoritesPath()) {
+                follow.path.clear(); // unstarred: it left Favorites, follow it to its list row
+            }
         }
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "toggle favorite failed:" << err.what();
     }
+    if (!problem.isEmpty()) {
+        showMessage(problem);
+    }
+    refreshSelecting(follow);
+}
+
+void PopupWindow::togglePin(qint64 id)
+{
+    QString problem;
+    try {
+        if (const auto e = m_repo.get(id)) {
+            problem = refusal(m_repo.setPinned(id, !e->pinned()), m_repo.limits(), QString());
+        }
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "toggle pin failed:" << err.what();
+    }
+    if (!problem.isEmpty()) {
+        showMessage(problem);
+    }
     refreshSelecting(selectionOf(m_view->currentIndex()));
+}
+
+void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
+{
+    QString problem;
+    try {
+        const auto change = m_repo.setGroup(id, group);
+        problem = refusal(change, m_repo.limits(), groups::normalize(group));
+        if (problem.isEmpty() && follow.kind == Kind::Entry && follow.id == id) {
+            // The copy left its place in the group tree: find it again wherever it is now.
+            follow.path.clear();
+        }
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "assign group failed:" << err.what();
+    }
+    if (!problem.isEmpty()) {
+        showMessage(problem);
+    }
+    refreshSelecting(follow);
+}
+
+void PopupWindow::moveGroup(const QString& path, int delta)
+{
+    try {
+        m_repo.moveGroup(path, delta);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "move group failed:" << err.what();
+    }
+    refreshSelecting(Selection{Kind::Group, 0, path});
+}
+
+void PopupWindow::moveItem(const QModelIndex& index, int delta)
+{
+    const Selection selection = selectionOf(index);
+    if (m_model->kindAt(index) == Kind::Group) {
+        moveGroup(selection.path, delta);
+        return;
+    }
+    try {
+        const Entry* e = entryFor(index);
+        if (e && e->pinned() && !index.parent().isValid() && m_controller->query().trimmed().isEmpty()) {
+            m_repo.movePinned(e->id, delta); // a row of the Pinned list
+        } else {
+            return; // Favorites stays first; other copies are ordered by time
+        }
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "move failed:" << err.what();
+    }
+    refreshSelecting(selection);
 }
 
 void PopupWindow::editGroup(qint64 id)
@@ -407,11 +595,8 @@ void PopupWindow::editGroup(qint64 id)
             group = m_groupPrompt(this, e->group, m_repo.groups());
         }
         if (group) {
-            m_repo.setGroup(id, *group);
-            if (!follow.path.isEmpty()) {
-                // The copy left its place in the group tree: follow it to its section row.
-                follow.path.clear();
-            }
+            assignGroup(id, *group, follow);
+            return;
         }
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "assign group failed:" << err.what();
@@ -598,6 +783,7 @@ void PopupWindow::onResultsUpdated()
             break;
         case Kind::Group:
         case Kind::GroupsRoot:
+        case Kind::Favorites:
             target = m_model->findGroup(m_restore->path);
             break;
         case Kind::Header:
@@ -616,8 +802,8 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
 {
     const qint64 id = entry.id;
     auto* menu = new QMenu(parent);
-    menu->addAction(entry.favorite ? tr("Remove from favorites") : tr("★ Add to favorites"),
-                    this, [this, id] { toggleFavorite(id); });
+    menu->addAction(entry.favorite ? tr("Remove star") : tr("★ Star"), this, [this, id] { toggleFavorite(id); });
+    menu->addAction(entry.pinned() ? tr("Unpin") : tr("Pin to the top"), this, [this, id] { togglePin(id); });
 
     QMenu* groupMenu = menu->addMenu(tr("Group"));
     QStringList existing;
@@ -628,12 +814,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     }
     for (const QString& group : existing) {
         QAction* action = groupMenu->addAction(groups::display(group), this, [this, id, group] {
-            try {
-                m_repo.setGroup(id, group);
-            } catch (const db::DbError& err) {
-                qCWarning(lcPopup) << "assign group failed:" << err.what();
-            }
-            refreshSelecting(Selection{Kind::Entry, id, {}});
+            assignGroup(id, group, Selection{Kind::Entry, id, {}});
         });
         action->setCheckable(true);
         action->setChecked(group == entry.group);
@@ -644,12 +825,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     groupMenu->addAction(tr("New group…"), this, [this, id] { editGroup(id); });
     if (!entry.group.isEmpty()) {
         groupMenu->addAction(tr("Remove from group"), this, [this, id] {
-            try {
-                m_repo.setGroup(id, QString());
-            } catch (const db::DbError& err) {
-                qCWarning(lcPopup) << "remove group failed:" << err.what();
-            }
-            refreshSelecting(Selection{Kind::Entry, id, {}});
+            assignGroup(id, QString(), Selection{Kind::Entry, id, {}});
         });
     }
 
@@ -671,6 +847,8 @@ QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
     }
     menu->addAction(tr("New sub-group…"), this, [this, path] { newGroup(path); });
     menu->addAction(tr("Rename or move…"), this, [this, path] { renameGroup(path); });
+    menu->addAction(tr("Move up (Alt+↑)"), this, [this, path] { moveGroup(path, -1); });
+    menu->addAction(tr("Move down (Alt+↓)"), this, [this, path] { moveGroup(path, 1); });
     menu->addSeparator();
     menu->addAction(tr("Delete group"), this, [this, path] { deleteGroup(path); });
     return menu;

@@ -53,7 +53,8 @@ private slots:
     void emptyQueryView()
     {
         QBENCHMARK {
-            m_t.repo->saved(15);
+            m_t.repo->pinned(15);
+            m_t.repo->favorites();
             m_t.repo->recent(20, true);
         }
     }

@@ -15,8 +15,30 @@ namespace clipitto {
 
 #if defined(Q_OS_WIN)
 
+namespace {
+
+HWND g_pasteTarget = nullptr;
+
+} // namespace
+
+void rememberPasteTarget()
+{
+    HWND window = GetForegroundWindow();
+    DWORD process = 0;
+    GetWindowThreadProcessId(window, &process);
+    // Our own popup (already open) is no target: keep the previous one.
+    if (window && process != GetCurrentProcessId()) {
+        g_pasteTarget = window;
+    }
+}
+
 bool pasteWithSyntheticKeys(PasteKeys keys)
 {
+    if (g_pasteTarget && IsWindow(g_pasteTarget) && GetForegroundWindow() != g_pasteTarget) {
+        // Allowed: our process had the foreground until the popup hid a moment ago.
+        SetForegroundWindow(g_pasteTarget);
+    }
+
     const bool shiftInsert = keys == PasteKeys::ShiftInsert;
     const WORD modifier = shiftInsert ? VK_SHIFT : VK_CONTROL;
     const WORD key = shiftInsert ? VK_INSERT : 'V';
@@ -37,6 +59,8 @@ bool pasteWithSyntheticKeys(PasteKeys keys)
 }
 
 #elif defined(CLIPITTO_HAVE_XTEST)
+
+void rememberPasteTarget() {}
 
 bool pasteWithSyntheticKeys(PasteKeys keys)
 {
@@ -61,6 +85,8 @@ bool pasteWithSyntheticKeys(PasteKeys keys)
 }
 
 #else
+
+void rememberPasteTarget() {}
 
 bool pasteWithSyntheticKeys(PasteKeys)
 {

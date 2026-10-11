@@ -64,6 +64,7 @@ void SearchController::run()
     std::vector<HistoryModel::Section> sections;
     std::vector<HistoryModel::GroupData> groups;
     std::vector<Entry> grouped;
+    std::vector<Entry> favorites;
     try {
         if (m_query.trimmed().isEmpty()) {
             for (const auto& g : m_repo.groupTree()) {
@@ -72,11 +73,14 @@ void SearchController::run()
             if (!groups.empty()) {
                 grouped = m_repo.groupedEntries();
             }
-            auto saved = m_showSavedOnTop ? m_repo.saved(m_savedCap) : std::vector<Entry>{};
+            favorites = m_repo.favorites();
+            auto pinned = m_showSavedOnTop ? m_repo.pinned(m_savedCap) : std::vector<Entry>{};
+            // Pinned copies are listed above, starred and grouped ones in the group tree, so
+            // Recent leaves them out (unless the Pinned list is turned off: then it has them all).
             auto recent = m_repo.recent(m_recentCount, /*unsavedOnly=*/m_showSavedOnTop);
-            if (!saved.empty()) {
-                sections.push_back({tr("Saved"), std::move(saved)});
-                // A header only separates something: with nothing saved, recent stands alone.
+            if (!pinned.empty()) {
+                sections.push_back({tr("Pinned"), std::move(pinned)});
+                // A header only separates something: with nothing pinned, recent stands alone.
                 sections.push_back({recent.empty() ? QString() : tr("Recent"), std::move(recent)});
             } else {
                 sections.push_back({QString(), std::move(recent)});
@@ -87,7 +91,7 @@ void SearchController::run()
     } catch (const db::DbError& e) {
         qCWarning(lcSearch) << "query failed:" << e.what();
     }
-    m_model.setContent(std::move(sections), groups, grouped);
+    m_model.setContent(std::move(sections), groups, grouped, favorites);
     emit updated();
 }
 

@@ -32,6 +32,17 @@ public:
         bool inserted; // false when an identical clip existed and only last_used was bumped
     };
 
+    // Caps on stars and pins. They only block adding more: existing data over a lowered cap
+    // (e.g. favorites_limit reduced in the settings) is kept.
+    struct Limits {
+        int favorites = 10; // starred copies without a group (the Favorites group)
+        int starsPerGroup = 10; // starred copies directly in one group
+        int pins = 10;
+    };
+
+    // Outcome of a change that a limit can refuse; nothing changed unless Done.
+    enum class Change { Done, FavoritesFull, GroupStarsFull, PinsFull };
+
     enum class SearchMode {
         Auto, // FTS5 trigram when every token has >= 3 characters, LIKE otherwise
         ForceLike, // for tests: always use the LIKE path
@@ -44,18 +55,28 @@ public:
 
     IngestResult ingest(const QString& text);
 
-    // Newest first. With unsavedOnly, favorites and grouped items are excluded.
+    void setLimits(const Limits& limits) { m_limits = limits; }
+    const Limits& limits() const { return m_limits; }
+
+    // Newest first. With unsavedOnly, pinned, starred and grouped items are excluded.
     std::vector<Entry> recent(int limit, bool unsavedOnly);
-    // Favorites first, then grouped items, each newest first.
-    std::vector<Entry> saved(int limit);
+    // Pinned copies in their pinned order.
+    std::vector<Entry> pinned(int limit);
+    // Starred copies without a group (the Favorites group), newest first.
+    std::vector<Entry> favorites();
     // Saved matches first, then by relevance (note > group > content), then recency.
     // Returns nothing for a blank query.
     std::vector<Entry> search(const QString& query, int limit = 100, SearchMode mode = SearchMode::Auto);
 
     std::optional<Entry> get(qint64 id);
     void touch(qint64 id); // last_used = now
-    void setFavorite(qint64 id, bool favorite);
-    void setGroup(qint64 id, const QString& group); // a group path; created if new; empty clears
+    // Starring counts against the Favorites limit (no group) or the clip's group's limit.
+    Change setFavorite(qint64 id, bool favorite);
+    // A group path, created if new; empty clears. A starred clip keeps its star, so the
+    // target (a group, or Favorites when clearing) must have room for it.
+    Change setGroup(qint64 id, const QString& group);
+    Change setPinned(qint64 id, bool pinned); // new pins go last
+    bool movePinned(qint64 id, int delta); // -1 = up one place; false at either end
     void setNote(qint64 id, const QString& note); // empty clears the note
     void remove(qint64 id);
 
@@ -63,14 +84,19 @@ public:
     qint64 prune(int maxUnsaved);
 
     // --- Groups: a tree of paths (see GroupPath.h). Parents of a group always exist.
-    QStringList groups(); // every group path, parents before children
+    // Every group path, depth first: parents before children, siblings in the user's order
+    // (moveGroup), then by name.
+    QStringList groups();
     std::vector<GroupInfo> groupTree(); // same order, with direct clip counts
-    std::vector<Entry> groupedEntries(); // all clips that are in a group; favorites, then newest first
+    std::vector<Entry> groupedEntries(); // all clips that are in a group; starred, then newest first
+    // Moves a group among its siblings (-1 = up one place). False at either end.
+    bool moveGroup(const QString& path, int delta);
     QString createGroup(const QString& path); // creates it and its parents; returns the normalized path
     // Renames or moves a group with everything below it. Fails if the target exists or
     // lies inside the group being moved.
     bool renameGroup(const QString& from, const QString& to, QString* error = nullptr);
-    // Deletes a group and its sub-groups; their clips stay in the history, ungrouped.
+    // Deletes a group and its sub-groups; their clips stay in the history, ungrouped (starred
+    // ones go to Favorites even beyond its limit: limits only block adding more).
     void deleteGroup(const QString& path);
 
     qint64 count();
@@ -86,14 +112,17 @@ private:
     std::vector<Entry> collect(Stmt& stmt);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
     Stmt& likeStatement(int tokenCount);
+    int starsIn(const QString& group); // "" = Favorites (starred, no group)
+    Change roomForStar(const QString& group);
 
     Db& m_db;
     Clock m_clock;
+    Limits m_limits;
     QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;
     std::unique_ptr<Stmt> m_recentAll;
     std::unique_ptr<Stmt> m_recentUnsaved;
-    std::unique_ptr<Stmt> m_saved;
+    std::unique_ptr<Stmt> m_pinned;
     std::unique_ptr<Stmt> m_searchFts;
     std::unique_ptr<Stmt> m_get;
     std::unique_ptr<Stmt> m_touch;
@@ -102,7 +131,6 @@ private:
     std::unique_ptr<Stmt> m_setNote;
     std::unique_ptr<Stmt> m_remove;
     std::unique_ptr<Stmt> m_prune;
-    std::unique_ptr<Stmt> m_groups;
     std::unique_ptr<Stmt> m_count;
     std::unique_ptr<Stmt> m_countUnsaved;
     std::unordered_map<int, std::unique_ptr<Stmt>> m_likeByTokenCount;

@@ -9,6 +9,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QLabel>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QTest>
@@ -27,15 +28,15 @@ private:
     struct Fixture {
         TestDb t;
         std::unique_ptr<PopupWindow> popup;
-        qint64 favId = 0;
+        qint64 pinnedId = 0;
 
         explicit Fixture(Config cfg = {})
         {
-            favId = t.repo->ingest(QStringLiteral("ssh -J bastion app")).id;
+            pinnedId = t.repo->ingest(QStringLiteral("ssh -J bastion app")).id;
             t.repo->ingest(QStringLiteral("alpha"));
             t.repo->ingest(QStringLiteral("beta"));
             t.repo->ingest(QStringLiteral("gamma ray"));
-            t.repo->setFavorite(favId, true);
+            t.repo->setPinned(pinnedId, true);
             cfg.hideOnFocusLoss = false; // covered by focusLossHidesWhenEnabled
             popup = std::make_unique<PopupWindow>(*t.repo, cfg);
         }
@@ -75,7 +76,7 @@ private slots:
         Fixture f;
         QVERIFY(f.show());
         QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
-        // Rows: #Saved, ssh, #Recent, gamma ray, beta, alpha
+        // Rows: #Pinned, ssh, #Recent, gamma ray, beta, alpha
         QCOMPARE(f.model()->rowCount(), 6);
         QCOMPARE(f.currentRow(), 1);
     }
@@ -201,16 +202,115 @@ private slots:
         QCOMPARE(activated.size(), 1);
     }
 
-    void ctrlSTogglesFavoriteAndKeepsSelection()
+    void draggingTheAppNameMovesThePopupAndItReopensThere()
     {
         Fixture f;
         QVERIFY(f.show());
+        QWidget* handle = f.popup->dragHandle();
+        QCOMPARE(qobject_cast<QLabel*>(handle)->text(), QStringLiteral("ClipItTo"));
+        const QPoint before = f.popup->pos();
+        const QPoint grab = handle->rect().center();
+        QTest::mousePress(handle, Qt::LeftButton, {}, grab);
+        QTest::mouseMove(handle, grab + QPoint(40, 30));
+        QTest::mouseRelease(handle, Qt::LeftButton, {}, grab + QPoint(40, 30));
+        QCOMPARE(f.popup->pos(), before + QPoint(40, 30));
+        QVERIFY(f.popup->isVisible()); // dragging doesn't close it
+
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Escape);
+        QVERIFY(f.show());
+        QCOMPARE(f.popup->pos(), before + QPoint(40, 30)); // same place, not the pointer's
+    }
+
+    void choosingACopyHidesThePopup()
+    {
+        Fixture f;
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        QTest::keyClicks(f.popup->searchBar(), QStringLiteral("gamma"));
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Return);
+        QCOMPARE(activated.size(), 1);
+        QVERIFY(!f.popup->isVisible());
+    }
+
+    void ctrlSStarsIntoFavorites()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        QVERIFY(!f.model()->groupsRoot().isValid()); // no groups, no favorites yet
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
         QTest::keyClick(f.popup->view(), Qt::Key_Down); // gamma ray
         QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
+
+        const auto gammaId = f.t.repo->search(QStringLiteral("gamma")).front().id;
+        QVERIFY(f.t.repo->get(gammaId)->favorite);
+        // It moved from Recent into Favorites, the first group, and the cursor followed it.
+        const QModelIndex favorites = f.model()->findGroup(HistoryModel::favoritesPath());
+        QVERIFY(favorites.isValid());
+        QCOMPARE(favorites.parent(), f.model()->groupsRoot());
+        QCOMPARE(favorites.row(), 0);
+        QCOMPARE(f.model()->rowCount(favorites), 1);
         QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
-        QVERIFY(f.model()->entryAt(f.current())->favorite);
-        QCOMPARE(f.t.repo->saved(10).size(), 2u);
+        QCOMPARE(f.model()->pathAt(f.current()), HistoryModel::favoritesPath());
+
+        // Ctrl+S again unstars it: back in Recent, Favorites stays (empty) as the first group.
+        QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
+        QVERIFY(!f.t.repo->get(gammaId)->favorite);
+        QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
+        QVERIFY(!f.current().parent().isValid()); // a Recent row
+    }
+
+    void fullFavoritesExplainsInsteadOfStarring()
+    {
+        Config cfg;
+        Fixture f(cfg);
+        f.t.repo->setLimits({/*favorites=*/1, /*starsPerGroup=*/10, /*pins=*/10});
+        f.t.repo->setFavorite(f.t.repo->search(QStringLiteral("beta")).front().id, true);
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // the Groups row
+        QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha
+        QTest::keyClick(f.popup->view(), Qt::Key_S, Qt::ControlModifier);
+        QVERIFY(!f.t.repo->search(QStringLiteral("alpha")).front().favorite);
+        QCOMPARE(messages.size(), 1);
+        QVERIFY2(messages.first().contains(QStringLiteral("Favorites already has 1")), qPrintable(messages.first()));
+    }
+
+    void ctrlPPinsAndAltArrowsReorderPins()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // ssh (pinned)
+        QTest::keyClick(f.popup->view(), Qt::Key_Down); // gamma ray
+        QTest::keyClick(f.popup->view(), Qt::Key_P, Qt::ControlModifier);
+        // Rows: #Pinned, ssh, gamma ray, #Recent, beta, alpha
+        QCOMPARE(f.model()->entryAt(f.model()->index(2, 0))->content, QStringLiteral("gamma ray"));
+        QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
+
+        QTest::keyClick(f.popup->view(), Qt::Key_Up, Qt::AltModifier);
+        QCOMPARE(f.model()->entryAt(f.model()->index(1, 0))->content, QStringLiteral("gamma ray"));
+        QCOMPARE(f.currentContent(), QStringLiteral("gamma ray")); // the cursor moved with it
+
+        QTest::keyClick(f.popup->view(), Qt::Key_P, Qt::ControlModifier); // unpin
+        QCOMPARE(f.t.repo->pinned(10).size(), 1u);
+        QCOMPARE(f.currentContent(), QStringLiteral("gamma ray"));
+    }
+
+    void pinLimitExplains()
+    {
+        Fixture f;
+        for (int i = 0; i < 9; ++i) {
+            f.t.repo->setPinned(f.t.repo->ingest(QStringLiteral("pin %1").arg(i)).id, true);
+        }
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
+        QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha, not pinned
+        QTest::keyClick(f.popup->view(), Qt::Key_P, Qt::ControlModifier);
+        QCOMPARE(f.t.repo->pinned(20).size(), 10u);
+        QCOMPARE(messages.size(), 1);
+        QVERIFY(messages.first().contains(QStringLiteral("up to 10")));
     }
 
     void ctrlGAndCtrlEUsePrompts()
@@ -234,7 +334,7 @@ private slots:
         QCOMPARE(alpha.group, QStringLiteral("Work"));
         QCOMPARE(alpha.note, QStringLiteral("my title"));
         QVERIFY(offeredGroups.isEmpty()); // no groups existed yet
-        QCOMPARE(f.currentContent(), QStringLiteral("alpha")); // followed into the Saved section
+        QCOMPARE(f.currentContent(), QStringLiteral("alpha")); // followed into its group
         QCOMPARE(f.current().data(HistoryModel::TitleRole).toString(), QStringLiteral("my title"));
     }
 
@@ -245,7 +345,7 @@ private slots:
         QVERIFY(f.show());
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Down);
         QTest::keyClick(f.popup->view(), Qt::Key_E, Qt::ControlModifier);
-        QVERIFY(f.t.repo->get(f.favId)->note.isEmpty());
+        QVERIFY(f.t.repo->get(f.pinnedId)->note.isEmpty());
     }
 
     void deleteRemovesAndSelectsNeighbor()
@@ -273,7 +373,8 @@ private slots:
                 deleteAction = a;
             }
         }
-        QVERIFY(texts.contains(QStringLiteral("★ Add to favorites")));
+        QVERIFY(texts.contains(QStringLiteral("★ Star")));
+        QVERIFY(texts.contains(QStringLiteral("Pin to the top")));
         QVERIFY(texts.contains(QStringLiteral("Group")));
         QVERIFY(texts.contains(QStringLiteral("Add note…")));
         QVERIFY(deleteAction);
@@ -325,6 +426,8 @@ private slots:
         auto* view = f.popup->view();
         QTest::keyClick(view, Qt::Key_Right);
         QVERIFY(view->isExpanded(f.model()->groupsRoot()));
+        QTest::keyClick(view, Qt::Key_Down);
+        QCOMPARE(f.current(), f.model()->findGroup(HistoryModel::favoritesPath())); // always first
         QTest::keyClick(view, Qt::Key_Down);
         QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Work")));
         QTest::keyClick(view, Qt::Key_Return); // Enter on a group opens it
@@ -445,6 +548,29 @@ private slots:
         QVERIFY(f.t.repo->groups().contains(QStringLiteral("Personal")));
     }
 
+    void altArrowsReorderGroupsButNotFavorites()
+    {
+        GroupFixture f;
+        f.t.repo->createGroup(QStringLiteral("Personal"));
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        QTest::keyClick(view, Qt::Key_Down); // Favorites
+        QTest::keyClick(view, Qt::Key_Up, Qt::AltModifier);
+        QCOMPARE(f.model()->findGroup(HistoryModel::favoritesPath()).row(), 0); // stays first
+        QTest::keyClick(view, Qt::Key_Down, Qt::AltModifier);
+        QCOMPARE(f.model()->findGroup(HistoryModel::favoritesPath()).row(), 0);
+
+        QTest::keyClick(view, Qt::Key_Down); // Personal (by name, before Work)
+        QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Personal")));
+        QTest::keyClick(view, Qt::Key_Down, Qt::AltModifier);
+        QCOMPARE(f.t.repo->groups(), (QStringList{"Work", "Work/Servers", "Personal"}));
+        QCOMPARE(f.current(), f.model()->findGroup(QStringLiteral("Personal"))); // cursor followed
+        QCOMPARE(f.current().row(), 2); // Favorites, Work, Personal
+        QTest::keyClick(view, Qt::Key_Up, Qt::AltModifier);
+        QCOMPARE(f.current().row(), 1);
+    }
+
     void ctrlGRenamesAndDelDeletesAGroup()
     {
         GroupFixture f;
@@ -459,6 +585,10 @@ private slots:
         QVERIFY(f.show());
         auto* view = f.popup->view();
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        QTest::keyClick(view, Qt::Key_Down); // Favorites: Ctrl+G and Del do nothing there
+        QTest::keyClick(view, Qt::Key_G, Qt::ControlModifier);
+        QTest::keyClick(view, Qt::Key_Delete);
+        QCOMPARE(f.current(), f.model()->findGroup(HistoryModel::favoritesPath()));
         QTest::keyClick(view, Qt::Key_Down); // Work
         QTest::keyClick(view, Qt::Key_G, Qt::ControlModifier);
         QCOMPARE(f.t.repo->get(f.betaId)->group, QStringLiteral("Jobs"));

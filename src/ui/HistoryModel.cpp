@@ -97,7 +97,7 @@ std::unique_ptr<HistoryModel::Node> HistoryModel::makeEntryNode(const Entry& ent
     auto node = std::make_unique<Node>();
     node->kind = Kind::Entry;
     node->entry = entry;
-    node->path = parent && parent->kind == Kind::Group ? parent->path : QString();
+    node->path = parent && (parent->kind == Kind::Group || parent->kind == Kind::Favorites) ? parent->path : QString();
     // Precomputed once per refresh instead of on every paint.
     if (m_previewLines == 1) {
         node->title = entry.note.isEmpty() ? previewText(entry.content) : entry.note;
@@ -115,16 +115,28 @@ std::unique_ptr<HistoryModel::Node> HistoryModel::makeEntryNode(const Entry& ent
 }
 
 void HistoryModel::setContent(std::vector<Section> sections, const std::vector<GroupData>& groupList,
-                              const std::vector<Entry>& groupedEntries)
+                              const std::vector<Entry>& groupedEntries, const std::vector<Entry>& favorites)
 {
     beginResetModel();
     m_root = std::make_unique<Node>();
 
-    if (!groupList.empty()) {
+    if (!groupList.empty() || !favorites.empty()) {
         auto rootNode = std::make_unique<Node>();
         rootNode->kind = Kind::GroupsRoot;
         rootNode->label = tr("Groups");
         Node* root = m_root->add(std::move(rootNode));
+
+        // Favorites always comes first, even when empty, so its place never moves.
+        auto favoritesNode = std::make_unique<Node>();
+        favoritesNode->kind = Kind::Favorites;
+        favoritesNode->label = tr("Favorites");
+        favoritesNode->path = favoritesPath();
+        Node* favoritesGroup = root->add(std::move(favoritesNode));
+        for (const Entry& e : favorites) {
+            favoritesGroup->add(makeEntryNode(e, favoritesGroup));
+        }
+        favoritesGroup->count = int(favorites.size());
+        root->count += favoritesGroup->count;
 
         // Parents come before children (sorted paths), so each parent node already exists.
         QHash<QString, Node*> byPath;
@@ -234,6 +246,8 @@ QVariant HistoryModel::data(const QModelIndex& index, int role) const
         return e.favorite;
     case HasNoteRole:
         return !e.note.isEmpty();
+    case PinnedRole:
+        return e.pinned();
     case GroupRole:
         return e.group;
     case LastUsedRole:
@@ -270,7 +284,7 @@ QString HistoryModel::pathAt(const QModelIndex& index) const
 bool HistoryModel::isExpandable(const QModelIndex& index) const
 {
     const Kind kind = kindAt(index);
-    return (kind == Kind::GroupsRoot || kind == Kind::Group) && rowCount(index) > 0;
+    return (kind == Kind::GroupsRoot || kind == Kind::Group || kind == Kind::Favorites) && rowCount(index) > 0;
 }
 
 QModelIndex HistoryModel::groupsRoot() const
@@ -288,6 +302,14 @@ QModelIndex HistoryModel::findGroup(const QString& path) const
     const QModelIndex root = groupsRoot();
     if (path.isEmpty() || !root.isValid()) {
         return root;
+    }
+    if (path == favoritesPath()) {
+        for (const auto& child : nodeFor(root)->children) {
+            if (child->kind == Kind::Favorites) {
+                return indexFor(child.get());
+            }
+        }
+        return {};
     }
     // Walk down level by level.
     const Node* node = nodeFor(root);
@@ -340,7 +362,7 @@ QModelIndex HistoryModel::findEntry(qint64 id, const QString& groupPath) const
                 && (groupPath.isEmpty() || child->path == groupPath)) {
                 return indexFor(child.get());
             }
-            if (child->kind == Kind::Group) {
+            if (child->kind == Kind::Group || child->kind == Kind::Favorites) {
                 stack.push_back(child.get());
             }
         }

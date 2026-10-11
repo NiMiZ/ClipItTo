@@ -171,6 +171,9 @@ void HistoryView::keyPressEvent(QKeyEvent* event)
         case Qt::Key_S:
             emit toggleFavoriteRequested(current);
             return;
+        case Qt::Key_P:
+            emit togglePinRequested(current);
+            return;
         case Qt::Key_G:
             emit editGroupRequested(current);
             return;
@@ -180,6 +183,13 @@ void HistoryView::keyPressEvent(QKeyEvent* event)
         default:
             break;
         }
+    }
+
+    if (mods == Qt::AltModifier && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+        if (current.isValid()) {
+            emit moveRequested(current, event->key() == Qt::Key_Up ? -1 : 1);
+        }
+        return;
     }
 
     switch (event->key()) {

@@ -151,7 +151,10 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
-          $log = & $iscc /DStageDir="$PWD\stage" /DOutputDir="$PWD\installer" /DAppVersion=0.1.0 packaging\windows\clipitto.iss 2>&1 | Out-String
+          # The version comes from project(... VERSION x.y.z) in CMakeLists.txt.
+          $version = (Select-String -Path CMakeLists.txt -Pattern '^\s*VERSION (\d+\.\d+\.\d+)').Matches[0].Groups[1].Value
+          if (-not $version) { Write-Host "::error title=installer::no VERSION in CMakeLists.txt"; exit 1 }
+          $log = & $iscc /DStageDir="$PWD\stage" /DOutputDir="$PWD\installer" /DAppVersion=$version packaging\windows\clipitto.iss 2>&1 | Out-String
           Write-Host $log
           if ($LASTEXITCODE -ne 0) {
             $tail = ($log -split "`r?`n" | Select-Object -Last 30) -join '%0A'

@@ -41,6 +41,26 @@ private slots:
         qputenv("FAKE_WLPASTE_DIR", QFile::encodeName(m_dir.path()));
     }
 
+    void requestsUtf8NotLatin1()
+    {
+        // An X11 app (through Xwayland) listing the Latin-1 STRING target first: asking
+        // wl-paste for just "text" could pick it and turn Hebrew into '?'.
+        QCOMPARE(WlPasteBackend::textType({"TEXT", "STRING", "UTF8_STRING", "text/plain"}), QStringLiteral("UTF8_STRING"));
+        QCOMPARE(WlPasteBackend::textType({"text/plain", "text/plain;charset=utf-8"}), QStringLiteral("text/plain;charset=utf-8"));
+        QCOMPARE(WlPasteBackend::textType({"STRING", "text/plain"}), QStringLiteral("text/plain"));
+        QCOMPARE(WlPasteBackend::textType({"text/html", "STRING"}), QStringLiteral("text")); // let wl-paste decide
+
+        clipboard("שלום", "STRING\nUTF8_STRING\n");
+        WlPasteBackend backend(m_program);
+        QSignalSpy captured(&backend, &WlPasteBackend::captured);
+        backend.start();
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(lastText(captured), QStringLiteral("שלום"));
+        QFile reads(m_dir.filePath(QStringLiteral("reads")));
+        QVERIFY(reads.open(QIODevice::ReadOnly));
+        QCOMPARE(reads.readAll().trimmed(), QByteArray("UTF8_STRING"));
+    }
+
     void probeDetectsDataControl()
     {
         QVERIFY(WlPasteBackend::probe(m_program));

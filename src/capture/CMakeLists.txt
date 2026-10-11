@@ -4,7 +4,13 @@ add_library(clipitto_capture STATIC
     GnomeExtBackend.h
     QtClipboardBackend.cpp QtClipboardBackend.h
     WlPasteBackend.cpp WlPasteBackend.h
+    NativeClipboard.h
 )
+if(WIN32)
+    target_sources(clipitto_capture PRIVATE NativeClipboard_win.cpp)
+else()
+    target_sources(clipitto_capture PRIVATE NativeClipboard_none.cpp)
+endif()
 
 target_include_directories(clipitto_capture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(clipitto_capture PUBLIC clipitto_core Qt6::Gui)

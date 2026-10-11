@@ -63,14 +63,17 @@ public:
     void newSubGroup();
     void renameSelectedGroup();
     void deleteSelectedGroup();
+    void moveSelectedGroup(int delta); // -1 = up
     void selectGroup(const QString& path);
     QString selectedGroup() const;
 
     QComboBox* themeBox() const { return m_theme; }
     QSpinBox* copiesBox() const { return m_copies; }
     QSpinBox* linesBox() const { return m_lines; }
+    QSpinBox* favoritesBox() const { return m_favorites; }
     QComboBox* positionBox() const { return m_position; }
     QCheckBox* encryptBox() const { return m_encrypt; }
+    QCheckBox* pasteBox() const { return m_paste; }
     QDialogButtonBox* buttons() const { return m_buttons; }
     QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
@@ -90,8 +93,10 @@ private:
     QComboBox* m_theme;
     QSpinBox* m_copies;
     QSpinBox* m_lines;
+    QSpinBox* m_favorites;
     QComboBox* m_position;
     QCheckBox* m_encrypt;
+    QCheckBox* m_paste;
     QTabWidget* m_tabs;
     QDialogButtonBox* m_buttons;
     QKeySequenceEdit* m_shortcut;
@@ -100,6 +105,8 @@ private:
     QPushButton* m_subGroupButton;
     QPushButton* m_renameButton;
     QPushButton* m_deleteButton;
+    QPushButton* m_upButton;
+    QPushButton* m_downButton;
 
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;

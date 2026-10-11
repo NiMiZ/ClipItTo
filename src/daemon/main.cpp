@@ -1,4 +1,5 @@
 #include "AppIcon.h"
+#include "Theme.h"
 #include "Daemon.h"
 #include "Paths.h"
 #include "PopupWindow.h"
@@ -58,6 +59,8 @@ int main(int argc, char* argv[])
     QApplication::setApplicationVersion(QStringLiteral(CLIPITTO_VERSION));
     QApplication::setDesktopFileName(QStringLiteral("io.github.nimiz.ClipItTo")); // Wayland app_id
     QApplication::setWindowIcon(clipitto::ui::appIcon());
+    clipitto::ui::onThemeApplied(
+        [] { QApplication::setWindowIcon(clipitto::ui::appIcon(clipitto::ui::currentThemeIsDark())); });
     QApplication::setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;
@@ -134,7 +137,9 @@ int main(int argc, char* argv[])
                      [&daemon] { daemon.popup()->togglePopup(); });
 
     // Tray icon: the visible sign that ClipItTo runs, and the way to quit it.
-    QSystemTrayIcon tray(clipitto::ui::appIcon());
+    // The icon follows the theme chosen in Settings (and the desktop, for "system").
+    QSystemTrayIcon tray(clipitto::ui::appIcon(clipitto::ui::currentThemeIsDark()));
+    clipitto::ui::onThemeApplied([&tray] { tray.setIcon(clipitto::ui::appIcon(clipitto::ui::currentThemeIsDark())); });
     QMenu trayMenu;
     trayMenu.addAction(QObject::tr("Open ClipItTo"), daemon.popup(), [&daemon] { daemon.popup()->showPopup(); });
     trayMenu.addAction(QObject::tr("Reload settings"), &daemon, &clipitto::Daemon::reloadConfig);

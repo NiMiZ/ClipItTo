@@ -39,6 +39,16 @@ private slots:
         QVERIFY(f.check(QStringLiteral("hunter2"), keepass) == Verdict::Sensitive);
         QVERIFY(ClipFilter::isSensitive({QStringLiteral("application/x-nspasteboard-concealed-type")}));
         QVERIFY(!ClipFilter::isSensitive({QStringLiteral("text/plain"), QStringLiteral("text/html")}));
+        // Windows markers, as NativeClipboard reports them.
+        QVERIFY(ClipFilter::isSensitive({QStringLiteral("text/plain"), QStringLiteral("ExcludeClipboardContentFromMonitorProcessing")}));
+        QVERIFY(ClipFilter::isSensitive({QStringLiteral("text/plain"), QStringLiteral("CanIncludeInClipboardHistory=0")}));
+        QVERIFY(ClipFilter::isSensitive({QStringLiteral("text/plain"), QStringLiteral("CanUploadToCloudClipboard=0")}));
+        QVERIFY(ClipFilter::isSensitive({QStringLiteral("Clipboard Viewer Ignore")}));
+        QVERIFY(ClipFilter::isSensitive(
+            {QStringLiteral("application/x-qt-windows-mime;value=\"ExcludeClipboardContentFromMonitorProcessing\"")}));
+        QVERIFY(!ClipFilter::isSensitive({QStringLiteral("application/x-qt-windows-mime;value=\"Rich Text Format\"")}));
+        // An empty text with a marker is still Sensitive (the Windows reader skips the text).
+        QVERIFY(ClipFilter(1024).check(QString(), {QStringLiteral("CanIncludeInClipboardHistory=0")}) == Verdict::Sensitive);
     }
 
     void ignoresOwnWriteEchoWithinWindow()

@@ -28,9 +28,9 @@ class HistoryView;
 class SearchBar;
 class SearchController;
 
-// The popup: search bar and settings button on top; below, the collapsed group tree,
-// saved items and recent copies. Built once and shown/hidden on demand. It edits
-// favorites, groups and notes itself; copying the chosen entry back to the clipboard is
+// The popup: search bar and settings button on top; below, the collapsed group tree
+// (Favorites first), pinned and recent copies. Built once and shown/hidden on demand. It
+// edits stars, pins, groups and notes itself; copying the chosen entry back to the clipboard is
 // the owner's job (connect entryActivated), and happens before the popup hides.
 class PopupWindow : public QWidget {
     Q_OBJECT
@@ -79,9 +79,11 @@ public:
     HistoryModel* model() const { return m_model; }
     SearchController* controller() const { return m_controller; }
     QToolButton* settingsButton() const { return m_settingsButton; }
+    QWidget* dragHandle() const { return m_dragHandle; }
 
 signals:
     void entryActivated(const clipitto::Entry& entry);
+    void aboutToShow(); // before the popup takes focus (the previous window still has it)
     void visibilityChanged(bool visible);
     void settingsRequested();
 
@@ -104,6 +106,10 @@ private:
     void activate(const QModelIndex& index);
     void openGroups();
     void toggleFavorite(qint64 id);
+    void togglePin(qint64 id);
+    void assignGroup(qint64 id, const QString& group, Selection follow);
+    void moveItem(const QModelIndex& index, int delta); // a group, or a pinned copy
+    void moveGroup(const QString& path, int delta);
     void editGroup(qint64 id);
     void editNote(qint64 id);
     void remove(const QModelIndex& index);
@@ -122,6 +128,7 @@ private:
     SearchController* m_controller;
     SearchBar* m_search;
     QToolButton* m_settingsButton;
+    QWidget* m_dragHandle; // the app name: drag it to move the popup
     HistoryView* m_view;
     QLabel* m_footer;
     Prompt m_groupPrompt;
@@ -132,6 +139,7 @@ private:
     bool m_hideOnFocusLoss = true;
     bool m_singleClick = true;
     bool m_centered = false; // popup_position = center
+    std::optional<QPoint> m_userPosition; // where the user dragged the popup; reused while running
     QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss
     std::optional<Selection> m_restore; // reselected after the next refresh

@@ -7,6 +7,8 @@
 #include <QStyleFactory>
 #include <QStyleHints>
 
+#include <vector>
+
 #ifdef Q_OS_WIN
 #include <QSettings>
 #endif
@@ -28,6 +30,13 @@ const Original& original()
 }
 
 Theme g_current = Theme::System;
+bool g_dark = false;
+
+std::vector<std::function<void()>>& listeners()
+{
+    static std::vector<std::function<void()>> value;
+    return value;
+}
 
 void setStyle(const QString& name)
 {
@@ -39,6 +48,7 @@ void setStyle(const QString& name)
 void apply()
 {
     const bool dark = g_current == Theme::Dark || (g_current == Theme::System && systemPrefersDark());
+    g_dark = dark;
     if (dark) {
         setStyle(QStringLiteral("Fusion"));
         QApplication::setPalette(darkPalette());
@@ -48,6 +58,9 @@ void apply()
     } else {
         setStyle(original().styleName);
         QApplication::setPalette(original().palette);
+    }
+    for (const auto& listener : listeners()) {
+        listener();
     }
 }
 
@@ -82,6 +95,16 @@ QPalette darkPalette()
         p.setColor(QPalette::Disabled, role, disabled);
     }
     return p;
+}
+
+bool currentThemeIsDark()
+{
+    return g_dark;
+}
+
+void onThemeApplied(std::function<void()> callback)
+{
+    listeners().push_back(std::move(callback));
 }
 
 bool systemPrefersDark()

@@ -31,9 +31,20 @@ bool ClipFilter::isSensitive(const QStringList& mimeTypes)
         QStringLiteral("application/x-kde-passwordManagerHint"),
         QStringLiteral("application/x-nspasteboard-concealed-type"),
         QStringLiteral("ExcludeClipboardContentFromMonitorProcessing"),
+        // Windows DWORD markers set to 0, as NativeClipboard reports them.
+        QStringLiteral("CanIncludeInClipboardHistory=0"),
+        QStringLiteral("CanUploadToCloudClipboard=0"),
+        QStringLiteral("Clipboard Viewer Ignore"), // set by KeePass and others with the above
     };
-    return std::any_of(mimeTypes.begin(), mimeTypes.end(),
-                       [](const QString& type) { return markers.contains(type, Qt::CaseInsensitive); });
+    // Qt reports Windows formats it has no MIME type for wrapped:
+    // application/x-qt-windows-mime;value="ExcludeClipboardContentFromMonitorProcessing"
+    static const QString qtWrapped = QStringLiteral("application/x-qt-windows-mime;value=\"");
+    return std::any_of(mimeTypes.begin(), mimeTypes.end(), [](const QString& type) {
+        if (type.startsWith(qtWrapped, Qt::CaseInsensitive) && type.endsWith(QLatin1Char('"'))) {
+            return markers.contains(type.mid(qtWrapped.size()).chopped(1), Qt::CaseInsensitive);
+        }
+        return markers.contains(type, Qt::CaseInsensitive);
+    });
 }
 
 ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mimeTypes) const

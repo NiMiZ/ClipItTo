@@ -26,6 +26,8 @@ public:
     // True if `program --watch` keeps running, i.e. the compositor supports data-control.
     // Without it wl-paste exits immediately with an error. Blocks for up to timeoutMs.
     static bool probe(const QString& program = QStringLiteral("wl-paste"), int timeoutMs = 300);
+    // The --type to request: a UTF-8 text type when one is offered, else wl-paste's "text".
+    static QString textType(const QStringList& mimeTypes);
 
 private:
     void spawnWatcher();

@@ -4,7 +4,7 @@
 #   types, text  what --list-types and --no-newline --type text print
 #   event        created by a test to signal a clipboard change (consumed here)
 #   die          created by a test to make the watcher exit
-#   reads        one line appended per text fetch
+#   reads        one line appended per text fetch: the requested --type
 d=${FAKE_WLPASTE_DIR:?}
 case "$1" in
 --watch)
@@ -21,6 +21,6 @@ case "$1" in
     done
     ;;
 --list-types) cat "$d/types" ;;
---no-newline) echo x >> "$d/reads"; cat "$d/text" ;;
+--no-newline) echo "$3" >> "$d/reads"; cat "$d/text" ;;
 *) exit 2 ;;
 esac

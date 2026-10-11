@@ -1,14 +1,17 @@
 # ClipItTo configuration: copy to ~/.config/clipitto/config.toml.
 # Apply changes with `clipitto --reload` (or `systemctl --user reload clipitto`).
 
-max_history = 1000          # unsaved items kept; favorites and grouped items are never pruned
+max_history = 1000          # unsaved items kept; pinned, starred and grouped items are never pruned
 recent_count = 20           # recent copies shown when the search box is empty
 preview_lines = 1           # text lines shown per copy (1 = the whole text squeezed on one line)
-show_saved_on_top = true    # list favorites and grouped items above recent copies
-saved_cap = 15              # at most this many saved items in that list
+show_saved_on_top = true    # list pinned copies (Ctrl+P, up to 10) above recent copies
+saved_cap = 15              # at most this many pinned copies in that list
+favorites_limit = 10        # starred copies without a group, shown in Favorites (1-20);
+                            # a group holds up to 10 starred copies, listed first
 max_item_bytes = 1048576    # larger copies are not recorded
 capture_primary = false     # also record the primary (mouse-selection) clipboard, where supported
-paste_on_enter = false      # after Enter, also paste into the previous window
+paste_on_enter = true       # choosing a copy (Enter or click) also pastes it into the window
+                            # you came from; false = only put it on the clipboard
 paste_keys = "ctrl+v"       # ctrl+v | shift+insert (terminals)
 click_to_copy = "single"    # single | double
 hide_on_focus_loss = true

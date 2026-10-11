@@ -20,12 +20,14 @@ QStringList previewLines(const QString& content, int count, int maxChars = 300);
 QString relativeTime(const QDateTime& then, const QDateTime& now);
 
 // What the popup lists, as a tree:
-//   Groups                (only when groups exist; collapsed by default)
-//     Work                (group: its sub-groups first, then its copies)
+//   Groups                (when there are groups or favorites; collapsed by default)
+//     ★ Favorites         (always first: starred copies that are in no group)
+//       <copy>
+//     Work                (group: its sub-groups first, then its copies, starred first)
 //       Servers
 //         <copy>
 //       <copy>
-//   SAVED                 (section header, inert)
+//   PINNED                (section header, inert)
 //     <copy> ...          (sections are flat: their copies are top-level rows)
 //   RECENT
 //   <copy> ...
@@ -45,9 +47,13 @@ public:
         PathRole, // group path (groups, and copies inside the group tree)
         CountRole, // copies in a group and its sub-groups
         HasNoteRole, // the title is the user's note (drawn bold), not the content
+        PinnedRole,
     };
 
-    enum class Kind { Header, Entry, GroupsRoot, Group };
+    enum class Kind { Header, Entry, GroupsRoot, Group, Favorites };
+
+    // The Favorites node's path: never a real group path (those have no leading '/').
+    static QString favoritesPath() { return QStringLiteral("/favorites"); }
 
     struct Section {
         QString header; // empty: no header row
@@ -66,9 +72,9 @@ public:
     void setPreviewLines(int lines);
     int previewLineCount() const { return m_previewLines; }
 
-    // Replaces everything. With no groups there is no Groups row.
+    // Replaces everything. With no groups and no favorites there is no Groups row.
     void setContent(std::vector<Section> sections, const std::vector<GroupData>& groups = {},
-                    const std::vector<Entry>& groupedEntries = {});
+                    const std::vector<Entry>& groupedEntries = {}, const std::vector<Entry>& favorites = {});
 
     QModelIndex index(int row, int column, const QModelIndex& parent = {}) const override;
     QModelIndex parent(const QModelIndex& child) const override;
@@ -80,7 +86,7 @@ public:
     Kind kindAt(const QModelIndex& index) const;
     const Entry* entryAt(const QModelIndex& index) const; // nullptr for anything but a copy
     QString pathAt(const QModelIndex& index) const;
-    bool isExpandable(const QModelIndex& index) const; // a group (or the Groups row) with children
+    bool isExpandable(const QModelIndex& index) const; // a group (Favorites, the Groups row) with children
 
     QModelIndex groupsRoot() const; // invalid when there are no groups
     QModelIndex findGroup(const QString& path) const;

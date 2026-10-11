@@ -96,6 +96,32 @@ private slots:
                                      QStringLiteral("Work/Servers/Prod")}));
     }
 
+    void pinsMigrationKeepsDataAndSavedRule()
+    {
+        Db db(QStringLiteral(":memory:"));
+        auto migrations = builtinMigrations();
+        migrate(db, {migrations[0], migrations[1]}); // schema 2
+        db.exec("INSERT INTO clips(content, content_hash, is_favorite, group_name) VALUES "
+                "('star', 'h1', 1, NULL), ('grouped', 'h2', 0, 'Work'), ('plain', 'h3', 0, NULL)");
+        db.exec("INSERT INTO groups(path) VALUES ('Work')");
+        migrate(db);
+        QCOMPARE(schemaVersion(db), 3);
+
+        Stmt s(db, "SELECT content, is_saved, pin_position FROM clips ORDER BY id");
+        QStringList rows;
+        while (s.step()) {
+            rows << QStringLiteral("%1:%2:%3").arg(s.colText(0)).arg(s.colInt(1)).arg(s.colIsNull(2) ? "-" : "pinned");
+        }
+        QCOMPARE(rows, (QStringList{"star:1:-", "grouped:1:-", "plain:0:-"}));
+        db.exec("UPDATE clips SET pin_position = 0 WHERE content = 'plain'");
+        Stmt saved(db, "SELECT is_saved FROM clips WHERE content = 'plain'");
+        QVERIFY(saved.step());
+        QCOMPARE(saved.colInt(0), 1); // pinned counts as saved
+        Stmt order(db, "SELECT position FROM groups WHERE path = 'Work'");
+        QVERIFY(order.step());
+        QVERIFY(order.colIsNull(0)); // unordered until the user moves it
+    }
+
     void newerSchemaIsRejected()
     {
         Db db(QStringLiteral(":memory:"));

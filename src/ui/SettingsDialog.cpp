@@ -50,8 +50,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_theme(new QComboBox(this))
     , m_copies(new QSpinBox(this))
     , m_lines(new QSpinBox(this))
+    , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
     , m_encrypt(new QCheckBox(tr("Encrypt the history on disk"), this))
+    , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
     , m_tabs(new QTabWidget(this))
     , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
     , m_shortcut(new QKeySequenceEdit(this))
@@ -60,6 +62,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_subGroupButton(new QPushButton(tr("New sub-group…"), this))
     , m_renameButton(new QPushButton(tr("Rename or move…"), this))
     , m_deleteButton(new QPushButton(tr("Delete"), this))
+    , m_upButton(new QPushButton(tr("Move up"), this))
+    , m_downButton(new QPushButton(tr("Move down"), this))
     , m_textPrompt(defaultTextPrompt())
     , m_confirm(defaultConfirmPrompt())
     , m_notify([](QWidget* p, const QString& message) { QMessageBox::warning(p, QStringLiteral("ClipItTo"), message); })
@@ -86,6 +90,17 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_lines->setValue(config.previewLines);
     m_lines->setToolTip(tr("1 squeezes each copy onto one line; more shows its first lines"));
     form->addRow(tr("Preview lines per copy:"), m_lines);
+
+    m_favorites->setRange(1, 20);
+    m_favorites->setValue(config.favoritesLimit);
+    m_favorites->setToolTip(tr("Starred copies that are in no group are kept in Favorites, up to this many. "
+                               "A group holds up to 10 starred copies, listed first."));
+    form->addRow(tr("Favorites limit:"), m_favorites);
+
+    m_paste->setChecked(config.pasteOnEnter);
+    m_paste->setToolTip(tr("Off: choosing a copy only puts it on the clipboard. On GNOME Wayland, "
+                           "pasting needs the ClipItTo GNOME Shell extension."));
+    form->addRow(tr("After choosing a copy:"), m_paste);
 
     m_position->addItem(tr("Near the mouse pointer"), int(PopupPosition::Cursor));
     m_position->addItem(tr("Center of the screen"), int(PopupPosition::Center));
@@ -146,8 +161,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         buttons->addWidget(b);
     }
     groupsLayout->addLayout(buttons);
+    auto* order = new QHBoxLayout;
+    for (QPushButton* b : {m_upButton, m_downButton}) {
+        b->setAutoDefault(false);
+        order->addWidget(b);
+    }
+    order->addStretch(1);
+    groupsLayout->addLayout(order);
     auto* hint = new QLabel(tr("<b>Changes to groups are saved immediately.</b> A copy can be put in a "
-                               "group from the popup (Ctrl+G or right-click)."),
+                               "group from the popup (Ctrl+G or right-click). Move up/down sets the order "
+                               "in the popup (Alt+↑/↓ there); Favorites always comes first."),
                             this);
     hint->setWordWrap(true);
     groupsLayout->addWidget(hint);
@@ -155,12 +178,21 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     connect(m_subGroupButton, &QPushButton::clicked, this, &SettingsDialog::newSubGroup);
     connect(m_renameButton, &QPushButton::clicked, this, &SettingsDialog::renameSelectedGroup);
     connect(m_deleteButton, &QPushButton::clicked, this, &SettingsDialog::deleteSelectedGroup);
+    connect(m_upButton, &QPushButton::clicked, this, [this] { moveSelectedGroup(-1); });
+    connect(m_downButton, &QPushButton::clicked, this, [this] { moveSelectedGroup(1); });
     connect(m_groups, &QTreeWidget::itemDoubleClicked, this, [this] { renameSelectedGroup(); });
     connect(m_groups, &QTreeWidget::itemSelectionChanged, this, [this] {
         const bool any = !selectedGroup().isEmpty();
         for (QPushButton* b : {m_subGroupButton, m_renameButton, m_deleteButton}) {
             b->setEnabled(any);
         }
+        // Only where there is a sibling to swap with.
+        const QList<QTreeWidgetItem*> items = m_groups->selectedItems();
+        QTreeWidgetItem* item = items.isEmpty() ? nullptr : items.first();
+        const int row = item ? (item->parent() ? item->parent()->indexOfChild(item) : m_groups->indexOfTopLevelItem(item)) : -1;
+        const int siblings = item ? (item->parent() ? item->parent()->childCount() : m_groups->topLevelItemCount()) : 0;
+        m_upButton->setEnabled(row > 0);
+        m_downButton->setEnabled(row >= 0 && row < siblings - 1);
     });
     reloadGroups();
 
@@ -193,9 +225,11 @@ Config SettingsDialog::config() const
     c.theme = Theme(m_theme->currentData().toInt());
     c.recentCount = m_copies->value();
     c.previewLines = m_lines->value();
+    c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;
     c.popupPosition = PopupPosition(m_position->currentData().toInt());
     c.encryptHistory = m_encrypt->isChecked();
+    c.pasteOnEnter = m_paste->isChecked();
     return c;
 }
 
@@ -322,6 +356,22 @@ void SettingsDialog::renameSelectedGroup()
     }
     m_groupsChanged = true;
     reloadGroups(groups::normalize(*target));
+}
+
+void SettingsDialog::moveSelectedGroup(int delta)
+{
+    const QString path = selectedGroup();
+    if (path.isEmpty()) {
+        return;
+    }
+    try {
+        if (m_repo.moveGroup(path, delta)) {
+            m_groupsChanged = true;
+            reloadGroups(path);
+        }
+    } catch (const db::DbError& e) {
+        m_notify(this, QString::fromUtf8(e.what()));
+    }
 }
 
 void SettingsDialog::deleteSelectedGroup()

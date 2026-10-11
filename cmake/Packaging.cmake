@@ -72,7 +72,7 @@ if(NOT CLIPITTO_DEB_SHLIBDEPS)
         string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libqt6keychain1")
     endif()
     if(NOT CLIPITTO_ENCRYPTION)
-        string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libsqlite3-0") # otherwise SQLite is built in
+        string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libsqlite3-0 (>= 3.35)") # DROP COLUMN; otherwise SQLite is built in
     endif()
 endif()
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gnome-shell | wl-clipboard")

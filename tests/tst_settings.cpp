@@ -1,6 +1,8 @@
 #include "Config.h"
 #include "SettingsDialog.h"
 #include "TestDb.h"
+#include "Theme.h"
+#include "AppIcon.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -31,6 +33,23 @@ private:
     }
 
 private slots:
+    void themeChangesAreAnnounced()
+    {
+        int calls = 0;
+        clipitto::ui::onThemeApplied([&calls] { ++calls; });
+        clipitto::ui::applyTheme(Theme::Dark);
+        QVERIFY(clipitto::ui::currentThemeIsDark());
+        QCOMPARE(calls, 1);
+        clipitto::ui::applyTheme(Theme::Light);
+        QVERIFY(!clipitto::ui::currentThemeIsDark());
+        QCOMPARE(calls, 2);
+        // The icon's two variants differ (the tray switches between them).
+        const QImage light = clipitto::ui::appIcon(false).pixmap(32, 32).toImage();
+        const QImage dark = clipitto::ui::appIcon(true).pixmap(32, 32).toImage();
+        QVERIFY(light != dark);
+        clipitto::ui::applyTheme(Theme::System);
+    }
+
     void showsAndReturnsTheConfig()
     {
         TestDb t;
@@ -51,7 +70,13 @@ private slots:
         d.copiesBox()->setValue(50);
         d.linesBox()->setValue(3);
         const Config edited = d.config();
+        QVERIFY(d.pasteBox()->isChecked()); // pasting is the default
+        d.pasteBox()->setChecked(false);
+        QVERIFY(!d.config().pasteOnEnter);
+        d.favoritesBox()->setValue(15);
+        QCOMPARE(d.favoritesBox()->maximum(), 20);
         QVERIFY(edited.theme == Theme::Light);
+        QCOMPARE(d.config().favoritesLimit, 15);
         QCOMPARE(edited.recentCount, 50);
         QCOMPARE(edited.previewLines, 3);
         QCOMPARE(edited.maxHistory, 77);

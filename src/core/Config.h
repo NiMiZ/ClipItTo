@@ -17,14 +17,15 @@ enum class PopupPosition { Cursor, Center };
 
 // User settings from ~/.config/clipitto/config.toml. Missing or invalid keys fall back to defaults.
 struct Config {
-    int maxHistory = 1000; // unsaved items kept; saved items don't count
+    int maxHistory = 1000; // unsaved items kept; pinned, starred and grouped ones don't count
     int recentCount = 20; // copies listed when the search box is empty
     int previewLines = 1; // text lines shown per copy
-    bool showSavedOnTop = true;
-    int savedCap = 15;
+    bool showSavedOnTop = true; // the Pinned list above recent copies
+    int savedCap = 15; // at most this many pinned copies listed (pins themselves are capped at 10)
+    int favoritesLimit = 10; // starred copies without a group (1..20); 10 per group otherwise
     qint64 maxItemBytes = 1024 * 1024;
     bool capturePrimary = false;
-    bool pasteOnEnter = false;
+    bool pasteOnEnter = true; // choosing a copy also pastes it into the window you came from
     PasteKeys pasteKeys = PasteKeys::CtrlV;
     ClickMode clickToCopy = ClickMode::Single;
     bool hideOnFocusLoss = true;
