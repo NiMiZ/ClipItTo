@@ -7,13 +7,17 @@ readable title.
 
 ## Download for Ubuntu 24.04+
 
-Get `clipitto_<version>_amd64.deb` from the
-[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it (apt
-pulls in the Qt libraries it needs):
+Install the latest release with one command (it downloads the `.deb`, checks its SHA-256
+against the release and installs it with apt, which pulls in the Qt libraries it needs):
 
 ```bash
-sudo apt install ./clipitto_0.1.0_amd64.deb
+curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh | sh
 ```
+
+Or get `clipitto_<version>_amd64.deb` from the
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it yourself:
+`sudo apt install ./clipitto_0.1.0_amd64.deb`. [install.sh](install.sh) also takes
+`--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
 `clipitto-setup`; see [Installing](#installing-ubuntu-2404) for what it does. Press
@@ -163,6 +167,17 @@ gsettings --schemadir /usr/share/gnome-shell/extensions/clipitto@nimiz.github.io
   set org.gnome.shell.extensions.clipitto toggle-shortcut "['<Control><Alt>v']"
 ```
 
+## Privacy
+
+Your clipboard history stays on your computer. ClipItTo makes no network connections: no
+cloud sync, no accounts, no telemetry, no update checks. Copies, notes, groups and settings
+are stored only in local files under your user account (`~/.local/share/clipitto/` and
+`~/.config/clipitto/` on Linux, `%LOCALAPPDATA%\clipitto\` and `%APPDATA%\clipitto\` on
+Windows), readable by your account only; turn on [encryption](#encrypted-history) to
+protect them at rest as well. The daemon, the CLI and the GNOME extension talk to each
+other over your session's D-Bus or a local socket, never over the network. Logs never
+contain clipboard contents. To erase everything, quit ClipItTo and delete those folders.
+
 ## Building
 
 Requires Ubuntu 24.04+ (or equivalent): Qt 6.4+, SQLite 3.35+, toml++ 3.
@@ -183,7 +198,17 @@ through D-Bus (`io.github.nimiz.ClipItTo`, see [the interface](src/ipc/io.github
 
 ## Windows 10/11
 
-**Install:** download `ClipItTo-<version>-setup.exe` from the
+**Install:** in PowerShell, run
+
+```powershell
+irm https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.ps1 | iex
+```
+
+It downloads the installer, checks its SHA-256, installs ClipItTo for your account with
+"Start ClipItTo when I sign in", and starts it. ([install.ps1](install.ps1) also takes
+`-Version X.Y.Z` and `-DownloadOnly DIR` when run as a file.)
+
+Or download `ClipItTo-<version>-setup.exe` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) (builds of every commit are
 in the [CI runs](https://github.com/NiMiZ/ClipItTo/actions): artifact `clipitto-windows-installer`,
 a portable folder in `clipitto-windows-portable`), run it, and keep "Start ClipItTo when
