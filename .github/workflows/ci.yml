@@ -228,7 +228,12 @@ jobs:
           path: dist
           pattern: clipitto-{deb,windows-installer}
           merge-multiple: true
-      - run: cp install.sh install.ps1 dist/ && ls -l dist
+      - name: Add the install scripts and SHA256SUMS
+        working-directory: dist
+        run: |
+          cp ../install.sh ../install.ps1 .
+          sha256sum *.deb *.exe install.sh install.ps1 > SHA256SUMS
+          cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -236,6 +241,7 @@ jobs:
             dist/*.exe
             dist/install.sh
             dist/install.ps1
+            dist/SHA256SUMS
           fail_on_unmatched_files: true
           generate_release_notes: true
 
@@ -307,7 +313,19 @@ jobs:
               if ($LASTEXITCODE -eq 0) { $up = $true; break }
               Start-Sleep -Milliseconds 400
             }
-            if (-not $up) { throw "the installed daemon did not start (running: $(@(Get-Process clipitto-daemon -ErrorAction SilentlyContinue).Count))" }
+            if (-not $up) {
+              # Start it again with Qt's messages on stderr (a GUI program has no console), to see why.
+              Get-Process clipitto-daemon -ErrorAction SilentlyContinue | Stop-Process -Force
+              $env:QT_FORCE_STDERR_LOGGING = '1'
+              $err = Join-Path $env:RUNNER_TEMP 'daemon-stderr.txt'
+              $daemon = Start-Process "$app\clipitto-daemon.exe" -PassThru -RedirectStandardError $err
+              Start-Sleep -Seconds 6
+              & "$app\clipitto.exe" --status *> $null
+              $answered = $LASTEXITCODE -eq 0
+              if (-not $daemon.HasExited) { $daemon | Stop-Process -Force }
+              $log = if (Test-Path $err) { (Get-Content $err | Select-Object -Last 15) -join ' / ' } else { 'no stderr' }
+              throw "the installed daemon did not answer (after a restart: $answered). Its messages: $log"
+            }
             & "$app\clipitto.exe" --ingest "hello from the release"
             $status = & "$app\clipitto.exe" --status
             $status

@@ -17,35 +17,59 @@ $appId = '{8C4D2B7E-5A61-4F0B-9E3C-2D7F1A6B9C40}_is1' # AppId in packaging/windo
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'ClipItTo needs 64-bit Windows.' }
 
-if ($Version) {
-    $api = "https://api.github.com/repos/$repo/releases/tags/v$($Version.TrimStart('v'))"
-} else {
-    $api = "https://api.github.com/repos/$repo/releases/latest"
-}
+$base = "https://github.com/$repo/releases"
 Write-Host 'Looking up the release...'
-try {
-    $release = Invoke-RestMethod -Uri $api -Headers @{ Accept = 'application/vnd.github+json' }
-} catch {
-    throw "Cannot read $api (no such release, or GitHub is unreachable): $($_.Exception.Message)"
+if ($Version) {
+    $tag = 'v' + $Version.TrimStart('v')
+} else {
+    # The latest release's page redirects to .../releases/tag/vX.Y.Z: no API, no rate limit.
+    try {
+        $page = Invoke-WebRequest -Uri "$base/latest" -Method Head -UseBasicParsing
+    } catch {
+        throw "Cannot reach $base ($($_.Exception.Message))"
+    }
+    $final = if ($page.BaseResponse.ResponseUri) { $page.BaseResponse.ResponseUri } # Windows PowerShell
+             else { $page.BaseResponse.RequestMessage.RequestUri } # PowerShell 7
+    $tag = $final.AbsoluteUri.TrimEnd('/').Split('/')[-1]
+    if ($tag -notmatch '^v\d') { throw "No published release found at $base" }
 }
-$asset = $release.assets | Where-Object { $_.name -like 'ClipItTo-*-setup.exe' } | Select-Object -First 1
-if (-not $asset) { throw "Release $($release.tag_name) has no Windows installer." }
+$name = "ClipItTo-$($tag.TrimStart('v'))-setup.exe"
+
+# The checksum: from the release's SHA256SUMS, else (older releases) from the API.
+$sha = $null
+try {
+    $content = (Invoke-WebRequest -Uri "$base/download/$tag/SHA256SUMS" -UseBasicParsing).Content
+    if ($content -is [byte[]]) { $content = [Text.Encoding]::UTF8.GetString($content) }
+    foreach ($line in ($content -split "`r?`n")) {
+        if ($line -match '^([0-9a-f]{64}) [ *](.+)$' -and $Matches[2] -eq $name) { $sha = $Matches[1] }
+    }
+} catch {}
+if (-not $sha) {
+    try {
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Headers @{ Accept = 'application/vnd.github+json' }
+        $digest = ($release.assets | Where-Object { $_.name -eq $name }).digest
+        if ($digest -match '^sha256:([0-9a-f]{64})$') { $sha = $Matches[1] }
+    } catch {}
+}
 
 $dir = if ($DownloadOnly) { $DownloadOnly } else { $env:TEMP }
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-$file = Join-Path $dir $asset.name
+$file = Join-Path $dir $name
 
-Write-Host "Downloading $($asset.name)..."
-Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $file -UseBasicParsing
-if ($asset.digest -match '^sha256:([0-9a-f]{64})$') {
-    $actual = (Get-FileHash -Algorithm SHA256 -Path $file).Hash
-    if ($actual -ne $Matches[1]) {
+Write-Host "Downloading $name..."
+try {
+    Invoke-WebRequest -Uri "$base/download/$tag/$name" -OutFile $file -UseBasicParsing
+} catch {
+    throw "Cannot download $base/download/$tag/$name (is $tag a release with a Windows installer?)"
+}
+if ($sha) {
+    if ((Get-FileHash -Algorithm SHA256 -Path $file).Hash -ne $sha) {
         Remove-Item $file
         throw 'Checksum mismatch: the download is damaged.'
     }
     Write-Host 'Checksum OK.'
 } else {
-    Write-Host "Note: the release lists no checksum for $($asset.name); skipping the check."
+    Write-Host "Note: no checksum available for $name (GitHub's API may be rate-limited); not checked."
 }
 
 if ($DownloadOnly) {

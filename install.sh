@@ -37,22 +37,30 @@ if [ -z "$download_dir" ]; then
     [ "$arch" = amd64 ] || die "only amd64 builds are published (this machine: $arch)"
 fi
 
-if [ -n "$version" ]; then
-    api=https://api.github.com/repos/$repo/releases/tags/v$version
-else
-    api=https://api.github.com/repos/$repo/releases/latest
-fi
+base=https://github.com/$repo/releases
 echo "Looking up the release..."
-release=$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api") ||
-    die "cannot read $api (no such release, or GitHub is unreachable)"
+if [ -n "$version" ]; then
+    tag=v$version
+else
+    # The latest release's page redirects to .../releases/tag/vX.Y.Z: no API, no rate limit.
+    latest=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$base/latest") || die "cannot reach $base"
+    tag=${latest##*/}
+    case "$tag" in
+    v[0-9]*) ;;
+    *) die "no published release found at $base" ;;
+    esac
+fi
+name=clipitto_${tag#v}_amd64.deb
+url=$base/download/$tag/$name
 
-# The asset's URL and its "digest" field are on separate lines of the API's JSON.
-url=$(printf '%s\n' "$release" | sed -n 's/.*"browser_download_url": *"\([^"]*_amd64\.deb\)".*/\1/p' | head -n 1)
-[ -n "$url" ] || die "the release has no amd64 .deb"
-name=${url##*/}
-sha=$(printf '%s\n' "$release" |
-    awk -v n="\"$name\"" '$0 ~ "\"name\": *" n {found=1} found && /"digest":/ {print; exit}' |
-    sed -n 's/.*"sha256:\([0-9a-f]\{64\}\)".*/\1/p')
+# The checksum: from the release's SHA256SUMS, else (older releases) from the API.
+sha=$(curl -fsSL "$base/download/$tag/SHA256SUMS" 2>/dev/null | awk -v n="$name" '$2 == n || $2 == "*" n {print $1; exit}')
+if [ -z "$sha" ]; then
+    # The asset's "name" and "digest" fields are on separate lines of the API's JSON.
+    sha=$(curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$repo/releases/tags/$tag" 2>/dev/null |
+        awk -v n="\"$name\"" '$0 ~ "\"name\": *" n {found=1} found && /"digest":/ {print; exit}' |
+        sed -n 's/.*"sha256:\([0-9a-f]\{64\}\)".*/\1/p')
+fi
 
 if [ -n "$download_dir" ]; then
     mkdir -p "$download_dir"
@@ -64,12 +72,12 @@ else
 fi
 
 echo "Downloading $name..."
-curl -fL --progress-bar -o "$dir/$name" "$url"
+curl -fL --progress-bar -o "$dir/$name" "$url" || die "cannot download $url (is $tag a release with an amd64 .deb?)"
 if [ -n "$sha" ]; then
     echo "$sha  $dir/$name" | sha256sum -c --quiet - || die "checksum mismatch: the download is damaged"
     echo "Checksum OK."
 else
-    echo "Note: the release lists no checksum for $name; skipping the check."
+    echo "Note: no checksum available for $name (GitHub's API may be rate-limited); not checked."
 fi
 
 if [ -n "$download_dir" ]; then
