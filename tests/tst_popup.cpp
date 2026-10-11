@@ -209,8 +209,9 @@ private slots:
         QVERIFY(f.show());
         QWidget* handle = f.popup->dragHandle();
         QCOMPARE(qobject_cast<QLabel*>(handle)->text(), QStringLiteral("ClipItTo"));
-        // Drag it to the middle of the screen: a place it fits whatever the screen size (a
-        // reopened popup is kept fully on screen).
+        // Small enough for any test screen (the Windows runner's offscreen screen is narrower
+        // than the popup), then dragged to the middle: a place it fits, so it reopens there.
+        f.popup->resize(200, 150);
         const QPoint before = f.popup->pos();
         const QRect area = f.popup->screen()->availableGeometry();
         const QPoint delta = area.center() - f.popup->frameGeometry().center();
@@ -225,6 +226,15 @@ private slots:
         QTest::keyClick(f.popup->searchBar(), Qt::Key_Escape);
         QVERIFY(f.show());
         QCOMPARE(f.popup->pos(), before + delta); // same place, not the pointer's
+    }
+
+    void popupLargerThanTheScreenOpensAtItsCorner()
+    {
+        Fixture f;
+        const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
+        f.popup->resize(area.width() + 300, area.height() + 300);
+        QVERIFY(f.show());
+        QCOMPARE(f.popup->pos(), area.topLeft());
     }
 
     void choosingACopyHidesThePopup()

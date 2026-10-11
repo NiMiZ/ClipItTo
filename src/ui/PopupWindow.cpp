@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 #include <QWindow>
 
+#include <algorithm>
 #include <utility>
 
 Q_LOGGING_CATEGORY(lcPopup, "clipitto.popup")
@@ -127,6 +128,15 @@ private:
     QPoint m_grab; // pointer position relative to the window's top-left corner
     bool m_dragging = false;
 };
+
+// `topLeft` moved so that a window of `size` stays inside `area`; a window larger than the
+// area keeps its top-left corner on it (qBound would be given min > max).
+QPoint keepOnScreen(QPoint topLeft, const QSize& size, const QRect& area)
+{
+    topLeft.setX(std::max(area.left(), std::min(topLeft.x(), area.right() + 1 - size.width())));
+    topLeft.setY(std::max(area.top(), std::min(topLeft.y(), area.bottom() + 1 - size.height())));
+    return topLeft;
+}
 
 // "" stands for the Groups row in the expanded set.
 QString expandKey(const HistoryModel& model, const QModelIndex& index)
@@ -435,9 +445,7 @@ void PopupWindow::placeOnScreen()
         // Where the user dragged it, as long as that is still on a screen.
         const QRect wanted(*m_userPosition, size());
         if (QScreen* there = QGuiApplication::screenAt(wanted.center())) {
-            const QRect bounds = there->availableGeometry();
-            move(qBound(bounds.left(), wanted.left(), bounds.right() - width()),
-                 qBound(bounds.top(), wanted.top(), bounds.bottom() - height()));
+            move(keepOnScreen(wanted.topLeft(), size(), there->availableGeometry()));
             return;
         }
         m_userPosition.reset(); // that screen is gone
@@ -447,10 +455,7 @@ void PopupWindow::placeOnScreen()
         move(area.left() + (area.width() - width()) / 2, area.top() + (area.height() - height()) / 3);
         return;
     }
-    QPoint topLeft = cursor - QPoint(width() / 2, 24);
-    topLeft.setX(qBound(area.left(), topLeft.x(), area.right() - width()));
-    topLeft.setY(qBound(area.top(), topLeft.y(), area.bottom() - height()));
-    move(topLeft);
+    move(keepOnScreen(cursor - QPoint(width() / 2, 24), size(), area));
 }
 
 const Entry* PopupWindow::entryFor(const QModelIndex& index) const
