@@ -55,6 +55,23 @@ jobs:
           dpkg-deb -c build/deb/clipitto_*.deb
           desktop-file-validate data/io.github.nimiz.ClipItTo.desktop
 
+      # What a user who downloads the .deb gets: install it with apt (which pulls the
+      # runtime libraries from its Depends) and run the installed binaries.
+      - name: Install the package and run it
+        run: |
+          sudo apt-get install -y ./build/deb/clipitto_*.deb
+          clipitto --version
+          export QT_QPA_PLATFORM=offscreen
+          dbus-run-session -- sh -euc '
+            clipitto-daemon & daemon=$!
+            for i in $(seq 50); do clipitto --status >/dev/null 2>&1 && break; sleep 0.2; done
+            clipitto --ingest "hello from the installed package"
+            status=$(clipitto --status); echo "$status"
+            echo "$status" | grep -qx "items: 1" || { echo "::error title=installed package::unexpected status"; exit 1; }
+            clipitto --quit
+            wait $daemon
+          '
+
       - uses: actions/upload-artifact@v4
         with:
           name: clipitto-deb
@@ -151,3 +168,27 @@ jobs:
         with:
           name: clipitto-windows-portable
           path: stage
+
+  # Pushing a tag such as v0.1.0 publishes a GitHub Release with the Ubuntu .deb and the
+  # Windows installer, once both were built and tested above.
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, package, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: clipitto-{deb,windows-installer}
+          merge-multiple: true
+      - run: ls -l dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true

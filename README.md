@@ -5,6 +5,20 @@ Press a shortcut, type a few letters, press Enter: the clip is back on your clip
 Favorites and grouped clips are never pruned and are listed first; notes give clips a
 readable title.
 
+## Download for Ubuntu 24.04+
+
+Get `clipitto_<version>_amd64.deb` from the
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it (apt
+pulls in the Qt libraries it needs):
+
+```bash
+sudo apt install ./clipitto_0.1.0_amd64.deb
+```
+
+Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
+`clipitto-setup`; see [Installing](#installing-ubuntu-2404) for what it does. Press
+**Ctrl+Alt+V** to open the popup. To remove it: `sudo apt remove clipitto`.
+
 ## Quick start on Ubuntu 24.04+ (from source, no install)
 
 ```bash
@@ -169,9 +183,10 @@ through D-Bus (`io.github.nimiz.ClipItTo`, see [the interface](src/ipc/io.github
 
 ## Windows 10/11
 
-**Install:** download `ClipItTo-<version>-setup.exe` from the latest successful
-[CI run](https://github.com/NiMiZ/ClipItTo/actions) (artifact `clipitto-windows-installer`;
-a portable folder is in `clipitto-windows-portable`), run it, and keep "Start ClipItTo when
+**Install:** download `ClipItTo-<version>-setup.exe` from the
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) (builds of every commit are
+in the [CI runs](https://github.com/NiMiZ/ClipItTo/actions): artifact `clipitto-windows-installer`,
+a portable folder in `clipitto-windows-portable`), run it, and keep "Start ClipItTo when
 I sign in" ticked. No admin rights are needed.
 
 **Use:** press **Ctrl+Alt+V** anywhere (Win+V is Windows' own clipboard history). The keys in the
