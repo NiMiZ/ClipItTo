@@ -239,47 +239,82 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: true
 
-  # Install the published release the way the README tells users to, on fresh machines.
+  # Install a published release the way the README tells users to, on fresh machines. On a
+  # tag: the release just published, with the scripts attached to it. On other pushes: this
+  # commit's scripts, installing the latest release (so script changes are tested too).
   release-check-linux:
     name: Install the release (Ubuntu)
     needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Run install.sh from the release
+      - uses: actions/checkout@v4
+      - name: Install with install.sh
         run: |
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh" |
-            sh -s -- --version "${{ github.ref_name }}"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/install.sh" -o install-release.sh
+            set -- install-release.sh --version "$GITHUB_REF_NAME"
+          else
+            set -- install.sh
+          fi
+          if ! sh "$@" > install.log 2>&1; then
+            cat install.log
+            echo "::error title=install.sh failed::$(tail -n 25 install.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
+          cat install.log
+      - name: Run the installed app
+        run: |
           clipitto --version
           export QT_QPA_PLATFORM=offscreen
-          dbus-run-session -- sh -euc '
-            clipitto-daemon & daemon=$!
+          if ! dbus-run-session -- sh -euc '
+            clipitto-daemon > daemon.log 2>&1 & daemon=$!
             for i in $(seq 50); do clipitto --status >/dev/null 2>&1 && break; sleep 0.2; done
             clipitto --ingest "hello from the release"
-            clipitto --status | grep -qx "items: 1"
+            clipitto --status | tee status.txt | grep -qx "items: 1"
             clipitto --quit
             wait $daemon
-          '
+          '; then
+            echo "::error title=installed app::$(cat status.txt daemon.log 2>/dev/null | tail -n 25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
 
   release-check-windows:
     name: Install the release (Windows)
     needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: windows-2022
     steps:
-      - name: Run install.ps1 from the release
+      - uses: actions/checkout@v4
+      - name: Install with install.ps1 and run it
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          $script = Invoke-RestMethod "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.ps1"
-          & ([scriptblock]::Create($script)) -Version "${{ github.ref_name }}"
-          $app = Join-Path $env:LOCALAPPDATA 'Programs\ClipItTo\bin'
-          if (-not (Test-Path "$app\clipitto.exe")) { throw "not installed under $app" }
-          $startup = [Environment]::GetFolderPath('Startup')
-          if (-not (Test-Path "$startup\ClipItTo.lnk")) { throw "no sign-in shortcut in $startup" }
-          $up = $false
-          foreach ($i in 1..25) { & "$app\clipitto.exe" --status *> $null; if ($LASTEXITCODE -eq 0) { $up = $true; break }; Start-Sleep -Milliseconds 400 }
-          if (-not $up) { throw "the installed daemon did not start" }
-          & "$app\clipitto.exe" --ingest "hello from the release"
-          $status = & "$app\clipitto.exe" --status
-          $status
-          if (-not ($status -match '^items: 1$')) { throw "unexpected status" }
-          & "$app\clipitto.exe" --quit
+          try {
+            if ($env:GITHUB_REF_TYPE -eq 'tag') {
+              $script = Invoke-RestMethod "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/install.ps1"
+              & ([scriptblock]::Create($script)) -Version $env:GITHUB_REF_NAME
+            } else {
+              & .\install.ps1
+            }
+            $app = Join-Path $env:LOCALAPPDATA 'Programs\ClipItTo\bin'
+            if (-not (Test-Path "$app\clipitto.exe")) { throw "not installed under $app" }
+            $startup = [Environment]::GetFolderPath('Startup')
+            if (-not (Test-Path "$startup\ClipItTo.lnk")) { throw "no sign-in shortcut in $startup" }
+            $up = $false
+            foreach ($i in 1..25) {
+              & "$app\clipitto.exe" --status *> $null
+              if ($LASTEXITCODE -eq 0) { $up = $true; break }
+              Start-Sleep -Milliseconds 400
+            }
+            if (-not $up) { throw "the installed daemon did not start (running: $(@(Get-Process clipitto-daemon -ErrorAction SilentlyContinue).Count))" }
+            & "$app\clipitto.exe" --ingest "hello from the release"
+            $status = & "$app\clipitto.exe" --status
+            $status
+            if (-not ($status -match '^items: 1$')) { throw "unexpected status: $($status -join ' | ')" }
+            & "$app\clipitto.exe" --quit
+          } catch {
+            $where = $_.InvocationInfo.PositionMessage -replace "`r?`n", ' '
+            Write-Host "::error title=install.ps1 check failed::$($_.Exception.Message) -- $where"
+            exit 1
+          }

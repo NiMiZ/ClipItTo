@@ -81,6 +81,8 @@ chmod 644 "$dir/$name"
 sudo=
 [ "$(id -u)" -eq 0 ] || sudo=sudo
 echo "Installing (apt may ask for your password)..."
+# Fresh package lists, so apt finds the Qt libraries the package depends on.
+$sudo apt-get update -qq
 $sudo apt-get install -y "$dir/$name"
 
 cat <<'EOF'
