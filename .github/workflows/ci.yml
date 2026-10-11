@@ -127,12 +127,18 @@ jobs:
             foreach ($command in ($rerun | Select-String -Pattern 'Test command: (.+\.exe)' | ForEach-Object { $_.Matches[0].Groups[1].Value })) {
               Push-Location build\windows\tests
               $log = Join-Path $env:RUNNER_TEMP 'failed-test.txt'
-              & $command -o "$log,txt" 2>&1 | Out-Null # GUI-subsystem programs: stdout may go nowhere
+              Remove-Item $log -ErrorAction SilentlyContinue
+              $env:QT_QPA_PLATFORM = 'offscreen' # as ctest runs it
+              & $command -v2 -o "$log,txt" 2>&1 | Out-Null
+              Remove-Item Env:QT_QPA_PLATFORM
               $direct = if (Test-Path $log) { Get-Content $log -Raw } else { 'no log written' }
               $code = $LASTEXITCODE
               Pop-Location
               $lines += ('{0} exited with 0x{1:X8}' -f (Split-Path $command -Leaf), $code)
-              $lines += @(($direct -split "`r?`n") | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|Totals' } | Select-Object -First 30)
+              $directLines = @(($direct -split "`r?`n") | Where-Object { $_.Trim() })
+              $lines += @($directLines | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|Totals' } | Select-Object -First 20)
+              $lines += '--- end of its log (a crash stops it here) ---'
+              $lines += @($directLines | Select-Object -Last 12)
             }
             Write-Host "::error title=Windows tests failed::$(($lines -join '%0A') -replace '::', ': :')"
             exit 1
