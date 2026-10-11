@@ -136,7 +136,7 @@ jobs:
               Pop-Location
               $lines += ('{0} exited with 0x{1:X8}' -f (Split-Path $command -Leaf), $code)
               $directLines = @(($direct -split "`r?`n") | Where-Object { $_.Trim() })
-              $lines += @($directLines | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|Totals' } | Select-Object -First 20)
+              $lines += @($directLines | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QFATAL|Totals' } | Select-Object -First 20)
               $lines += '--- end of its log (a crash stops it here) ---'
               $lines += @($directLines | Select-Object -Last 12)
             }
