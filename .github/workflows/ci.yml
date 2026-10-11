@@ -110,8 +110,9 @@ jobs:
             # The failing checks as an annotation, readable without opening the log: run the
             # failed suites again verbosely and keep their failure lines (or their last lines).
             $rerun = (ctest --preset windows --rerun-failed --output-on-failure -V 2>&1 | Out-String) -split "`r?`n"
-            $lines = $rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|Exception|Timeout' } | Select-Object -First 40
-            if (-not $lines) { $lines = $rerun | Select-Object -Last 40 }
+            $lines = @($rerun | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|\*\*\*Exception' } | Select-Object -First 30)
+            $lines += '--- last lines ---'
+            $lines += @($rerun | Where-Object { $_.Trim() } | Select-Object -Last 25)
             Write-Host "::error title=Windows tests failed::$(($lines -join '%0A') -replace '::', ': :')"
             exit 1
           }
