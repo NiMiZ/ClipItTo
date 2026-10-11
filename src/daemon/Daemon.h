@@ -5,13 +5,16 @@
 #include "ControlChannel.h"
 #include "DesktopIntegration.h"
 #include "Entry.h"
+#include "KeyStore.h"
 #include "SessionEnv.h"
 
 #include <QObject>
 #include <QVariantMap>
 
+#include <array>
 #include <memory>
 #include <optional>
+#include <thread>
 
 namespace clipitto {
 
@@ -33,6 +36,7 @@ struct DaemonOptions {
     SessionEnv session;
     QString wlPasteProgram = QStringLiteral("wl-paste");
     QString gsettingsProgram = QStringLiteral("gsettings"); // GNOME shortcut updates
+    std::shared_ptr<KeyStore> keyStore; // holds the history key; null: encryption unavailable
 };
 
 // Owns everything that lives for the whole session: config, database, capture, the popup,
@@ -59,6 +63,11 @@ public:
     // Adds platform details (e.g. the Windows hotkey) to status().
     void setStatusValue(const QString& key, const QVariant& value) { m_extraStatus.insert(key, value); }
 
+    bool isConverting() const { return m_converting; } // history being encrypted/decrypted
+    bool isHistoryEncrypted() const { return m_encrypted; }
+    // Whether encryption can be turned on here (build support + reachable keyring).
+    bool encryptionAvailable(QString* why = nullptr) const;
+
     const Config& config() const { return m_config; }
     db::Repository* repository() const { return m_repo.get(); }
     ControlChannel* control() const { return m_control; }
@@ -66,11 +75,17 @@ public:
 
 signals:
     void configReloaded();
+    void encryptionFinished(bool ok, const QString& error); // after a runtime switch
 
 private:
     void startCapture();
     void loadConfig();
     void reload(bool forceShortcut);
+    void openHistory();
+    QByteArray historyKey(bool create, QString* error) const;
+    void setEncryption(bool on);
+    void finishConversion(bool encrypted, const QString& error);
+    void revertEncryptionSetting(); // after a failed runtime switch: config follows the file
     void applyDesktopShortcut();
     QString cliCommand() const;
     void onEntryActivated(const Entry& entry);
@@ -90,6 +105,12 @@ private:
     DesktopIntegration* m_integration = nullptr; // child of this; may be null
     std::optional<bool> m_wlDataControl; // probed lazily, once
     QVariantMap m_extraStatus;
+    bool m_encrypted = false;
+    bool m_converting = false;
+    QString m_encryptionError;
+    QString m_startupWarning; // shown once, the first time the popup opens
+    bool m_removeKeyAfterStart = false;
+    std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
 };
 
 } // namespace clipitto

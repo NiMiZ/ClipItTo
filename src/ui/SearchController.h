@@ -29,6 +29,8 @@ public:
     QString query() const { return m_query; }
     void refresh(); // re-run the current query now
     bool isPending() const { return m_debounce.isActive(); }
+    // Suspended: no queries at all (pending ones are dropped) until resumed.
+    void setSuspended(bool suspended);
 
     int queriesRun() const { return m_queriesRun; } // for tests and diagnostics
 
@@ -48,6 +50,7 @@ private:
     int m_savedCap = 15;
     bool m_showSavedOnTop = true;
     int m_queriesRun = 0;
+    bool m_suspended = false;
 };
 
 } // namespace clipitto::ui

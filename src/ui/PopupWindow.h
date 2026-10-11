@@ -58,6 +58,13 @@ public:
     // Runs a dialog on top of the popup without the popup hiding on focus loss.
     int execDialog(QDialog& dialog);
 
+    // Non-empty: the history is unavailable for a moment (e.g. being encrypted); the popup
+    // shows the message and makes no database calls. Empty: back to normal.
+    void setBusy(const QString& message);
+    // A warning over the popup (kept open meanwhile). Uses the notify hook (tests replace it).
+    void showMessage(const QString& message);
+    bool isBusy() const { return !m_busyMessage.isEmpty(); }
+
     void setGroupPrompt(Prompt prompt) { m_groupPrompt = std::move(prompt); }
     void setNotePrompt(Prompt prompt) { m_notePrompt = std::move(prompt); }
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
@@ -124,6 +131,8 @@ private:
     Notify m_notify;
     bool m_hideOnFocusLoss = true;
     bool m_singleClick = true;
+    bool m_centered = false; // popup_position = center
+    QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss
     std::optional<Selection> m_restore; // reselected after the next refresh
     QSet<QString> m_expanded; // expanded groups ("" = the Groups row); reset when shown

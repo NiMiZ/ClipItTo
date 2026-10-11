@@ -7,11 +7,14 @@
 
 #include <functional>
 
+class QCheckBox;
 class QComboBox;
+class QDialogButtonBox;
 class QKeySequenceEdit;
 class QLabel;
 class QPushButton;
 class QSpinBox;
+class QTabWidget;
 class QTreeWidget;
 
 namespace clipitto {
@@ -28,15 +31,25 @@ struct ShortcutSupport {
     QString note; // shown under the shortcut field
 };
 
-// General settings (theme, list size, preview lines, shortcut) are returned by config()
-// when the dialog is accepted; group changes are applied to the repository right away.
+// Whether the history can be encrypted here (build support + a reachable system keyring).
+struct EncryptionSupport {
+    bool available = false;
+    QString reason; // why not, when unavailable
+    bool active = false; // the history file is encrypted right now
+    QString problem; // last failure, if any
+};
+
+// General settings (theme, list size, preview lines, popup position, shortcut, encryption)
+// are returned by config() when the dialog is accepted; group changes are applied to the
+// repository right away (the Groups tab says so and only offers Close).
 class SettingsDialog : public QDialog {
     Q_OBJECT
 
 public:
     using Notify = std::function<void(QWidget* parent, const QString& message)>;
 
-    SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut, QWidget* parent = nullptr);
+    SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
+                   EncryptionSupport encryption = {}, QWidget* parent = nullptr);
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -56,6 +69,10 @@ public:
     QComboBox* themeBox() const { return m_theme; }
     QSpinBox* copiesBox() const { return m_copies; }
     QSpinBox* linesBox() const { return m_lines; }
+    QComboBox* positionBox() const { return m_position; }
+    QCheckBox* encryptBox() const { return m_encrypt; }
+    QDialogButtonBox* buttons() const { return m_buttons; }
+    QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
     QLabel* shortcutStatus() const { return m_shortcutStatus; }
     QTreeWidget* groupTree() const { return m_groups; }
@@ -73,6 +90,10 @@ private:
     QComboBox* m_theme;
     QSpinBox* m_copies;
     QSpinBox* m_lines;
+    QComboBox* m_position;
+    QCheckBox* m_encrypt;
+    QTabWidget* m_tabs;
+    QDialogButtonBox* m_buttons;
     QKeySequenceEdit* m_shortcut;
     QLabel* m_shortcutStatus;
     QTreeWidget* m_groups;

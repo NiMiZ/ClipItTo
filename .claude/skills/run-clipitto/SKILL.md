@@ -31,7 +31,7 @@ packages from the README's Building section and skip `env.sh`.
 ## Build
 
 ```bash
-cmake --preset debug
+cmake --preset debug                 # first run downloads SQLite3 Multiple Ciphers (pinned zip)
 cmake --build --preset debug         # ~40 s; binaries in build/debug/src/{daemon,cli}
 ```
 
@@ -84,6 +84,13 @@ python3 $D cli --reload
 `CLIPITTO_BUILD` points the driver at another build dir (default `build/debug`), and
 `CLIPITTO_DRIVER_DIR` moves the session dir.
 
+Starting from an existing history file (e.g. to check a database migration in the app):
+
+```bash
+python3 .claude/skills/run-clipitto/make-v1-history.py /tmp/clipitto-v1.db   # schema 1, grouped clips
+python3 $D start --history /tmp/clipitto-v1.db                               # migrates on start
+```
+
 ## Test (direct invocation)
 
 Most changes are in `src/core` or `src/ui`, and the Qt tests drive that code in-process
@@ -128,6 +135,10 @@ degraded without the GNOME extension. For daily use, install it as the README de
   and changing the global shortcut is only implemented for GNOME (gsettings) and Windows.
   GNOME/Wayland paths (the extension, focus, the gsettings shortcut) can't run here; use the
   gjs and fake-gsettings tests.
+- **History encryption can't be switched on here.** It needs a Secret Service (GNOME
+  Keyring) on the session bus; the driver's private bus has none, so Settings shows
+  "Not available: The name org.freedesktop.secrets was not provided by any .service files".
+  The conversion paths are covered by `tst_encryption` and `tst_daemon` (fake keyring).
 - **No window manager is needed.** Xvfb gives the popup keyboard focus, and it opens near
   the pointer (screen center).
 - **`pgrep -f clipitto` matches your own shell command.** Check leftovers with

@@ -215,6 +215,7 @@ void PopupWindow::applyConfig(const Config& config)
     m_controller->applyConfig(config);
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
+    m_centered = config.popupPosition == PopupPosition::Center;
     if (isVisible()) {
         refresh(); // preview lines or counts may have changed
     }
@@ -225,7 +226,9 @@ void PopupWindow::showPopup(const QString& activationToken)
     if (!isVisible()) {
         m_restore.reset();
         m_expanded.clear(); // the group tree starts collapsed
-        if (m_search->text().isEmpty()) {
+        if (isBusy()) {
+            // keep the busy message; no queries
+        } else if (m_search->text().isEmpty()) {
             m_controller->refresh();
         } else {
             m_search->clear(); // refreshes through textChanged
@@ -256,8 +259,34 @@ void PopupWindow::togglePopup(const QString& activationToken)
     }
 }
 
+void PopupWindow::setBusy(const QString& message)
+{
+    m_busyMessage = message;
+    m_controller->setSuspended(isBusy()); // also drops a search still waiting for its delay
+    m_search->setEnabled(!isBusy());
+    m_view->setEnabled(!isBusy());
+    if (isBusy()) {
+        m_model->setContent({});
+        m_view->setEmptyText(message);
+    } else {
+        m_controller->refresh();
+        if (isVisible()) {
+            m_search->setFocus();
+        }
+    }
+}
+
+void PopupWindow::showMessage(const QString& message)
+{
+    ModalGuard guard(m_modalDepth);
+    m_notify(this, message);
+}
+
 void PopupWindow::historyChanged()
 {
+    if (isBusy()) {
+        return;
+    }
     if (isVisible() && m_search->text().trimmed().isEmpty()) {
         refresh();
     }
@@ -265,6 +294,9 @@ void PopupWindow::historyChanged()
 
 void PopupWindow::refresh()
 {
+    if (isBusy()) {
+        return;
+    }
     refreshSelecting(selectionOf(m_view->currentIndex()), /*focusList=*/false);
 }
 
@@ -295,6 +327,11 @@ void PopupWindow::placeOnScreen()
         return;
     }
     const QRect area = screen->availableGeometry();
+    if (m_centered) {
+        // Same place every time: centered horizontally, in the upper third.
+        move(area.left() + (area.width() - width()) / 2, area.top() + (area.height() - height()) / 3);
+        return;
+    }
     QPoint topLeft = cursor - QPoint(width() / 2, 24);
     topLeft.setX(qBound(area.left(), topLeft.x(), area.right() - width()));
     topLeft.setY(qBound(area.top(), topLeft.y(), area.bottom() - height()));
@@ -523,6 +560,9 @@ void PopupWindow::deleteGroup(const QString& path)
 
 void PopupWindow::refreshSelecting(std::optional<Selection> selection, bool focusList)
 {
+    if (isBusy()) {
+        return;
+    }
     m_restore = std::move(selection);
     m_controller->refresh();
     if (focusList) {

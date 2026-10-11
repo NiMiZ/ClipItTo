@@ -148,15 +148,22 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         return;
     }
 
-    // A copy. Leading star column, kept even when empty so titles line up.
-    if (index.data(HistoryModel::FavoriteRole).toBool()) {
-        painter->setPen(selected ? text : pal.color(QPalette::Link));
-        painter->drawText(QRect(content.left(), content.top(), kStarWidth, fm.height()),
-                          Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("★"));
+    // A copy. Top-level rows keep a leading star column (empty or not) so titles line up.
+    // Inside the group tree there is no such column: a copy's text starts where its sibling
+    // sub-groups' names start, so the nesting reads right, and the star goes to the end.
+    const bool inTree = index.parent().isValid();
+    const bool favorite = index.data(HistoryModel::FavoriteRole).toBool();
+    const QColor starColor = selected ? text : pal.color(QPalette::Link);
+    if (!inTree) {
+        if (favorite) {
+            painter->setPen(starColor);
+            painter->drawText(QRect(content.left(), content.top(), kStarWidth, fm.height()),
+                              Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("★"));
+        }
+        content.setLeft(content.left() + kStarWidth);
     }
-    content.setLeft(content.left() + kStarWidth);
 
-    // Trailing age and group chip on the first line.
+    // Trailing age (and, in the tree, the star) on the first line.
     const QString age = relativeTime(index.data(HistoryModel::LastUsedRole).toDateTime(),
                                      QDateTime::currentDateTimeUtc());
     int right = content.right();
@@ -166,8 +173,15 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         painter->drawText(QRect(right - w, content.top(), w, fm.height()), Qt::AlignRight | Qt::AlignVCenter, age);
         right -= w + kGap;
     }
+    if (inTree && favorite) {
+        const int w = fm.horizontalAdvance(QStringLiteral("★"));
+        painter->setPen(starColor);
+        painter->drawText(QRect(right - w, content.top(), w, fm.height()), Qt::AlignRight | Qt::AlignVCenter,
+                          QStringLiteral("★"));
+        right -= w + kGap;
+    }
     // Inside the group tree the group is already obvious from the position.
-    const QString group = index.parent().isValid() ? QString() : index.data(HistoryModel::GroupRole).toString();
+    const QString group = inTree ? QString() : index.data(HistoryModel::GroupRole).toString();
     if (!group.isEmpty()) {
         const QFont chipFont = scaledFont(option.font, 0.85);
         const QFontMetrics cfm(chipFont);

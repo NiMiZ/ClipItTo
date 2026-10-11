@@ -18,3 +18,5 @@ hotkey = "Ctrl+Alt+V"       # shortcut that opens the popup, e.g. "Ctrl+`". Wind
                             # registers it. GNOME: changing it in Settings updates the GNOME
                             # custom shortcut. Other desktops: bind `clipitto --toggle` yourself.
 theme = "system"            # system | light | dark
+popup_position = "cursor"   # cursor | center (X11 and Windows; Wayland desktops place it)
+encrypt_history = false     # encrypt history.db; the key is kept in the system keyring

@@ -14,7 +14,51 @@ if(BUILD_TESTING)
 endif()
 find_package(Qt6 6.4 REQUIRED COMPONENTS ${CLIPITTO_QT_COMPONENTS})
 
-find_package(SQLite3 3.35 REQUIRED) # 3.35+: UPSERT ... RETURNING; FTS5 trigram needs 3.34+
+# SQLite. With CLIPITTO_ENCRYPTION (default) it is SQLite3 Multiple Ciphers, built from its
+# release amalgamation: SQLite plus page encryption (ChaCha20-Poly1305), with FTS5. Distro
+# SQLCipher builds lack FTS5, which the search needs. Offline builds can point
+# FETCHCONTENT_SOURCE_DIR_SQLITE3MC at an unpacked copy of the same zip.
+option(CLIPITTO_ENCRYPTION "Bundle SQLite3 Multiple Ciphers so the history can be encrypted" ON)
+add_library(clipitto_sqlite INTERFACE)
+if(CLIPITTO_ENCRYPTION)
+    include(FetchContent)
+    FetchContent_Declare(sqlite3mc
+        URL https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v2.5.1/sqlite3mc-2.5.1-sqlite-3.53.4-amalgamation.zip
+        URL_HASH SHA256=4125f8ff275ea953dabb3289331b20a0e76d4fc060f57148f4a5df3bf3b0d5e0
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        SOURCE_SUBDIR no-cmake-project) # sources only: no add_subdirectory
+    FetchContent_MakeAvailable(sqlite3mc)
+    add_library(clipitto_sqlite3mc STATIC ${sqlite3mc_SOURCE_DIR}/sqlite3mc_amalgamation.c)
+    target_include_directories(clipitto_sqlite3mc PUBLIC ${sqlite3mc_SOURCE_DIR})
+    target_compile_definitions(clipitto_sqlite3mc
+        PRIVATE SQLITE_THREADSAFE=1 SQLITE_ENABLE_FTS5 SQLITE_DQS=0 SQLITE_TEMP_STORE=3
+        PUBLIC CLIPITTO_HAVE_ENCRYPTION)
+    find_package(Threads REQUIRED)
+    target_link_libraries(clipitto_sqlite3mc PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+    if(UNIX)
+        target_link_libraries(clipitto_sqlite3mc PUBLIC m)
+    endif()
+    if(MSVC)
+        target_compile_options(clipitto_sqlite3mc PRIVATE /w)
+    else()
+        target_compile_options(clipitto_sqlite3mc PRIVATE -w)
+    endif()
+    target_link_libraries(clipitto_sqlite INTERFACE clipitto_sqlite3mc)
+else()
+    find_package(SQLite3 3.35 REQUIRED) # 3.35+: UPSERT ... RETURNING; FTS5 trigram needs 3.34+
+    target_link_libraries(clipitto_sqlite INTERFACE SQLite::SQLite3)
+endif()
+
+# The history key's keyring: Windows uses the Credential Manager API directly; Linux uses
+# Secret Service through qtkeychain (distro package), optional.
+if(UNIX AND NOT APPLE)
+    find_package(Qt6Keychain CONFIG QUIET)
+    if(Qt6Keychain_FOUND)
+        message(STATUS "qtkeychain found: the history key can be kept in the system keyring")
+    else()
+        message(STATUS "qtkeychain not found: history encryption cannot be turned on (install qtkeychain-qt6-dev)")
+    endif()
+endif()
 
 # XTest for X11 auto-paste: optional, Linux only.
 if(UNIX AND NOT APPLE)

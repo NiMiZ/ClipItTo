@@ -12,7 +12,8 @@
 #include <array>
 #include <optional>
 #include <set>
-#include <sstream>
+#include <string>
+#include <vector>
 #include <utility>
 
 namespace clipitto {
@@ -25,6 +26,8 @@ using EnumNames = std::array<std::pair<Enum, const char*>, N>;
 constexpr EnumNames<PasteKeys, 2> kPasteKeys{{{PasteKeys::CtrlV, "ctrl+v"}, {PasteKeys::ShiftInsert, "shift+insert"}}};
 constexpr EnumNames<ClickMode, 2> kClickModes{{{ClickMode::Single, "single"}, {ClickMode::Double, "double"}}};
 // The first name of a value is the one written back; later ones are accepted aliases.
+constexpr EnumNames<PopupPosition, 2> kPopupPositions{{{PopupPosition::Cursor, "cursor"},
+                                                       {PopupPosition::Center, "center"}}};
 constexpr EnumNames<Theme, 3> kThemes{{{Theme::System, "system"}, {Theme::Light, "light"}, {Theme::Dark, "dark"}}};
 constexpr EnumNames<BackendChoice, 5> kBackends{{{BackendChoice::Auto, "auto"},
                                                  {BackendChoice::GnomeExt, "gnome-ext"},
@@ -177,6 +180,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.choice("backend", config.backend, kBackends);
     r.hotkey("hotkey", config.hotkey);
     r.choice("theme", config.theme, kThemes);
+    r.choice("popup_position", config.popupPosition, kPopupPositions);
+    r.boolean("encrypt_history", config.encryptHistory);
     r.warnUnknownKeys();
     return config;
 }
@@ -198,27 +203,153 @@ Config Config::load(const QString& path, QStringList* warnings)
     return fromToml(std::string_view(data.constData(), std::size_t(data.size())), warnings);
 }
 
+namespace {
+
+struct Line {
+    const char* key;
+    std::string value; // already TOML-formatted
+    const char* comment; // may be empty
+};
+
+std::string tomlString(const std::string& s)
+{
+    std::string out = "\"";
+    for (const char c : s) {
+        if (c == '\\' || c == '"') {
+            out += '\\';
+        }
+        out += c;
+    }
+    return out + '"';
+}
+
+std::string tomlBool(bool v)
+{
+    return v ? "true" : "false";
+}
+
+std::vector<Line> lines(const Config& c)
+{
+    return {
+        {"max_history", std::to_string(c.maxHistory), "unsaved copies kept; favorites and grouped ones are never pruned"},
+        {"recent_count", std::to_string(c.recentCount), "copies listed when the search box is empty"},
+        {"preview_lines", std::to_string(c.previewLines), "text lines shown per copy"},
+        {"show_saved_on_top", tomlBool(c.showSavedOnTop), ""},
+        {"saved_cap", std::to_string(c.savedCap), ""},
+        {"max_item_bytes", std::to_string(c.maxItemBytes), ""},
+        {"capture_primary", tomlBool(c.capturePrimary), ""},
+        {"paste_on_enter", tomlBool(c.pasteOnEnter), ""},
+        {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert"},
+        {"click_to_copy", tomlString(nameOf(kClickModes, c.clickToCopy)), "single | double"},
+        {"hide_on_focus_loss", tomlBool(c.hideOnFocusLoss), ""},
+        {"search_debounce_ms", std::to_string(c.searchDebounceMs), ""},
+        {"backend", tomlString(nameOf(kBackends, c.backend)), "auto | gnome-ext | wl-paste | qt-clipboard"},
+        {"hotkey", tomlString(c.hotkey.toStdString()), "global shortcut that opens the popup"},
+        {"theme", tomlString(nameOf(kThemes, c.theme)), "system | light | dark"},
+        {"popup_position", tomlString(nameOf(kPopupPositions, c.popupPosition)), "cursor | center"},
+        {"encrypt_history", tomlBool(c.encryptHistory), "encrypt history.db; key kept in the system keyring"},
+    };
+}
+
+constexpr std::size_t kCommentColumn = 32;
+
+std::string render(const Line& line)
+{
+    std::string text = std::string(line.key) + " = " + line.value;
+    if (*line.comment) {
+        text.append(text.size() < kCommentColumn ? kCommentColumn - text.size() : 1, ' ');
+        text += std::string("# ") + line.comment;
+    }
+    return text;
+}
+
+// End of the value that starts at `from`: a quoted string, or a bare token.
+std::size_t valueEnd(const std::string& line, std::size_t from)
+{
+    if (from < line.size() && (line[from] == '"' || line[from] == '\'')) {
+        const char quote = line[from];
+        for (std::size_t i = from + 1; i < line.size(); ++i) {
+            if (quote == '"' && line[i] == '\\') {
+                ++i; // skip the escaped character
+            } else if (line[i] == quote) {
+                return i + 1;
+            }
+        }
+        return line.size();
+    }
+    std::size_t i = from;
+    while (i < line.size() && line[i] != '#' && line[i] != ' ' && line[i] != '\t' && line[i] != '\r') {
+        ++i;
+    }
+    return i;
+}
+
+} // namespace
+
 std::string Config::toToml() const
 {
-    const auto b = [](bool v) { return v ? "true" : "false"; };
-    std::ostringstream out;
-    out << "# ClipItTo configuration\n"
-        << "max_history = " << maxHistory << "          # unsaved items kept; favorites/grouped never pruned\n"
-        << "recent_count = " << recentCount << "           # copies listed when the search box is empty\n"
-        << "preview_lines = " << previewLines << "          # text lines shown per copy\n"
-        << "show_saved_on_top = " << b(showSavedOnTop) << "\n"
-        << "saved_cap = " << savedCap << "\n"
-        << "max_item_bytes = " << maxItemBytes << "\n"
-        << "capture_primary = " << b(capturePrimary) << "\n"
-        << "paste_on_enter = " << b(pasteOnEnter) << "\n"
-        << "paste_keys = \"" << nameOf(kPasteKeys, pasteKeys) << "\"        # ctrl+v | shift+insert\n"
-        << "click_to_copy = \"" << nameOf(kClickModes, clickToCopy) << "\"    # single | double\n"
-        << "hide_on_focus_loss = " << b(hideOnFocusLoss) << "\n"
-        << "search_debounce_ms = " << searchDebounceMs << "\n"
-        << "backend = \"" << nameOf(kBackends, backend) << "\"            # auto | gnome-ext | wl-paste | qt-clipboard\n"
-        << "hotkey = \"" << hotkey.toStdString() << "\"      # global shortcut that opens the popup\n"
-        << "theme = \"" << nameOf(kThemes, theme) << "\"          # system | light | dark\n";
-    return out.str();
+    std::string out = "# ClipItTo configuration\n";
+    for (const Line& line : lines(*this)) {
+        out += render(line) + '\n';
+    }
+    return out;
+}
+
+std::string Config::mergeInto(std::string_view existing) const
+{
+    const std::vector<Line> wanted = lines(*this);
+    std::vector<bool> seen(wanted.size(), false);
+    const bool crlf = existing.find("\r\n") != std::string_view::npos;
+    std::string out;
+    // Notepad saves UTF-8 with a BOM: keep it, but don't let it glue onto the first key.
+    constexpr std::string_view kBom = "\xEF\xBB\xBF";
+    if (existing.substr(0, kBom.size()) == kBom) {
+        out += kBom;
+        existing.remove_prefix(kBom.size());
+    }
+    bool inTable = false; // keys after a [table] header are not ours
+    std::size_t pos = 0;
+    while (pos < existing.size()) {
+        const std::size_t nl = existing.find('\n', pos);
+        std::string line(existing.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos));
+        pos = nl == std::string_view::npos ? existing.size() : nl + 1;
+        const bool hadNewline = nl != std::string_view::npos;
+
+        const std::size_t first = line.find_first_not_of(" \t");
+        if (first != std::string::npos && line[first] == '[') {
+            inTable = true;
+        }
+        const std::size_t eq = line.find('=');
+        if (!inTable && first != std::string::npos && line[first] != '#' && eq != std::string::npos) {
+            std::string key = line.substr(first, eq - first);
+            key.erase(key.find_last_not_of(" \t") + 1);
+            for (std::size_t i = 0; i < wanted.size(); ++i) {
+                if (key == wanted[i].key) {
+                    std::size_t start = line.find_first_not_of(" \t", eq + 1);
+                    if (start == std::string::npos) {
+                        start = line.size();
+                    }
+                    line.replace(start, valueEnd(line, start) - start, wanted[i].value);
+                    seen[i] = true;
+                }
+            }
+        }
+        out += line;
+        if (hadNewline) {
+            out += '\n';
+        }
+    }
+    bool appended = false;
+    for (std::size_t i = 0; i < wanted.size(); ++i) {
+        if (!seen[i]) {
+            if (!appended && !out.empty() && out.back() != '\n') {
+                out += crlf ? "\r\n" : "\n";
+            }
+            out += render(wanted[i]) + (crlf ? "\r\n" : "\n");
+            appended = true;
+        }
+    }
+    return out;
 }
 
 bool Config::save(const QString& path, QString* error) const
@@ -236,7 +367,14 @@ bool Config::save(const QString& path, QString* error) const
         }
         return false;
     }
-    const std::string text = toToml(); // UTF-8, LF line endings on every platform
+    // Keep the user's file (comments, layout, unknown keys); only values change.
+    std::string text;
+    if (QFile existing(path); existing.exists() && existing.open(QIODevice::ReadOnly)) {
+        const QByteArray old = existing.readAll();
+        text = mergeInto(std::string_view(old.constData(), std::size_t(old.size())));
+    } else {
+        text = toToml(); // UTF-8, LF line endings on every platform
+    }
     file.write(text.data(), qint64(text.size()));
     if (!file.commit()) {
         if (error) {

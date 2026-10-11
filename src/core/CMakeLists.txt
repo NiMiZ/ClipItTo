@@ -7,6 +7,7 @@ add_library(clipitto_core STATIC
     Entry.h
     GroupPath.cpp GroupPath.h
     Hotkey.cpp Hotkey.h
+    KeyStore.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h
     db/FtsQuery.cpp db/FtsQuery.h
@@ -24,6 +25,6 @@ qt_add_resources(clipitto_core "clipitto_migrations"
 target_include_directories(clipitto_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(clipitto_core
     PUBLIC Qt6::Core
-    PRIVATE SQLite::SQLite3 tomlplusplus::tomlplusplus
+    PRIVATE clipitto_sqlite tomlplusplus::tomlplusplus
 )
 clipitto_set_warnings(clipitto_core)

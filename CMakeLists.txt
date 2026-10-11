@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 project(ClipItTo
     VERSION 0.1.0
     DESCRIPTION "Clipboard manager with history, groups and favorites for Linux"
-    LANGUAGES CXX)
+    LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

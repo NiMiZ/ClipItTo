@@ -2,6 +2,7 @@
 #include "Daemon.h"
 #include "Paths.h"
 #include "PopupWindow.h"
+#include "SystemKeyStore.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -19,6 +20,7 @@
 #include "UnixSignals.h"
 
 #include <csignal>
+#include <sys/stat.h>
 #endif
 
 #ifdef Q_OS_WIN
@@ -45,6 +47,11 @@ void reportStartupError(const QString& message)
 
 int main(int argc, char* argv[])
 {
+#ifdef Q_OS_UNIX
+    // Everything the daemon creates (history.db, -wal, -shm, config) is private to the user.
+    // Windows: the profile folders it writes to are already private by ACL.
+    umask(077);
+#endif
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("clipitto"));
     QApplication::setApplicationDisplayName(QStringLiteral("ClipItTo"));
@@ -68,6 +75,7 @@ int main(int argc, char* argv[])
     options.configPath = clipitto::paths::configFile();
     options.databasePath = clipitto::paths::databaseFile();
     options.session = clipitto::SessionEnv::detect();
+    options.keyStore = clipitto::createSystemKeyStore();
 
 #ifdef CLIPITTO_USE_DBUS
     clipitto::Daemon daemon(options,

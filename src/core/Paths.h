@@ -15,4 +15,8 @@ QString databaseFile(); // <dataDir>/history.db
 // Creates the parent directory of a file path. Returns false on failure.
 bool ensureParentDir(const QString& filePath);
 
+// Makes an existing file readable and writable by its owner only. Linux: chmod 0600.
+// Windows: nothing to do - the per-user profile folders are already private by ACL.
+void restrictToOwner(const QString& filePath);
+
 } // namespace clipitto::paths

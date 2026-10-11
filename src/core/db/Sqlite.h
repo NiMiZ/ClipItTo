@@ -20,10 +20,23 @@ private:
     int m_code;
 };
 
+// True when built with SQLite3 Multiple Ciphers (CLIPITTO_ENCRYPTION).
+bool encryptionSupported();
+
+enum class FileState { Missing, Plain, Encrypted };
+// Whether `path` is absent, a plain database, or an encrypted one (no SQLite header and
+// unreadable without a key). A damaged plain database throws instead of passing as encrypted.
+FileState probeFile(const QString& path);
+
+// Overwrites a buffer that held key material before it is released.
+void wipe(QByteArray& secret);
+
 // Owns a sqlite3 connection. Not thread-safe: use from one thread.
 class Db {
 public:
-    explicit Db(const QString& path); // ":memory:" for an in-memory database
+    // ":memory:" for an in-memory database. A non-empty `key` (raw bytes) opens an encrypted
+    // database; a wrong key throws.
+    explicit Db(const QString& path, const QByteArray& key = {});
     ~Db();
     Db(const Db&) = delete;
     Db& operator=(const Db&) = delete;
@@ -32,6 +45,11 @@ public:
     void exec(const char* sql);
     void exec(const QString& sql);
     qint64 changes() const;
+
+    // Encrypts a plain database in place with `key`, re-keys an encrypted one, or (empty
+    // key) decrypts it. Journaled, so an interruption leaves the old state. Prepared
+    // statements stay valid; none may be mid-step.
+    void rekey(const QByteArray& key);
 
 private:
     sqlite3* m_db = nullptr;

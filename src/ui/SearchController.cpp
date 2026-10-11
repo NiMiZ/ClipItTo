@@ -47,8 +47,19 @@ void SearchController::refresh()
     run();
 }
 
+void SearchController::setSuspended(bool suspended)
+{
+    m_suspended = suspended;
+    if (suspended) {
+        m_debounce.stop();
+    }
+}
+
 void SearchController::run()
 {
+    if (m_suspended) {
+        return;
+    }
     ++m_queriesRun;
     std::vector<HistoryModel::Section> sections;
     std::vector<HistoryModel::GroupData> groups;

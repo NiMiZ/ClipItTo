@@ -5,6 +5,8 @@
 
 #include <QLoggingCategory>
 
+#include <utility>
+
 Q_LOGGING_CATEGORY(lcCapture, "clipitto.capture")
 
 namespace clipitto {
@@ -23,6 +25,18 @@ void CapturePipeline::setLimits(int maxHistory, qint64 maxItemBytes)
     m_filter.setMaxBytes(maxItemBytes);
 }
 
+void CapturePipeline::setPaused(bool paused)
+{
+    m_paused = paused;
+    if (paused) {
+        return;
+    }
+    const QList<QString> waiting = std::exchange(m_waiting, {});
+    for (const QString& text : waiting) {
+        store(text);
+    }
+}
+
 void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
 {
     const ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
@@ -31,6 +45,19 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
         emit rejected(verdict);
         return;
     }
+    if (m_paused) {
+        m_waiting.removeAll(text); // the same text copied twice is one entry anyway
+        m_waiting << text;
+        while (m_waiting.size() > m_maxHistory) {
+            m_waiting.removeFirst(); // keep memory bounded: the oldest would be pruned anyway
+        }
+        return;
+    }
+    store(text);
+}
+
+void CapturePipeline::store(const QString& text)
+{
     try {
         const auto result = m_repo.ingest(text);
         if (result.inserted) {

@@ -5,7 +5,9 @@
   "dependencies": [
     {
       "name": "sqlite3",
-      "features": ["fts5"]
+      "features": [
+        "fts5"
+      ]
     },
     "tomlplusplus"
   ]

@@ -11,6 +11,17 @@ clipitto_set_warnings(clipitto_daemon_lib)
 qt_add_executable(clipitto-daemon WIN32 main.cpp)
 target_link_libraries(clipitto-daemon PRIVATE clipitto_daemon_lib Qt6::Widgets)
 target_compile_definitions(clipitto-daemon PRIVATE CLIPITTO_VERSION="${PROJECT_VERSION}")
+# The history key's keyring, one implementation per platform (see SystemKeyStore.h).
+target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore.h)
+if(WIN32)
+    target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_win.cpp)
+    target_link_libraries(clipitto_daemon_lib PRIVATE Advapi32) # Cred*W
+elseif(Qt6Keychain_FOUND)
+    target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_linux.cpp KeychainKeyStore.cpp KeychainKeyStore.h)
+    target_link_libraries(clipitto_daemon_lib PRIVATE Qt6Keychain::Qt6Keychain)
+else()
+    target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_none.cpp)
+endif()
 if(CLIPITTO_DBUS)
     # Linux: D-Bus control channel and the GNOME Shell extension.
     target_compile_definitions(clipitto-daemon PRIVATE CLIPITTO_USE_DBUS)

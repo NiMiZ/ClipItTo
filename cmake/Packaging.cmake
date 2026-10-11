@@ -67,7 +67,13 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ${CLIPITTO_DEB_SHLIBDEPS})
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-wayland")
 if(NOT CLIPITTO_DEB_SHLIBDEPS)
     string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libqt6core6t64, libqt6gui6t64, libqt6widgets6t64, "
-                  "libqt6dbus6t64, libsqlite3-0, libtomlplusplus3t64, libx11-6, libxtst6")
+                  "libqt6dbus6t64, libtomlplusplus3t64, libx11-6, libxtst6")
+    if(Qt6Keychain_FOUND)
+        string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libqt6keychain1")
+    endif()
+    if(NOT CLIPITTO_ENCRYPTION)
+        string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libsqlite3-0") # otherwise SQLite is built in
+    endif()
 endif()
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gnome-shell | wl-clipboard")
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA

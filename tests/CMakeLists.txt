@@ -26,6 +26,7 @@ clipitto_add_test(tst_popup clipitto_ui)
 clipitto_add_test(tst_settings clipitto_ui)
 clipitto_add_test(tst_hotkey)
 clipitto_add_test(tst_paths)
+clipitto_add_test(tst_encryption)
 
 if(NOT CLIPITTO_DBUS)
     # The local-socket transport (Windows; Unix socket elsewhere) and the CLI built on it.
@@ -56,6 +57,12 @@ target_link_libraries(bench_search PRIVATE clipitto_core Qt6::Test)
 clipitto_set_warnings(bench_search)
 add_test(NAME bench_search COMMAND bench_search CONFIGURATIONS bench)
 set_tests_properties(bench_search PROPERTIES LABELS bench)
+
+add_executable(bench_encryption bench_encryption.cpp)
+target_link_libraries(bench_encryption PRIVATE clipitto_core Qt6::Test)
+clipitto_set_warnings(bench_encryption)
+add_test(NAME bench_encryption COMMAND bench_encryption CONFIGURATIONS bench)
+set_tests_properties(bench_encryption PROPERTIES LABELS bench)
 
 # D-Bus integration (Linux): daemon in-process + the real CLI binary, on a private session bus.
 if(CLIPITTO_DBUS)

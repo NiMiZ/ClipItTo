@@ -1,6 +1,7 @@
 #include "Paths.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
 
@@ -46,6 +47,17 @@ QString databaseFile()
 bool ensureParentDir(const QString& filePath)
 {
     return QDir().mkpath(QFileInfo(filePath).absolutePath());
+}
+
+void restrictToOwner(const QString& filePath)
+{
+#if defined(_WIN32)
+    Q_UNUSED(filePath); // %LOCALAPPDATA% / %APPDATA% are private to the user by ACL
+#else
+    if (QFile::exists(filePath)) {
+        QFile::setPermissions(filePath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    }
+#endif
 }
 
 } // namespace clipitto::paths

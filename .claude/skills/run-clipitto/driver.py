@@ -5,6 +5,7 @@ Each subcommand is one step; state (display, D-Bus bus, daemon pid, temp config/
 lives in a session directory, so steps can be run one at a time from a shell:
 
     driver.py start                 # Xvfb + private D-Bus bus + clipitto-daemon (Qt xcb)
+    driver.py start --history F.db  # same, starting from a copy of an existing history file
     driver.py copy "some text"      # another app copies text (xclip) -> daemon captures it
     driver.py cli --toggle          # run the real `clipitto` CLI against this daemon
     driver.py type "query"          # type into the focused window (xdotool)
@@ -120,7 +121,12 @@ def pid_alive(pid):
 # --- commands -------------------------------------------------------------------------
 
 
-def cmd_start(_args):
+def cmd_start(args):
+    history = None
+    if args[:1] == ["--history"] and len(args) > 1:
+        history = Path(args[1]).resolve()
+        if not history.exists():
+            die(f"no such history file: {history}")
     if STATE.exists():
         state = json.loads(STATE.read_text())
         if state["daemon_pid"] and pid_alive(state["daemon_pid"]):
@@ -134,8 +140,10 @@ def cmd_start(_args):
 
     if SESSION.exists():
         shutil.rmtree(SESSION)
-    for sub in ("config/clipitto", "data", "screenshots", "logs"):
+    for sub in ("config/clipitto", "data/clipitto", "screenshots", "logs"):
         (SESSION / sub).mkdir(parents=True)  # config/clipitto: so config.toml can be written right away
+    if history:
+        shutil.copy(history, SESSION / "data" / "clipitto" / "history.db")
 
     n = free_display()
     xvfb = subprocess.Popen(

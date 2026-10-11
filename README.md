@@ -10,7 +10,7 @@ readable title.
 ```bash
 # 1. Dependencies
 sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-wayland libgl-dev \
-  libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin wl-clipboard
+  libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev wl-clipboard
 
 # 2. Build and test
 git clone https://github.com/NiMiZ/ClipItTo.git && cd ClipItTo
@@ -85,9 +85,39 @@ and a path such as `Work/Servers` (missing groups are created). Grouped and favo
 are never pruned and are also listed under *Saved*.
 
 **Settings** (⚙): theme (system / light / dark), how many copies are listed, how many text
-lines each copy shows, the shortcut (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows
-ClipItTo registers it, on GNOME it becomes the GNOME keyboard shortcut), and group
-management (new, sub-group, rename/move, delete).
+lines each copy shows, where the popup opens (near the pointer or centered), the shortcut
+(default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows ClipItTo registers it, on GNOME it
+becomes the GNOME keyboard shortcut), history encryption, and group management (new,
+sub-group, rename/move, delete; saved immediately). Saving keeps your own comments and
+layout in `config.toml`.
+
+### Encrypted history
+
+Settings › *Encrypt the history on disk* encrypts `history.db` (copies, notes, groups, the
+search index) with 256-bit ChaCha20-Poly1305 via the bundled
+[SQLite3 Multiple Ciphers](https://github.com/utelle/SQLite3MultipleCiphers). The random key
+is kept in the system keyring (GNOME Keyring / KWallet through Secret Service, or the
+Windows Credential Manager), so there is no password to type; without a reachable keyring
+the option says why it is unavailable. Turning it on or off converts the history once, in
+the background. It protects the file at rest (backups, other accounts, a stolen disk
+without full-disk encryption), not against programs running as you, which can read the
+clipboard and the keyring anyway. Copies made before turning it on may still be
+recoverable from free disk space (old journal blocks); only full-disk encryption covers
+that. If the keyring entry is lost, the history cannot be read. History files are created
+readable by your account only.
+
+Measured cost (`build/debug/tests/bench_encryption`, debug build, 1000 copies):
+
+| | plain | encrypted |
+|---|---|---|
+| open + first read | 0.6 ms | 27 ms |
+| store one copy | 0.37 ms | 0.88 ms |
+| search | 4.0 ms | 4.2 ms |
+| one-time conversion | | ~50 ms |
+
+The build downloads the SQLite3 Multiple Ciphers amalgamation (pinned version and SHA-256);
+offline builds can set `FETCHCONTENT_SOURCE_DIR_SQLITE3MC` to an unpacked copy, or
+configure with `-DCLIPITTO_ENCRYPTION=OFF` to use the system SQLite.
 
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs
@@ -125,7 +155,7 @@ Requires Ubuntu 24.04+ (or equivalent): Qt 6.4+, SQLite 3.35+, toml++ 3.
 
 ```bash
 sudo apt install build-essential cmake ninja-build qt6-base-dev libgl-dev libsqlite3-dev \
-  libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin
+  libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev
 cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug     # gjs and dbus-run-session enable the extension and D-Bus tests

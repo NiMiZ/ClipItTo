@@ -1,6 +1,8 @@
 #include "ControlChannel.h"
 #include "Daemon.h"
 #include "DesktopIntegration.h"
+#include "FakeKeyStore.h"
+#include "db/Sqlite.h"
 #include "HistoryModel.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
@@ -350,6 +352,172 @@ private slots:
         c.hotkey = QStringLiteral("Ctrl+`");
         QVERIFY(d.applySettings(c));
         QVERIFY(!d.status().contains(QStringLiteral("shortcut")));
+    }
+
+    // --- Encrypted history (fake keyring) --------------------------------------------
+
+    DaemonOptions encryptedOptions(const std::shared_ptr<FakeKeyStore>& keys) const
+    {
+        DaemonOptions o = options();
+        o.keyStore = keys;
+        return o;
+    }
+
+    void encryptionAtStartupAndRestart()
+    {
+        if (!clipitto::db::encryptionSupported()) {
+            QSKIP("built without CLIPITTO_ENCRYPTION");
+        }
+        auto keys = std::make_shared<FakeKeyStore>();
+        writeConfig("encrypt_history = true\n");
+        {
+            Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            emit d.control()->ingestRequested(QStringLiteral("secret token abc123"), {});
+            QVERIFY(d.isHistoryEncrypted());
+            QCOMPARE(d.control()->status().value(QStringLiteral("encryption")).toString(),
+                     QStringLiteral("on (system keyring)"));
+        }
+        QVERIFY(keys->stored.has_value());
+        QCOMPARE(clipitto::db::probeFile(options().databasePath), clipitto::db::FileState::Encrypted);
+        QFile db(options().databasePath);
+        QVERIFY(db.open(QIODevice::ReadOnly));
+        QVERIFY(!db.readAll().contains("abc123"));
+
+        Daemon again(encryptedOptions(keys), std::make_unique<FakeControl>()); // same key: opens
+        QVERIFY(again.start() == Daemon::StartResult::Ok);
+        QCOMPARE(again.repository()->search(QStringLiteral("abc123")).size(), 1u);
+    }
+
+    void switchingAtRuntimeConvertsInTheBackground()
+    {
+        if (!clipitto::db::encryptionSupported()) {
+            QSKIP("built without CLIPITTO_ENCRYPTION");
+        }
+        auto keys = std::make_shared<FakeKeyStore>();
+        Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        emit d.control()->ingestRequested(QStringLiteral("before"), {});
+        QSignalSpy finished(&d, &Daemon::encryptionFinished);
+
+        Config c = d.config();
+        c.encryptHistory = true;
+        QVERIFY(d.applySettings(c));
+        QVERIFY(d.isConverting());
+        QVERIFY(d.popup()->isBusy());
+        emit d.control()->ingestRequested(QStringLiteral("during"), {}); // waits in memory
+        QCOMPARE(d.control()->status().value(QStringLiteral("encryption")).toString(), QStringLiteral("converting"));
+        QTRY_COMPARE(finished.size(), 1);
+        QCOMPARE(finished.at(0).at(0).toBool(), true);
+        QVERIFY(!d.popup()->isBusy());
+        QCOMPARE(clipitto::db::probeFile(options().databasePath), clipitto::db::FileState::Encrypted);
+        QCOMPARE(d.repository()->count(), 2); // the copy made during the conversion was kept
+
+        c.encryptHistory = false;
+        QVERIFY(d.applySettings(c));
+        QTRY_COMPARE(finished.size(), 2);
+        QCOMPARE(clipitto::db::probeFile(options().databasePath), clipitto::db::FileState::Plain);
+        QVERIFY(!keys->stored.has_value()); // the key is dropped with the encryption
+        QCOMPARE(d.control()->status().value(QStringLiteral("encryption")).toString(), QStringLiteral("off"));
+    }
+
+    void encryptedHistoryWithoutItsKeyIsLeftAlone()
+    {
+        if (!clipitto::db::encryptionSupported()) {
+            QSKIP("built without CLIPITTO_ENCRYPTION");
+        }
+        auto keys = std::make_shared<FakeKeyStore>();
+        writeConfig("encrypt_history = true\n");
+        {
+            Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+        }
+        keys->stored.reset(); // e.g. a different user account, or the keyring was reset
+        Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+        QString error;
+        QVERIFY(d.start(&error) == Daemon::StartResult::Failed);
+        QVERIFY2(error.contains(QLatin1String("encrypted")), qPrintable(error));
+        QCOMPARE(clipitto::db::probeFile(options().databasePath), clipitto::db::FileState::Encrypted);
+    }
+
+    void failedSwitchRevertsTheSetting()
+    {
+        auto keys = std::make_shared<FakeKeyStore>();
+        keys->failWrites = true;
+        Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QString shown;
+        d.popup()->setNotify([&](QWidget*, const QString& message) { shown = message; });
+        QSignalSpy finished(&d, &Daemon::encryptionFinished);
+        Config c = d.config();
+        c.encryptHistory = true;
+        QVERIFY(d.applySettings(c));
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(finished.at(0).at(0).toBool(), false);
+        QVERIFY(shown.contains(QLatin1String("keyring refused")));
+        QVERIFY(!d.config().encryptHistory); // live setting follows the file...
+        QVERIFY(!Config::load(options().configPath).encryptHistory); // ...and so does the saved one
+        QCOMPARE(clipitto::db::probeFile(options().databasePath), clipitto::db::FileState::Plain);
+    }
+
+    void keyringThatLosesTheKeyBlocksEncryption()
+    {
+        auto keys = std::make_shared<FakeKeyStore>();
+        keys->loseWrites = true;
+        Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QString shown;
+        d.popup()->setNotify([&](QWidget*, const QString& message) { shown = message; });
+        Config c = d.config();
+        c.encryptHistory = true;
+        QVERIFY(d.applySettings(c));
+        QVERIFY(!d.isHistoryEncrypted());
+        QVERIFY(shown.contains(QLatin1String("did not keep the key")));
+        QCOMPARE(clipitto::db::probeFile(options().databasePath), clipitto::db::FileState::Plain);
+    }
+
+    void startupWarnsWhenEncryptionCouldNotBeApplied()
+    {
+        auto keys = std::make_shared<FakeKeyStore>();
+        keys->isAvailable = false;
+        writeConfig("encrypt_history = true\n");
+        Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QStringList shown;
+        d.popup()->setNotify([&](QWidget*, const QString& message) { shown << message; });
+        emit d.control()->showRequested(QString());
+        QTRY_COMPARE(shown.size(), 1);
+        QVERIFY(shown.front().contains(QLatin1String("NOT encrypted")));
+        emit d.control()->hideRequested();
+        emit d.control()->showRequested(QString()); // only once
+        QTest::qWait(50);
+        QCOMPARE(shown.size(), 1);
+    }
+
+    void historyFileIsPrivate()
+    {
+#ifdef Q_OS_WIN
+        QSKIP("Windows relies on the profile folder's ACL");
+#else
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        const auto perms = QFile::permissions(options().databasePath);
+        QVERIFY(perms & QFileDevice::ReadOwner);
+        QVERIFY(!(perms & (QFileDevice::ReadGroup | QFileDevice::ReadOther)));
+#endif
+    }
+
+    void noKeyringKeepsTheHistoryPlainAndSaysWhy()
+    {
+        auto keys = std::make_shared<FakeKeyStore>();
+        keys->isAvailable = false;
+        writeConfig("encrypt_history = true\n");
+        Daemon d(encryptedOptions(keys), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(!d.isHistoryEncrypted());
+        QVERIFY(d.control()->status().value(QStringLiteral("encryption")).toString().startsWith(
+            QLatin1String("off (problem:")));
+        QVERIFY(!d.encryptionAvailable());
     }
 
     void startPrunesToConfiguredLimit()

@@ -5,6 +5,7 @@
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -26,6 +27,13 @@ namespace {
 
 const QString kDefaultHotkey = Config{}.hotkey;
 
+// Measured with tests/bench_encryption (see README, "Encrypted history").
+constexpr const char* kEncryptionNote = QT_TRANSLATE_NOOP(
+    "clipitto::ui::SettingsDialog",
+    "256-bit encryption (ChaCha20-Poly1305); the key is kept in your system keyring, so there is no "
+    "password to type. Cost: about 25 ms more when ClipItTo starts and under 1 ms more per saved copy; searching is just as fast. Turning it on or off converts the history once. Copies made before turning it on may "
+    "remain readable in free disk space; for that, use full-disk encryption.");
+
 QKeySequence sequenceFor(const QString& hotkey)
 {
     return QKeySequence::fromString(hotkey, QKeySequence::PortableText);
@@ -33,7 +41,8 @@ QKeySequence sequenceFor(const QString& hotkey)
 
 } // namespace
 
-SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut, QWidget* parent)
+SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
+                               EncryptionSupport encryption, QWidget* parent)
     : QDialog(parent)
     , m_config(config)
     , m_repo(repo)
@@ -41,6 +50,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_theme(new QComboBox(this))
     , m_copies(new QSpinBox(this))
     , m_lines(new QSpinBox(this))
+    , m_position(new QComboBox(this))
+    , m_encrypt(new QCheckBox(tr("Encrypt the history on disk"), this))
+    , m_tabs(new QTabWidget(this))
+    , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
     , m_shortcut(new QKeySequenceEdit(this))
     , m_shortcutStatus(new QLabel(this))
     , m_groups(new QTreeWidget(this))
@@ -74,6 +87,12 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_lines->setToolTip(tr("1 squeezes each copy onto one line; more shows its first lines"));
     form->addRow(tr("Preview lines per copy:"), m_lines);
 
+    m_position->addItem(tr("Near the mouse pointer"), int(PopupPosition::Cursor));
+    m_position->addItem(tr("Center of the screen"), int(PopupPosition::Center));
+    m_position->setCurrentIndex(m_position->findData(int(config.popupPosition)));
+    m_position->setToolTip(tr("On Wayland desktops the desktop decides where the popup opens"));
+    form->addRow(tr("Open the popup:"), m_position);
+
     auto* shortcutRow = new QHBoxLayout;
     m_shortcut->setKeySequence(sequenceFor(config.hotkey));
     auto* resetShortcut = new QPushButton(tr("Default"), this);
@@ -90,6 +109,25 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         resetShortcut->setEnabled(false);
     }
     connect(m_shortcut, &QKeySequenceEdit::keySequenceChanged, this, &SettingsDialog::onShortcutEdited);
+
+    m_encrypt->setChecked(config.encryptHistory);
+    form->addRow(tr("Privacy:"), m_encrypt);
+    auto* encryptNote = new QLabel(this);
+    encryptNote->setWordWrap(true);
+    encryptNote->setEnabled(false); // dim
+    QString note = encryption.available ? tr(kEncryptionNote) : tr("Not available: %1").arg(encryption.reason);
+    if (!encryption.available) {
+        m_encrypt->setEnabled(false); // keep the current state visible but unchangeable
+    }
+    if (config.encryptHistory && !encryption.active) {
+        // The setting asks for it, the file is not: say so plainly, never let it look done.
+        note = tr("<b>Currently NOT encrypted</b>%1. ")
+                   .arg(encryption.problem.isEmpty() ? QString() : QStringLiteral(": ") + encryption.problem.toHtmlEscaped())
+            + note.toHtmlEscaped();
+        encryptNote->setEnabled(true);
+    }
+    encryptNote->setText(note);
+    form->addRow(QString(), encryptNote);
     connect(resetShortcut, &QPushButton::clicked, this, [this] { m_shortcut->setKeySequence(sequenceFor(kDefaultHotkey)); });
 
     // --- Groups ------------------------------------------------------------------------
@@ -108,11 +146,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         buttons->addWidget(b);
     }
     groupsLayout->addLayout(buttons);
-    auto* hint = new QLabel(tr("Changes to groups apply immediately. A copy can be put in a group from "
-                               "the popup (Ctrl+G or right-click)."),
+    auto* hint = new QLabel(tr("<b>Changes to groups are saved immediately.</b> A copy can be put in a "
+                               "group from the popup (Ctrl+G or right-click)."),
                             this);
     hint->setWordWrap(true);
-    hint->setEnabled(false);
     groupsLayout->addWidget(hint);
     connect(newButton, &QPushButton::clicked, this, &SettingsDialog::newGroup);
     connect(m_subGroupButton, &QPushButton::clicked, this, &SettingsDialog::newSubGroup);
@@ -128,15 +165,26 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     reloadGroups();
 
     // --- Dialog ------------------------------------------------------------------------
-    auto* tabs = new QTabWidget(this);
-    tabs->addTab(general, tr("General"));
-    tabs->addTab(groupsPage, tr("Groups"));
-    auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(box, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    m_tabs->addTab(general, tr("General"));
+    m_tabs->addTab(groupsPage, tr("Groups"));
+    // Group edits are already saved, so Cancel would promise an undo it can't give: the
+    // Groups tab only offers Close (which also keeps any General changes, like OK).
+    QPushButton* close = m_buttons->addButton(QDialogButtonBox::Close);
+    close->setToolTip(tr("Close the settings, keeping all changes"));
+    connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(close, &QPushButton::clicked, this, &QDialog::accept);
+    const auto showButtonsFor = [this, close](int tab) {
+        const bool groupsTab = tab == 1;
+        m_buttons->button(QDialogButtonBox::Ok)->setVisible(!groupsTab);
+        m_buttons->button(QDialogButtonBox::Cancel)->setVisible(!groupsTab);
+        close->setVisible(groupsTab);
+    };
+    connect(m_tabs, &QTabWidget::currentChanged, this, showButtonsFor);
+    showButtonsFor(0);
     auto* layout = new QVBoxLayout(this);
-    layout->addWidget(tabs, 1);
-    layout->addWidget(box);
+    layout->addWidget(m_tabs, 1);
+    layout->addWidget(m_buttons);
 }
 
 Config SettingsDialog::config() const
@@ -146,6 +194,8 @@ Config SettingsDialog::config() const
     c.recentCount = m_copies->value();
     c.previewLines = m_lines->value();
     c.hotkey = m_hotkey;
+    c.popupPosition = PopupPosition(m_position->currentData().toInt());
+    c.encryptHistory = m_encrypt->isChecked();
     return c;
 }
 
@@ -205,8 +255,13 @@ void SettingsDialog::reloadGroups(const QString& select)
         m_notify(this, QString::fromUtf8(e.what()));
     }
     m_groups->expandAll();
+    // Always select something real: otherwise Qt shows a focus frame on the first row
+    // while nothing is selected and the buttons are disabled.
     if (!select.isEmpty()) {
         selectGroup(select);
+    }
+    if (m_groups->selectedItems().isEmpty() && m_groups->topLevelItemCount() > 0) {
+        m_groups->setCurrentItem(m_groups->topLevelItem(0));
     }
     emit m_groups->itemSelectionChanged(); // refresh button states
 }

@@ -487,6 +487,25 @@ private slots:
         QVERIFY(f.t.repo->groups().contains(QStringLiteral("Work")));
     }
 
+    void busyPopupShowsTheNoticeAndBlocksInput()
+    {
+        Fixture f;
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        f.popup->setBusy(QStringLiteral("Encrypting the history…"));
+        QCOMPARE(f.model()->rowCount(), 0);
+        QVERIFY(!f.popup->searchBar()->isEnabled());
+        f.t.repo->ingest(QStringLiteral("arrives meanwhile"));
+        f.popup->historyChanged(); // ignored while busy
+        QCOMPARE(f.model()->rowCount(), 0);
+        QTest::keyClick(f.popup.get(), Qt::Key_Return);
+        QCOMPARE(activated.size(), 0);
+
+        f.popup->setBusy(QString());
+        QVERIFY(f.popup->searchBar()->isEnabled());
+        QCOMPARE(f.model()->entryAt(f.model()->index(3, 0))->content, QStringLiteral("arrives meanwhile"));
+    }
+
     void settingsButtonAndShortcut()
     {
         Fixture f;

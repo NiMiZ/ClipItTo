@@ -70,6 +70,38 @@ private slots:
         QCOMPARE(t.repo->countUnsaved(), 5);
     }
 
+    void pausedClipsWaitAndAreStoredOnResume()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        QSignalSpy stored(&p, &CapturePipeline::stored);
+        p.setPaused(true);
+        p.process(QStringLiteral("first"), {});
+        p.process(QStringLiteral("second"), {});
+        p.process(QStringLiteral("first"), {}); // again: one entry, moved to the end
+        p.process(QStringLiteral("   "), {}); // still filtered while paused
+        QCOMPARE(t.repo->count(), 0);
+        QCOMPARE(stored.size(), 0);
+
+        p.setPaused(false);
+        QCOMPARE(t.repo->count(), 2);
+        QCOMPARE(stored.size(), 2);
+        QCOMPARE(t.repo->recent(1, false).front().content, QStringLiteral("first"));
+    }
+
+    void pausedBufferIsBounded()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 10, 1024);
+        p.setPaused(true);
+        for (int i = 0; i < 50; ++i) {
+            p.process(QStringLiteral("clip %1").arg(i), {});
+        }
+        p.setPaused(false);
+        QCOMPARE(t.repo->count(), 10);
+        QCOMPARE(t.repo->recent(1, false).front().content, QStringLiteral("clip 49"));
+    }
+
     void ignoresOwnWrites()
     {
         TestDb t;

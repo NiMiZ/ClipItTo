@@ -16,6 +16,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QRandomGenerator>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QTimer>
@@ -66,6 +67,12 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
 
 Daemon::~Daemon()
 {
+    if (m_worker.joinable()) {
+        m_worker.join(); // a conversion in flight: let it finish, the file stays consistent
+    }
+    if (m_pipeline && m_pipeline->isPaused()) {
+        m_pipeline->setPaused(false); // store what was copied during that conversion
+    }
     if (m_repo) {
         try {
             m_repo->optimize();
@@ -95,11 +102,7 @@ Daemon::StartResult Daemon::start(QString* error)
     loadConfig();
 
     try {
-        if (!paths::ensureParentDir(m_options.databasePath)) {
-            throw db::DbError("cannot create directory for " + m_options.databasePath.toStdString(), 0);
-        }
-        m_db = std::make_unique<db::Db>(m_options.databasePath);
-        db::configureConnection(*m_db);
+        openHistory();
         db::migrate(*m_db);
         m_repo = std::make_unique<db::Repository>(*m_db);
         m_repo->prune(m_config.maxHistory); // the limit may have been lowered since last run
@@ -120,12 +123,36 @@ Daemon::StartResult Daemon::start(QString* error)
     ui::applyTheme(m_config.theme);
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
+    connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
+        if (!ok) {
+            m_popup->showMessage(tr("Could not change the history encryption: %1").arg(error));
+        }
+    });
     connect(m_control, &ControlChannel::toggleRequested, m_popup.get(), &ui::PopupWindow::togglePopup);
     connect(m_control, &ControlChannel::showRequested, m_popup.get(), &ui::PopupWindow::showPopup);
     connect(m_control, &ControlChannel::hideRequested, m_popup.get(), &ui::PopupWindow::hidePopup);
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
+
+    if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
+        QString removeError;
+        if (!m_options.keyStore->remove(&removeError)) {
+            qCWarning(lcDaemon).noquote() << "could not remove the old history key:" << removeError;
+        }
+        m_removeKeyAfterStart = false;
+    }
+    if (!m_startupWarning.isEmpty()) {
+        qCWarning(lcDaemon).noquote() << m_startupWarning;
+        // Say it where the user looks, once: the first time the popup opens.
+        auto* once = new QObject(this);
+        connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, once, [this, once](bool visible) {
+            if (visible) {
+                once->deleteLater();
+                QTimer::singleShot(0, m_popup.get(), [this] { m_popup->showMessage(m_startupWarning); });
+            }
+        });
+    }
     return StartResult::Ok;
 }
 
@@ -200,9 +227,203 @@ void Daemon::reloadConfig()
     reload(false);
 }
 
+bool Daemon::encryptionAvailable(QString* why) const
+{
+    const auto fail = [why](const QString& reason) {
+        if (why) {
+            *why = reason;
+        }
+        return false;
+    };
+    if (!db::encryptionSupported()) {
+        return fail(tr("this build has no encryption support"));
+    }
+    if (!m_options.keyStore) {
+        return fail(tr("this build has no system keyring support"));
+    }
+    return m_options.keyStore->available(why);
+}
+
+QByteArray Daemon::historyKey(bool create, QString* error) const
+{
+    QString readError;
+    if (const auto stored = m_options.keyStore->read(&readError)) {
+        return *stored;
+    }
+    if (!readError.isEmpty() || !create) {
+        if (error) {
+            *error = readError.isEmpty() ? tr("no key is stored in the system keyring") : readError;
+        }
+        return {};
+    }
+    // A random 256-bit key: high entropy, so no password-strengthening is needed.
+    std::array<quint32, 8> words{};
+    QRandomGenerator::system()->fillRange(words.data(), qsizetype(words.size()));
+    QByteArray key(reinterpret_cast<const char*>(words.data()), qsizetype(sizeof(words)));
+    words.fill(0);
+    QString keyError;
+    // Read it back before trusting it: a keyring that only kept it for this session (or
+    // dropped it) would make the history unreadable after the next login.
+    if (!m_options.keyStore->write(key, &keyError)) {
+        db::wipe(key);
+        if (error) {
+            *error = keyError;
+        }
+        return {};
+    }
+    std::optional<QByteArray> stored = m_options.keyStore->read(&keyError);
+    if (!stored || *stored != key) {
+        db::wipe(key);
+        if (stored) {
+            db::wipe(*stored);
+        }
+        if (error) {
+            *error = keyError.isEmpty() ? tr("the system keyring did not keep the key") : keyError;
+        }
+        return {};
+    }
+    db::wipe(*stored);
+    return key;
+}
+
+void Daemon::openHistory()
+{
+    const QString& path = m_options.databasePath;
+    if (!paths::ensureParentDir(path)) {
+        throw db::DbError("cannot create directory for " + path.toStdString(), 0);
+    }
+    const db::FileState state = db::probeFile(path);
+    const bool encryptedOnDisk = state == db::FileState::Encrypted;
+    const bool wanted = m_config.encryptHistory;
+    m_encryptionError.clear();
+
+    QByteArray key;
+    if (encryptedOnDisk || wanted) {
+        QString why;
+        if (!encryptionAvailable(&why)) {
+            if (encryptedOnDisk) {
+                throw db::DbError(("the history is encrypted, but " + why).toStdString(), 0);
+            }
+            m_encryptionError = why; // asked for, can't be done here: stay plain, say why
+        } else {
+            QString keyError;
+            key = historyKey(/*create=*/!encryptedOnDisk, &keyError);
+            if (key.isEmpty() && encryptedOnDisk) {
+                throw db::DbError(("the history is encrypted, but its key could not be read from the "
+                                   "system keyring: " + keyError).toStdString(), 0);
+            }
+            m_encryptionError = keyError;
+        }
+    }
+
+    m_db = std::make_unique<db::Db>(path, encryptedOnDisk ? key : QByteArray());
+    db::configureConnection(*m_db);
+    m_encrypted = encryptedOnDisk;
+    // Bring the file in line with the setting. This runs before any window exists. A failed
+    // conversion leaves the file as it was (journaled) and must not stop the daemon.
+    try {
+        if (wanted && !encryptedOnDisk && !key.isEmpty()) {
+            m_db->rekey(key);
+            m_encrypted = true;
+        } else if (!wanted && encryptedOnDisk) {
+            m_db->rekey({});
+            m_encrypted = false;
+            m_removeKeyAfterStart = true; // once the rest of the start has worked
+        }
+    } catch (const db::DbError& e) {
+        m_encryptionError = QString::fromUtf8(e.what());
+        qCWarning(lcDaemon).noquote() << "history encryption change at startup failed:" << m_encryptionError;
+    }
+    db::wipe(key);
+    if (wanted && !m_encrypted) {
+        m_startupWarning = tr("Your history is NOT encrypted, although encryption is turned on in the settings: %1")
+                               .arg(m_encryptionError.isEmpty() ? tr("unknown reason") : m_encryptionError);
+    }
+    for (const char* suffix : {"", "-wal", "-shm"}) {
+        paths::restrictToOwner(path + QLatin1String(suffix));
+    }
+}
+
+void Daemon::setEncryption(bool on)
+{
+    if (on == m_encrypted || m_converting || !m_db) {
+        return;
+    }
+    QByteArray key;
+    if (on) {
+        QString error;
+        if (!encryptionAvailable(&error) || (key = historyKey(/*create=*/true, &error)).isEmpty()) {
+            m_encryptionError = error;
+            revertEncryptionSetting();
+            emit encryptionFinished(false, error);
+            return;
+        }
+    }
+    // The conversion rewrites every page: do it off the GUI thread. Meanwhile nothing else
+    // touches the database: capture waits in memory and the popup shows a notice.
+    m_converting = true;
+    m_encryptionError.clear();
+    m_pipeline->setPaused(true);
+    m_popup->setBusy(on ? tr("Encrypting the history…") : tr("Decrypting the history…"));
+    db::Db* db = m_db.get();
+    // The key moves into the worker (no copy stays here), which wipes it when done.
+    m_worker = std::thread([this, db, key = std::move(key), on]() mutable {
+        QString error;
+        try {
+            db->rekey(key);
+        } catch (const db::DbError& e) {
+            error = QString::fromUtf8(e.what());
+        }
+        db::wipe(key);
+        QMetaObject::invokeMethod(this, [this, on, error] { finishConversion(on, error); }, Qt::QueuedConnection);
+    });
+}
+
+void Daemon::revertEncryptionSetting()
+{
+    // Settings must show what is true on disk, not the request that failed.
+    if (m_config.encryptHistory == m_encrypted) {
+        return;
+    }
+    m_config.encryptHistory = m_encrypted;
+    QString error;
+    if (!m_config.save(m_options.configPath, &error)) {
+        qCWarning(lcDaemon).noquote() << "could not save the reverted encryption setting:" << error;
+    }
+}
+
+void Daemon::finishConversion(bool encrypted, const QString& error)
+{
+    if (m_worker.joinable()) {
+        m_worker.join();
+    }
+    m_converting = false;
+    if (error.isEmpty()) {
+        m_encrypted = encrypted;
+        if (!encrypted) {
+            QString removeError;
+            if (!m_options.keyStore->remove(&removeError)) {
+                qCWarning(lcDaemon).noquote() << "could not remove the old history key:" << removeError;
+            }
+        }
+        qCInfo(lcDaemon) << "history" << (encrypted ? "encrypted" : "decrypted");
+    } else {
+        m_encryptionError = error;
+        qCWarning(lcDaemon).noquote() << "history encryption change failed:" << error;
+        revertEncryptionSetting();
+    }
+    m_pipeline->setPaused(false); // store what was copied meanwhile
+    m_popup->setBusy(QString());
+    emit encryptionFinished(error.isEmpty(), error);
+}
+
 void Daemon::openSettings()
 {
     if (!m_popup) {
+        return;
+    }
+    if (m_converting) {
+        m_popup->showMessage(tr("The history is being converted; try again in a moment."));
         return;
     }
     ui::ShortcutSupport support;
@@ -214,11 +435,16 @@ void Daemon::openSettings()
         support.editable = false;
         support.note = tr("Bind \"clipitto --toggle\" to a shortcut in your desktop's keyboard settings.");
     }
-    ui::SettingsDialog dialog(m_config, *m_repo, support, m_popup.get());
+    ui::EncryptionSupport encryption;
+    encryption.available = encryptionAvailable(&encryption.reason);
+    encryption.active = m_encrypted;
+    encryption.problem = m_encryptionError;
+    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get());
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
             qCWarning(lcDaemon).noquote() << "saving settings failed:" << error;
+            m_popup->showMessage(tr("Could not save the settings: %1").arg(error));
         }
     } else if (dialog.groupsChanged()) {
         m_popup->refresh();
@@ -273,7 +499,10 @@ void Daemon::reload(bool forceShortcut)
     if (forceShortcut || m_config.hotkey != previous.hotkey) {
         applyDesktopShortcut();
     }
-    if (m_config.maxHistory < previous.maxHistory) {
+    if (m_config.encryptHistory != previous.encryptHistory) {
+        setEncryption(m_config.encryptHistory);
+    }
+    if (m_config.maxHistory < previous.maxHistory && !m_converting) {
         m_repo->prune(m_config.maxHistory);
     }
     if (m_config.backend != previous.backend || m_config.capturePrimary != previous.capturePrimary) {
@@ -302,7 +531,14 @@ QVariantMap Daemon::status() const
         s[QStringLiteral("backend_degraded")] = m_capture.degraded;
         s[QStringLiteral("backend_note")] = m_capture.note;
     }
-    if (m_repo) {
+    QString encryption = m_converting ? QStringLiteral("converting")
+                         : m_encrypted ? QStringLiteral("on (system keyring)")
+                                       : QStringLiteral("off");
+    if (!m_encryptionError.isEmpty()) {
+        encryption += QStringLiteral(" (problem: %1)").arg(m_encryptionError);
+    }
+    s[QStringLiteral("encryption")] = encryption;
+    if (m_repo && !m_converting) { // during a conversion the database belongs to the worker
         try {
             s[QStringLiteral("items")] = m_repo->count();
             s[QStringLiteral("unsaved_items")] = m_repo->countUnsaved();

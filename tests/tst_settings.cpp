@@ -2,7 +2,9 @@
 #include "SettingsDialog.h"
 #include "TestDb.h"
 
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QPushButton>
@@ -123,6 +125,61 @@ private slots:
         d.deleteSelectedGroup();
         QCOMPARE(t.repo->groups(), (QStringList{QStringLiteral("Home"), QStringLiteral("Jobs")}));
         QVERIFY(d.groupsChanged());
+    }
+
+    void groupsTabSelectsTheFirstGroupAndOnlyOffersClose()
+    {
+        TestDb t;
+        t.repo->createGroup(QStringLiteral("Alpha"));
+        t.repo->createGroup(QStringLiteral("Beta"));
+        SettingsDialog d(Config{}, *t.repo, {});
+        QCOMPARE(d.selectedGroup(), QStringLiteral("Alpha")); // no frame-without-selection
+        auto* ok = d.buttons()->button(QDialogButtonBox::Ok);
+        auto* cancel = d.buttons()->button(QDialogButtonBox::Cancel);
+        auto* close = d.buttons()->button(QDialogButtonBox::Close);
+        d.show();
+        QVERIFY(ok->isVisible() && cancel->isVisible() && !close->isVisible());
+        d.tabs()->setCurrentIndex(1);
+        QVERIFY(!ok->isVisible() && !cancel->isVisible() && close->isVisible());
+        close->click();
+        QCOMPARE(d.result(), int(QDialog::Accepted));
+    }
+
+    void positionAndEncryption()
+    {
+        TestDb t;
+        Config c;
+        c.popupPosition = clipitto::PopupPosition::Center;
+        c.encryptHistory = true;
+        SettingsDialog available(c, *t.repo, {}, {true, {}, false, {}});
+        QCOMPARE(available.positionBox()->currentData().toInt(), int(clipitto::PopupPosition::Center));
+        QVERIFY(available.encryptBox()->isEnabled() && available.encryptBox()->isChecked());
+        available.encryptBox()->setChecked(false);
+        available.positionBox()->setCurrentIndex(0);
+        QVERIFY(!available.config().encryptHistory);
+        QVERIFY(available.config().popupPosition == clipitto::PopupPosition::Cursor);
+
+        SettingsDialog unavailable(Config{}, *t.repo, {}, {false, QStringLiteral("no keyring here"), false, {}});
+        QVERIFY(!unavailable.encryptBox()->isEnabled());
+        bool reasonShown = false;
+        for (QLabel* l : unavailable.findChildren<QLabel*>()) {
+            reasonShown = reasonShown || l->text() == QLatin1String("Not available: no keyring here");
+        }
+        QVERIFY(reasonShown);
+    }
+
+    void requestedButInactiveEncryptionIsStatedPlainly()
+    {
+        TestDb t;
+        Config c;
+        c.encryptHistory = true;
+        clipitto::ui::EncryptionSupport s{false, QStringLiteral("no keyring"), false, QStringLiteral("no keyring")};
+        SettingsDialog d(c, *t.repo, {}, s);
+        bool warned = false;
+        for (QLabel* l : d.findChildren<QLabel*>()) {
+            warned = warned || l->text().contains(QLatin1String("Currently NOT encrypted"));
+        }
+        QVERIFY(warned);
     }
 
     void groupErrorsAreReported()

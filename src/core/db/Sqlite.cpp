@@ -1,6 +1,13 @@
 #include "db/Sqlite.h"
 
+#ifdef CLIPITTO_HAVE_ENCRYPTION
+#include <sqlite3mc_amalgamation.h> // sqlite3.h plus sqlite3_key_v2 / sqlite3_rekey_v2
+#else
 #include <sqlite3.h>
+#endif
+
+#include <QFile>
+#include <QFileInfo>
 
 namespace clipitto::db {
 
@@ -13,7 +20,53 @@ std::string errorMessage(sqlite3* db, int rc)
 
 } // namespace
 
-Db::Db(const QString& path)
+bool encryptionSupported()
+{
+#ifdef CLIPITTO_HAVE_ENCRYPTION
+    return true;
+#else
+    return false;
+#endif
+}
+
+void wipe(QByteArray& secret)
+{
+    volatile char* p = secret.data(); // volatile: the compiler may not drop the stores
+    for (qsizetype i = 0; i < secret.size(); ++i) {
+        p[i] = 0;
+    }
+    secret.clear();
+}
+
+FileState probeFile(const QString& path)
+{
+    const QByteArray utf8 = path.toUtf8();
+    if (!QFileInfo::exists(path)) {
+        return FileState::Missing;
+    }
+    // A plain database starts with this header; an encrypted one looks random from byte 0.
+    bool plainHeader = false;
+    if (QFile f(path); f.open(QIODevice::ReadOnly)) {
+        const QByteArray head = f.read(16);
+        plainHeader = head.isEmpty() || head == QByteArray("SQLite format 3\0", 16);
+    }
+    sqlite3* db = nullptr;
+    int rc = sqlite3_open_v2(utf8.constData(), &db, SQLITE_OPEN_READONLY, nullptr);
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_exec(db, "SELECT count(*) FROM sqlite_master", nullptr, nullptr, nullptr);
+    }
+    const std::string msg = errorMessage(db, rc);
+    sqlite3_close_v2(db);
+    if (rc == SQLITE_OK) {
+        return FileState::Plain;
+    }
+    if ((rc & 0xff) == SQLITE_NOTADB && !plainHeader) {
+        return FileState::Encrypted;
+    }
+    throw DbError("cannot read " + utf8.toStdString() + ": " + msg, rc);
+}
+
+Db::Db(const QString& path, const QByteArray& key)
 {
     const QByteArray utf8 = path.toUtf8();
     const int rc = sqlite3_open_v2(utf8.constData(), &m_db,
@@ -26,6 +79,49 @@ Db::Db(const QString& path)
         throw DbError("cannot open database " + utf8.toStdString() + ": " + msg, rc);
     }
     sqlite3_extended_result_codes(m_db, 1);
+    if (key.isEmpty()) {
+        return;
+    }
+    if (!encryptionSupported()) {
+        sqlite3_close_v2(m_db);
+        m_db = nullptr;
+        throw DbError("this build cannot open encrypted databases", SQLITE_ERROR);
+    }
+    try {
+#ifdef CLIPITTO_HAVE_ENCRYPTION
+        // Raw bytes straight to the codec: no hex/SQL copy of the key is ever made.
+        const int keyRc = sqlite3_key_v2(m_db, "main", key.constData(), int(key.size()));
+        if (keyRc != SQLITE_OK) {
+            throw DbError(errorMessage(m_db, keyRc), keyRc);
+        }
+#endif
+        exec("SELECT count(*) FROM sqlite_master"); // a wrong key fails here
+    } catch (const DbError& e) {
+        sqlite3_close_v2(m_db);
+        m_db = nullptr;
+        throw DbError("cannot open the encrypted history (wrong key?): " + std::string(e.what()), e.code());
+    }
+}
+
+void Db::rekey(const QByteArray& key)
+{
+    if (!encryptionSupported()) {
+        throw DbError("this build cannot encrypt databases", SQLITE_ERROR);
+    }
+    // SQLite3 Multiple Ciphers cannot rekey in WAL mode: fold the WAL in, rekey under a
+    // rollback journal, then switch back - also when the rekey fails.
+    exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;");
+#ifdef CLIPITTO_HAVE_ENCRYPTION
+    const int rc = sqlite3_rekey_v2(m_db, "main", key.isEmpty() ? nullptr : key.constData(), int(key.size()));
+#else
+    const int rc = SQLITE_ERROR;
+#endif
+    const std::string rekeyError = rc == SQLITE_OK ? std::string() : errorMessage(m_db, rc);
+    exec("PRAGMA journal_mode = WAL;");
+    if (rc != SQLITE_OK) {
+        throw DbError("changing the encryption failed: " + rekeyError, rc);
+    }
+    exec("SELECT count(*) FROM sqlite_master");
 }
 
 Db::~Db()

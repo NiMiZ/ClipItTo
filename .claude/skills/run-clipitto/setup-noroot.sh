@@ -16,6 +16,7 @@ apt-get download \
   libglvnd-dev libglx-mesa0 libegl-mesa0 libxkbcommon0 libxkbcommon-x11-0 libts0t64 \
   libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-util1 libxcb-xinput0 libxcb-xkb1 \
   libx11-dev libxtst-dev libxext-dev libxi-dev x11proto-dev libxfixes-dev libxau-dev libxdmcp-dev libxcb1-dev \
+  qtkeychain-qt6-dev libqt6keychain1 libsecret-1-0 \
   xvfb xdotool libxdo3 xclip >/dev/null
 for d in *.deb; do dpkg -x "$d" "$DIR/sysroot"; done
 L="$DIR/sysroot/usr/lib/x86_64-linux-gnu"

@@ -16,7 +16,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev qt6-qpa-plugins libgl-dev \
-            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin dbus gjs
+            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dbus gjs
 
       - name: Configure
         run: cmake --preset asan
@@ -42,7 +42,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev \
-            libx11-dev libxtst-dev libglib2.0-bin dpkg-dev desktop-file-utils
+            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dpkg-dev desktop-file-utils
 
       - name: Build
         run: cmake --preset deb && cmake --build --preset deb
@@ -114,6 +114,18 @@ jobs:
             Write-Host "::error title=smoke test::unexpected status: $($status -join '%0A')"
             exit 1
           }
+          # The global hotkey reports its state (registered, or why not), and settings live
+          # in the roaming profile (%APPDATA%).
+          $hotkey = $status | Where-Object { $_ -like 'hotkey: *' } | Select-Object -First 1
+          $config = $status | Where-Object { $_ -like 'config: *' } | Select-Object -First 1
+          if (-not $hotkey) { Write-Host "::error title=smoke test::no hotkey line in --status"; exit 1 }
+          if (-not $config) { Write-Host "::error title=smoke test::no config line in --status"; exit 1 }
+          $config = $config -replace '^config: ', ''
+          $appdata = [IO.Path]::GetFullPath($env:APPDATA).TrimEnd('\') + '\'
+          if (-not [IO.Path]::GetFullPath($config).StartsWith($appdata, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "::error title=smoke test::config not under APPDATA: $config"; exit 1
+          }
+          Write-Host "hotkey line: $hotkey"; Write-Host "config: $config"
           stage\bin\clipitto.exe --quit
           if (-not $daemon.WaitForExit(10000)) { $daemon.Kill(); throw "daemon did not quit" }
 
