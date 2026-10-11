@@ -115,11 +115,13 @@ jobs:
             # so its exit code (in hex) is the clue.
             foreach ($command in ($rerun | Select-String -Pattern 'Test command: (.+\.exe)' | ForEach-Object { $_.Matches[0].Groups[1].Value })) {
               Push-Location build\windows\tests
-              $direct = & $command -o -,txt 2>&1 | Out-String
+              $log = Join-Path $env:RUNNER_TEMP 'failed-test.txt'
+              & $command -o "$log,txt" 2>&1 | Out-Null # GUI-subsystem programs: stdout may go nowhere
+              $direct = if (Test-Path $log) { Get-Content $log -Raw } else { 'no log written' }
               $code = $LASTEXITCODE
               Pop-Location
               $lines += ('{0} exited with 0x{1:X8}' -f (Split-Path $command -Leaf), $code)
-              $lines += @(($direct -split "`r?`n") | Where-Object { $_.Trim() } | Select-Object -Last 20)
+              $lines += @(($direct -split "`r?`n") | Where-Object { $_ -match 'FAIL!|Loc:|Actual|Expected|QWARN|QFATAL|Totals' } | Select-Object -First 30)
             }
             Write-Host "::error title=Windows tests failed::$(($lines -join '%0A') -replace '::', ': :')"
             exit 1
