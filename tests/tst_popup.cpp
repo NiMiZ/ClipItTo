@@ -212,8 +212,12 @@ private slots:
         // Small enough for any test screen (the Windows runner's offscreen screen is narrower
         // than the popup), then dragged to the middle: a place it fits, so it reopens there.
         f.popup->resize(200, 150);
-        const QPoint before = f.popup->pos();
         const QRect area = f.popup->screen()->availableGeometry();
+        if (f.popup->width() >= area.width() || f.popup->height() >= area.height()) {
+            QSKIP(qPrintable(QStringLiteral("the popup (%1x%2 at least) doesn't fit this test screen (%3x%4)")
+                                 .arg(f.popup->width()).arg(f.popup->height()).arg(area.width()).arg(area.height())));
+        }
+        const QPoint before = f.popup->pos();
         const QPoint delta = area.center() - f.popup->frameGeometry().center();
         QVERIFY(!delta.isNull());
         const QPoint grab = handle->rect().center();

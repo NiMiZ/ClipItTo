@@ -210,6 +210,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_footer->setToolTip(tr("Alt+↑/↓ moves a group, or a pinned copy, up or down. Esc closes."));
     m_footer->setFont(scaledFont(m_footer->font(), 0.85));
     m_footer->setEnabled(false); // dim
+    m_footer->setWordWrap(true); // a second line rather than a wider popup (fonts vary)
 
     auto* frame = new QFrame(this);
     frame->setFrameShape(QFrame::StyledPanel);
