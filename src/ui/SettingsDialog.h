@@ -79,6 +79,7 @@ public:
     QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
     QLabel* shortcutStatus() const { return m_shortcutStatus; }
+    QLabel* versionLabel() const { return m_version; }
     QTreeWidget* groupTree() const { return m_groups; }
 
 private:
@@ -103,6 +104,7 @@ private:
     QDialogButtonBox* m_buttons;
     QKeySequenceEdit* m_shortcut;
     QLabel* m_shortcutStatus;
+    QLabel* m_version; // "ClipItTo 0.2.1", next to the buttons
     QTreeWidget* m_groups;
     QPushButton* m_subGroupButton;
     QPushButton* m_renameButton;

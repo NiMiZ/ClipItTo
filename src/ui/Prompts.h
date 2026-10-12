@@ -18,6 +18,9 @@ using TextPrompt = std::function<std::optional<QString>(QWidget* parent, const Q
 using ConfirmPrompt = std::function<bool(QWidget* parent, const QString& question)>;
 
 TextPrompt defaultTextPrompt();
+// Picks a group from `choices` or takes a typed one ("" removes the group). Arrow keys step
+// through the choices from the first one. nullopt = cancelled.
+std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices);
 ConfirmPrompt defaultConfirmPrompt();
 
 } // namespace clipitto::ui
