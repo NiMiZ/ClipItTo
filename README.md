@@ -262,3 +262,33 @@ iscc /DStageDir=$PWD\stage packaging\windows\clipitto.iss   # optional installer
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds and tests both platforms and
 builds the Debian package.
+
+## Code signing policy
+
+The Windows release files (`ClipItTo-<version>-setup.exe`, `clipitto.exe`,
+`clipitto-daemon.exe`) are being set up for free code signing provided by
+[SignPath.io](https://about.signpath.io), with a certificate by the
+[SignPath Foundation](https://signpath.org). Until that is in place they are unsigned, and
+Windows warns about an unknown publisher; each release lists SHA-256 checksums in
+`SHA256SUMS`.
+
+- Releases are built only by this repository's GitHub Actions workflow
+  ([ci.yml](.github/workflows/ci.yml)) from the tagged source; nothing is built or signed on a
+  personal machine.
+- Committers and reviewers: [NiMiZ](https://github.com/NiMiZ)
+- Approvers (who start a signed release): [NiMiZ](https://github.com/NiMiZ)
+
+Privacy policy: this program will not transfer any information to other networked systems
+unless specifically requested by the user or the person installing or operating it. See
+[Privacy](#privacy).
+
+## License
+
+Copyright (C) 2026 NiMiZ
+
+ClipItTo is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License, version 3, as published by the Free Software Foundation. It is
+distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE)
+for the full text, and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the components it
+uses and their licenses.

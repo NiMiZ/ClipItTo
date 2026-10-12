@@ -15,4 +15,5 @@ install(SCRIPT ${CLIPITTO_DEPLOY_SCRIPT})
 set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
 include(InstallRequiredSystemLibraries)
 
-install(FILES data/config.example.toml README.md DESTINATION doc)
+install(FILES data/config.example.toml README.md LICENSE THIRD-PARTY-NOTICES.md DESTINATION doc)
+install(FILES licenses/LGPL-3.0.txt DESTINATION doc/licenses)

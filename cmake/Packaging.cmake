@@ -20,7 +20,9 @@ install(FILES ${PROJECT_BINARY_DIR}/data/clipitto.service DESTINATION ${CLIPITTO
 install(FILES ${PROJECT_BINARY_DIR}/data/io.github.nimiz.ClipItTo.service
     DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 install(FILES data/io.github.nimiz.ClipItTo.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-install(FILES data/config.example.toml README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/clipitto)
+install(FILES data/config.example.toml README.md LICENSE THIRD-PARTY-NOTICES.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/clipitto)
+install(FILES licenses/LGPL-3.0.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/clipitto/licenses)
 
 # GNOME Shell extension, with its settings schema compiled next to it.
 set(CLIPITTO_EXT_UUID clipitto@nimiz.github.io)
