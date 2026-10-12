@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# A newer push to the same branch or tag cancels the run still going for the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux:
     name: Linux (Ubuntu 24.04, ASan/UBSan)
@@ -58,19 +63,28 @@ jobs:
       # What a user who downloads the .deb gets: install it with apt (which pulls the
       # runtime libraries from its Depends) and run the installed binaries.
       - name: Install the package and run it
+        timeout-minutes: 10
         run: |
-          sudo apt-get install -y ./build/deb/clipitto_*.deb
+          timeout 300 sudo apt-get install -y ./build/deb/clipitto_*.deb ||
+            { echo "::error title=installed package::apt-get install failed or timed out"; exit 1; }
           clipitto --version
           export QT_QPA_PLATFORM=offscreen
-          dbus-run-session -- sh -euc '
-            clipitto-daemon & daemon=$!
+          # Bounded: a daemon that doesn't answer or doesn't quit fails here instead of hanging.
+          if ! timeout 90 dbus-run-session -- sh -euc '
+            clipitto-daemon > daemon.log 2>&1 & daemon=$!
+            echo "step: waiting for the daemon" > step.txt
             for i in $(seq 50); do clipitto --status >/dev/null 2>&1 && break; sleep 0.2; done
+            echo "step: ingest" > step.txt
             clipitto --ingest "hello from the installed package"
-            status=$(clipitto --status); echo "$status"
-            echo "$status" | grep -qx "items: 1" || { echo "::error title=installed package::unexpected status"; exit 1; }
+            status=$(clipitto --status); echo "$status" | tee status.txt
+            echo "$status" | grep -qx "items: 1"
+            echo "step: quit" > step.txt
             clipitto --quit
             wait $daemon
-          '
+          '; then
+            echo "::error title=installed package::$(cat step.txt status.txt daemon.log 2>/dev/null | tail -n 25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -270,10 +284,11 @@ jobs:
           fi
           cat install.log
       - name: Run the installed app
+        timeout-minutes: 5
         run: |
           clipitto --version
           export QT_QPA_PLATFORM=offscreen
-          if ! dbus-run-session -- sh -euc '
+          if ! timeout 90 dbus-run-session -- sh -euc '
             clipitto-daemon > daemon.log 2>&1 & daemon=$!
             for i in $(seq 50); do clipitto --status >/dev/null 2>&1 && break; sleep 0.2; done
             clipitto --ingest "hello from the release"
@@ -293,6 +308,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install with install.ps1 and run it
+        timeout-minutes: 10
         shell: pwsh
         run: |
           # The real Windows platform, as users run it: the installer ships only that plugin.
