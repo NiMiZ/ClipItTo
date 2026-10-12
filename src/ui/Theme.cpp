@@ -54,7 +54,9 @@ void apply()
         QApplication::setPalette(darkPalette());
     } else if (g_current == Theme::Light) {
         setStyle(QStringLiteral("Fusion"));
-        QApplication::setPalette(QApplication::style()->standardPalette());
+        // Not Fusion's standardPalette(): Qt builds that from the platform theme, which is dark
+        // on a dark desktop, so Light would stay dark.
+        QApplication::setPalette(lightPalette());
     } else {
         setStyle(original().styleName);
         QApplication::setPalette(original().palette);
@@ -86,11 +88,50 @@ QPalette darkPalette()
     p.setColor(QPalette::ButtonText, text);
     p.setColor(QPalette::BrightText, Qt::white);
     p.setColor(QPalette::Highlight, highlight);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+    p.setColor(QPalette::Accent, highlight); // else taken from the desktop's palette
+#endif
     p.setColor(QPalette::HighlightedText, Qt::white);
     p.setColor(QPalette::Link, QColor(0x6c, 0xa8, 0xf0));
     p.setColor(QPalette::Mid, QColor(0x3a, 0x3d, 0x42));
     p.setColor(QPalette::Dark, QColor(0x18, 0x19, 0x1b));
     p.setColor(QPalette::Light, QColor(0x45, 0x48, 0x4e));
+    for (const auto role : {QPalette::Text, QPalette::WindowText, QPalette::ButtonText}) {
+        p.setColor(QPalette::Disabled, role, disabled);
+    }
+    return p;
+}
+
+QPalette lightPalette()
+{
+    QPalette p;
+    const QColor window(0xef, 0xf0, 0xf1);
+    const QColor base(0xff, 0xff, 0xff);
+    const QColor text(0x23, 0x26, 0x2b);
+    const QColor disabled(0x9a, 0x9e, 0xa5);
+    const QColor highlight(0x3d, 0x7e, 0xd6);
+    p.setColor(QPalette::Window, window);
+    p.setColor(QPalette::WindowText, text);
+    p.setColor(QPalette::Base, base);
+    p.setColor(QPalette::AlternateBase, QColor(0xf7, 0xf8, 0xf9));
+    p.setColor(QPalette::ToolTipBase, QColor(0xff, 0xff, 0xdc));
+    p.setColor(QPalette::ToolTipText, text);
+    p.setColor(QPalette::PlaceholderText, disabled);
+    p.setColor(QPalette::Text, text);
+    p.setColor(QPalette::Button, window);
+    p.setColor(QPalette::ButtonText, text);
+    p.setColor(QPalette::BrightText, Qt::white);
+    p.setColor(QPalette::Highlight, highlight);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+    p.setColor(QPalette::Accent, highlight); // else taken from the desktop's palette
+#endif
+    p.setColor(QPalette::HighlightedText, Qt::white);
+    p.setColor(QPalette::Link, QColor(0x1d, 0x5f, 0xc0));
+    p.setColor(QPalette::Light, Qt::white);
+    p.setColor(QPalette::Midlight, QColor(0xe3, 0xe5, 0xe8));
+    p.setColor(QPalette::Mid, QColor(0xb8, 0xbc, 0xc2));
+    p.setColor(QPalette::Dark, QColor(0x9a, 0x9e, 0xa5));
+    p.setColor(QPalette::Shadow, QColor(0x76, 0x79, 0x7e));
     for (const auto role : {QPalette::Text, QPalette::WindowText, QPalette::ButtonText}) {
         p.setColor(QPalette::Disabled, role, disabled);
     }

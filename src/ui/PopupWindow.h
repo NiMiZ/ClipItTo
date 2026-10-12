@@ -14,6 +14,8 @@
 class QDialog;
 class QLabel;
 class QMenu;
+class QTimer;
+class QWindow;
 class QToolButton;
 
 namespace clipitto {
@@ -85,6 +87,19 @@ public:
     QToolButton* settingsButton() const { return m_settingsButton; }
     QWidget* dragHandle() const { return m_dragHandle; }
 
+    // Hands a drag of the popup to the compositor (Wayland, where only it may move windows).
+    // The popup stays open while the compositor holds the focus during the move. Returns
+    // false where the platform can't do it. The move counts as over when the popup gets the
+    // focus back, when the pointer comes back to it, or after kSystemMoveTimeoutMs; if it is
+    // inactive by then (and hide_on_focus_loss is set), it closes.
+    bool startSystemMove();
+    // Tests: replaces QWindow::startSystemMove() (which the offscreen platform refuses).
+    using SystemMoveStarter = std::function<bool(QWindow*)>;
+    void setSystemMoveStarter(SystemMoveStarter starter) { m_systemMoveStarter = std::move(starter); }
+
+    static constexpr int kSystemMoveTimeoutMs = 30000;
+    static constexpr int kSystemMoveSettleMs = 300; // after the pointer is back, for the focus
+
 signals:
     void entryActivated(const clipitto::Entry& entry);
     void aboutToShow(); // before the popup takes focus (the previous window still has it)
@@ -94,6 +109,7 @@ signals:
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    bool event(QEvent* event) override;
     void changeEvent(QEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
@@ -127,6 +143,7 @@ private:
     void refreshSelecting(std::optional<Selection> selection, bool focusList = true);
     void onResultsUpdated();
     void placeOnScreen();
+    void endSystemMove();
 
     db::Repository& m_repo;
     HistoryModel* m_model;
@@ -147,6 +164,10 @@ private:
     std::optional<QPoint> m_lastPosition; // where it last closed
     QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss
+    bool m_systemMove = false; // the compositor is moving us: don't hide on focus loss
+    bool m_pointerLeftDuringMove = false;
+    QTimer* m_moveEnd = nullptr; // ends the move (backstop, or shortly after the pointer is back)
+    SystemMoveStarter m_systemMoveStarter;
     std::optional<Selection> m_restore; // reselected after the next refresh
     QSet<QString> m_expanded; // expanded groups ("" = the Groups row); reset when shown
 };

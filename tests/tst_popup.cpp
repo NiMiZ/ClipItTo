@@ -3,17 +3,21 @@
 #include "db/Repository.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
+#include "Prompts.h"
 #include "SearchBar.h"
 #include "SearchController.h"
 #include "TestDb.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
+#include <QEnterEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
 #include <QToolButton>
 
 using clipitto::Config;
@@ -425,6 +429,50 @@ private slots:
         QCOMPARE(f.current().data(HistoryModel::TitleRole).toString(), QStringLiteral("my title"));
     }
 
+    void groupPromptArrowKeysReachEveryGroup_data()
+    {
+        QTest::addColumn<QStringList>("groups");
+        QTest::addColumn<QString>("current");
+        QTest::addColumn<int>("downs");
+        QTest::addColumn<QString>("expected");
+        const QStringList two{QStringLiteral("Home"), QStringLiteral("Work")};
+        QTest::newRow("one group, none yet") << QStringList{QStringLiteral("Work")} << QString() << 1
+                                             << QStringLiteral("Work");
+        QTest::newRow("first of two, none yet") << two << QString() << 1 << QStringLiteral("Home");
+        QTest::newRow("second of two, none yet") << two << QString() << 2 << QStringLiteral("Work");
+        QTest::newRow("next after the current one") << two << QStringLiteral("Home") << 1 << QStringLiteral("Work");
+    }
+
+    void groupPromptArrowKeysReachEveryGroup()
+    {
+        QFETCH(QStringList, groups);
+        QFETCH(QString, current);
+        QFETCH(int, downs);
+        QFETCH(QString, expected);
+        bool driven = false;
+        // Runs inside the dialog's event loop. Closes the dialog whatever happens (no hang).
+        QTimer::singleShot(0, [&] {
+            QWidget* modal = QApplication::activeModalWidget();
+            if (modal && QTest::qWaitForWindowActive(modal)) {
+                if (auto* combo = modal->findChild<QComboBox*>()) {
+                    for (int i = 0; i < downs; ++i) {
+                        QTest::keyClick(combo, Qt::Key_Down);
+                    }
+                    QTest::keyClick(combo, Qt::Key_Return);
+                    driven = true;
+                    return;
+                }
+            }
+            if (modal) {
+                modal->close();
+            }
+        });
+        const std::optional<QString> chosen = clipitto::ui::askGroup(nullptr, current, groups);
+        QVERIFY(driven);
+        QVERIFY(chosen);
+        QCOMPARE(*chosen, expected);
+    }
+
     void cancelledPromptChangesNothing()
     {
         Fixture f;
@@ -748,6 +796,71 @@ private slots:
         other.show();
         other.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&other));
+        QTRY_VERIFY(!popup.isVisible());
+
+        // A move the platform refused (no compositor here) doesn't keep it open afterwards.
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        QVERIFY(!popup.startSystemMove());
+        other.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&other));
+        QTRY_VERIFY(!popup.isVisible());
+    }
+
+    // Wayland: the compositor moves the popup and may hold the focus meanwhile.
+    void compositorMoveKeepsThePopupOpenUntilItEnds()
+    {
+        TestDb t;
+        t.repo->ingest(QStringLiteral("x"));
+        Config cfg;
+        cfg.hideOnFocusLoss = true;
+        PopupWindow popup(*t.repo, cfg);
+        popup.setSystemMoveStarter([](QWindow*) { return true; });
+        QWidget other;
+        const auto focusOther = [&other] {
+            other.show();
+            other.activateWindow();
+            return QTest::qWaitForWindowActive(&other);
+        };
+        const auto reactivatePopup = [&popup] {
+            popup.activateWindow();
+            return QTest::qWaitForWindowActive(&popup);
+        };
+
+        // Focus taken during the move, and given back after it: stays open.
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        QVERIFY(popup.startSystemMove());
+        QVERIFY(focusOther());
+        QTest::qWait(50);
+        QVERIFY(popup.isVisible());
+        QVERIFY(reactivatePopup());
+        // ...and the move is over: a later focus loss closes it as usual.
+        QVERIFY(focusOther());
+        QTRY_VERIFY(!popup.isVisible());
+
+        // Focus taken and never given back: closes once the pointer is back on it.
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        QVERIFY(popup.startSystemMove());
+        QVERIFY(focusOther());
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(&popup, &leave);
+        QEnterEvent enter(QPointF(5, 5), QPointF(5, 5), QPointF(5, 5));
+        QCoreApplication::sendEvent(&popup, &enter);
+        QVERIFY(popup.isVisible()); // gives the focus a moment to come back
+        QTRY_VERIFY_WITH_TIMEOUT(!popup.isVisible(), PopupWindow::kSystemMoveSettleMs + 2000);
+
+        // Focus kept during the move: the pointer coming back ends it, so a later focus loss
+        // closes the popup as usual (instead of being taken for part of the move).
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        QVERIFY(popup.startSystemMove());
+        QCoreApplication::sendEvent(&popup, &leave);
+        QCoreApplication::sendEvent(&popup, &enter);
+        QTest::qWait(PopupWindow::kSystemMoveSettleMs + 100);
+        QVERIFY(popup.isVisible()); // still active: nothing to close for
+        QVERIFY(focusOther());
         QTRY_VERIFY(!popup.isVisible());
     }
 };
