@@ -104,6 +104,16 @@ private slots:
         QCOMPARE(edited.maxHistory, 77);
     }
 
+    void showsTheRunningVersion()
+    {
+        TestDb t;
+        const QString before = QCoreApplication::applicationVersion();
+        QCoreApplication::setApplicationVersion(QStringLiteral("9.8.7"));
+        SettingsDialog d(Config{}, *t.repo, {});
+        QCOMPARE(d.versionLabel()->text(), QStringLiteral("ClipItTo 9.8.7"));
+        QCoreApplication::setApplicationVersion(before);
+    }
+
     void capturesAShortcut()
     {
         TestDb t;
