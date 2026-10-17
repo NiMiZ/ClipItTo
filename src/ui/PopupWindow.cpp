@@ -25,6 +25,7 @@
 #include <QMessageBox>
 #include <QScreen>
 #include <QShortcut>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWindow>
@@ -39,20 +40,6 @@ namespace clipitto::ui {
 namespace {
 
 using Kind = HistoryModel::Kind;
-
-std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices)
-{
-    QInputDialog dialog(parent);
-    dialog.setWindowTitle(PopupWindow::tr("Assign group"));
-    dialog.setLabelText(PopupWindow::tr("Group (use / for sub-groups, e.g. Work/Servers; empty to remove):"));
-    dialog.setComboBoxItems(choices);
-    dialog.setComboBoxEditable(true);
-    dialog.setTextValue(current);
-    if (dialog.exec() != QDialog::Accepted) {
-        return std::nullopt;
-    }
-    return dialog.textValue();
-}
 
 std::optional<QString> askNote(QWidget* parent, const QString& current, const QStringList&)
 {
@@ -106,7 +93,9 @@ protected:
             // Only the compositor may move a Wayland window; it takes over the drag.
             m_dragging = false;
             setCursor(Qt::OpenHandCursor);
-            if (QWindow* handle = window()->windowHandle()) {
+            if (auto* popup = qobject_cast<PopupWindow*>(window())) {
+                popup->startSystemMove();
+            } else if (QWindow* handle = window()->windowHandle()) {
                 handle->startSystemMove();
             }
             return;
@@ -185,6 +174,10 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
 {
     setWindowTitle(QStringLiteral("ClipItTo"));
     resize(560, 480);
+
+    m_moveEnd = new QTimer(this);
+    m_moveEnd->setSingleShot(true);
+    connect(m_moveEnd, &QTimer::timeout, this, &PopupWindow::endSystemMove);
 
     m_view->setHistoryModel(m_model);
     m_view->setItemDelegate(new HistoryDelegate(m_view));
@@ -922,11 +915,66 @@ bool PopupWindow::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
+bool PopupWindow::startSystemMove()
+{
+    QWindow* handle = windowHandle();
+    if (!handle) {
+        return false;
+    }
+    // Set first: the compositor may take focus away as soon as the move starts.
+    m_systemMove = true;
+    m_pointerLeftDuringMove = false;
+    if (!(m_systemMoveStarter ? m_systemMoveStarter(handle) : handle->startSystemMove())) {
+        m_systemMove = false;
+        return false;
+    }
+    // Backstop, should no sign of the move's end ever arrive.
+    m_moveEnd->start(kSystemMoveTimeoutMs);
+    return true;
+}
+
+void PopupWindow::endSystemMove()
+{
+    if (!m_systemMove) {
+        return;
+    }
+    m_systemMove = false;
+    m_moveEnd->stop();
+    // A focus loss during the move was let pass; if the focus didn't come back, act on it now.
+    if (isVisible() && !isActiveWindow() && m_hideOnFocusLoss && m_modalDepth == 0) {
+        hidePopup();
+    }
+}
+
+bool PopupWindow::event(QEvent* event)
+{
+    if (m_systemMove) {
+        if (event->type() == QEvent::Leave) {
+            m_pointerLeftDuringMove = true; // the compositor grabbed the pointer
+        } else if (event->type() == QEvent::Enter && m_pointerLeftDuringMove) {
+            // The compositor gave the pointer back: the move is over. Its focus may follow
+            // a moment later, so give that time before deciding to close.
+            m_moveEnd->start(kSystemMoveSettleMs);
+        }
+    }
+    return QWidget::event(event);
+}
+
 void PopupWindow::changeEvent(QEvent* event)
 {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::ActivationChange && isVisible() && !isActiveWindow() && m_hideOnFocusLoss
-        && m_modalDepth == 0) {
+    if (event->type() != QEvent::ActivationChange || !isVisible()) {
+        return;
+    }
+    if (isActiveWindow()) {
+        if (m_systemMove) { // a compositor move ends with the focus back here
+            m_systemMove = false;
+            m_moveEnd->stop();
+        }
+        return;
+    }
+    // While the compositor moves us (Wayland) it may hold the focus: no reason to close yet.
+    if (m_hideOnFocusLoss && m_modalDepth == 0 && !m_systemMove) {
         hidePopup();
     }
 }
@@ -940,6 +988,8 @@ void PopupWindow::showEvent(QShowEvent* event)
 void PopupWindow::hideEvent(QHideEvent* event)
 {
     QWidget::hideEvent(event);
+    m_systemMove = false;
+    m_moveEnd->stop();
     if (QGuiApplication::platformName() != QLatin1String("wayland") && m_lastPosition != pos()) {
         m_lastPosition = pos(); // wherever it was placed or dragged to
         emit closedAt(pos());

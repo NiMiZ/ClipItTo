@@ -6,6 +6,7 @@
 #include "db/Sqlite.h"
 
 #include <QCheckBox>
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -59,6 +60,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
     , m_shortcut(new QKeySequenceEdit(this))
     , m_shortcutStatus(new QLabel(this))
+    , m_version(new QLabel(this))
     , m_groups(new QTreeWidget(this))
     , m_subGroupButton(new QPushButton(tr("New sub-group…"), this))
     , m_renameButton(new QPushButton(tr("Rename or move…"), this))
@@ -225,7 +227,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     showButtonsFor(0);
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(m_tabs, 1);
-    layout->addWidget(m_buttons);
+    // Which version is running, so it's clear what the settings belong to.
+    const QString version = QCoreApplication::applicationVersion();
+    m_version->setText(version.isEmpty() ? QStringLiteral("ClipItTo") : QStringLiteral("ClipItTo %1").arg(version));
+    m_version->setEnabled(false); // dim
+    m_version->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto* bottom = new QHBoxLayout;
+    bottom->addWidget(m_version);
+    bottom->addStretch(1);
+    bottom->addWidget(m_buttons);
+    layout->addLayout(bottom);
 }
 
 Config SettingsDialog::config() const

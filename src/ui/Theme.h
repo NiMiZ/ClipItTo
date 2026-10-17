@@ -18,6 +18,8 @@ void applyTheme(Theme theme);
 bool systemPrefersDark();
 
 QPalette darkPalette();
+// Fixed light colors: Fusion's own palette follows the desktop, so it can be dark.
+QPalette lightPalette();
 
 // Whether the applied theme is dark (for System: what the desktop prefers right now).
 bool currentThemeIsDark();

@@ -4,6 +4,7 @@
 #include "Theme.h"
 #include "AppIcon.h"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -35,8 +36,10 @@ private:
 private slots:
     void themeChangesAreAnnounced()
     {
-        int calls = 0;
-        clipitto::ui::onThemeApplied([&calls] { ++calls; });
+        // Static: the listener stays registered after this test (there is no unregister).
+        static int calls = 0;
+        calls = 0;
+        clipitto::ui::onThemeApplied([] { ++calls; });
         clipitto::ui::applyTheme(Theme::Dark);
         QVERIFY(clipitto::ui::currentThemeIsDark());
         QCOMPARE(calls, 1);
@@ -47,6 +50,19 @@ private slots:
         const QImage light = clipitto::ui::appIcon(false).pixmap(32, 32).toImage();
         const QImage dark = clipitto::ui::appIcon(true).pixmap(32, 32).toImage();
         QVERIFY(light != dark);
+        clipitto::ui::applyTheme(Theme::System);
+    }
+
+    void lightThemeIsLightEvenOnADarkDesktop()
+    {
+        // Fusion's standardPalette() follows the desktop (dark there): Light must not use it.
+        clipitto::ui::applyTheme(Theme::Dark);
+        clipitto::ui::applyTheme(Theme::Light);
+        const QPalette palette = QApplication::palette();
+        QCOMPARE(palette.color(QPalette::Window), clipitto::ui::lightPalette().color(QPalette::Window));
+        QCOMPARE(palette.color(QPalette::Base), clipitto::ui::lightPalette().color(QPalette::Base));
+        QVERIFY(palette.color(QPalette::Window).lightness() > 200);
+        QVERIFY(palette.color(QPalette::WindowText).lightness() < 80);
         clipitto::ui::applyTheme(Theme::System);
     }
 
@@ -86,6 +102,16 @@ private slots:
         QCOMPARE(edited.recentCount, 50);
         QCOMPARE(edited.previewLines, 3);
         QCOMPARE(edited.maxHistory, 77);
+    }
+
+    void showsTheRunningVersion()
+    {
+        TestDb t;
+        const QString before = QCoreApplication::applicationVersion();
+        QCoreApplication::setApplicationVersion(QStringLiteral("9.8.7"));
+        SettingsDialog d(Config{}, *t.repo, {});
+        QCOMPARE(d.versionLabel()->text(), QStringLiteral("ClipItTo 9.8.7"));
+        QCoreApplication::setApplicationVersion(before);
     }
 
     void capturesAShortcut()
