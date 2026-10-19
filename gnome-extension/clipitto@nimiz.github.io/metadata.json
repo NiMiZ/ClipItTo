@@ -5,5 +5,5 @@
   "shell-version": ["46", "47", "48", "49"],
   "url": "https://github.com/NiMiZ/ClipItTo",
   "settings-schema": "org.gnome.shell.extensions.clipitto",
-  "version-name": "0.2.2"
+  "version-name": "0.2.3"
 }

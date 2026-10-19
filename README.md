@@ -16,7 +16,7 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it yourself:
-`sudo apt install ./clipitto_0.2.2_amd64.deb`. [install.sh](install.sh) also takes
+`sudo apt install ./clipitto_0.2.3_amd64.deb`. [install.sh](install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
@@ -63,7 +63,7 @@ Build the package (see [Building](#building) for the dependencies) and install i
 ```bash
 cmake --preset deb && cmake --build --preset deb
 (cd build/deb && cpack)
-sudo apt install ./build/deb/clipitto_0.2.2_amd64.deb
+sudo apt install ./build/deb/clipitto_0.2.3_amd64.deb
 ```
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run:
