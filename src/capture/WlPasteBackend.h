@@ -28,6 +28,9 @@ public:
     static bool probe(const QString& program = QStringLiteral("wl-paste"), int timeoutMs = 300);
     // The --type to request: a UTF-8 text type when one is offered, else wl-paste's "text".
     static QString textType(const QStringList& mimeTypes);
+    // The picture type to request when the copy has no plain text (PNG preferred); empty
+    // when it offers no picture.
+    static QString imageType(const QStringList& mimeTypes);
 
 private:
     void spawnWatcher();
@@ -35,6 +38,7 @@ private:
     void onWatcherFinished();
     void fetch();
     void fetchText(const QStringList& mimeTypes);
+    void fetchImage(const QStringList& mimeTypes);
     void fetchDone();
 
     QString m_program;

@@ -6,7 +6,9 @@ namespace clipitto::capture {
 // Wayland backends read the selection on their own.
 NativeClipboardRead readNativeClipboard()
 {
-    return {NativeClipboardRead::Status::Unsupported, {}, {}};
+    NativeClipboardRead result;
+    result.status = NativeClipboardRead::Status::Unsupported;
+    return result;
 }
 
 } // namespace clipitto::capture

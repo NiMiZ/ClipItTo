@@ -21,6 +21,7 @@ public:
 
     void activatePopup() override;
     void setClipboard(const QString& text) override;
+    void setClipboardImage(const QByteArray& png) override;
     void paste(PasteKeys keys) override;
 
 private:

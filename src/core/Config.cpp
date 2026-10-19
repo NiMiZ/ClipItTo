@@ -177,6 +177,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("saved_cap", config.savedCap, 0, 500);
     r.integer("favorites_limit", config.favoritesLimit, 1, 20);
     r.integer("max_item_bytes", config.maxItemBytes, 1, 64LL * 1024 * 1024);
+    r.integer("max_images", config.maxImages, 0, 100'000);
+    r.integer("max_image_bytes", config.maxImageBytes, 1, 512LL * 1024 * 1024);
     r.boolean("capture_primary", config.capturePrimary);
     r.boolean("paste_on_enter", config.pasteOnEnter);
     r.boolean("latest_after_paste", config.latestAfterPaste);
@@ -245,6 +247,8 @@ std::vector<Line> lines(const Config& c)
         {"saved_cap", std::to_string(c.savedCap), ""},
         {"favorites_limit", std::to_string(c.favoritesLimit), "starred copies without a group (1-20)"},
         {"max_item_bytes", std::to_string(c.maxItemBytes), ""},
+        {"max_images", std::to_string(c.maxImages), "unsaved pictures kept; 0 = don't record pictures"},
+        {"max_image_bytes", std::to_string(c.maxImageBytes), "larger pictures are not recorded"},
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},
         {"latest_after_paste", tomlBool(c.latestAfterPaste), "a chosen copy becomes the latest"},

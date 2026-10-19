@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 #include <QtGlobal>
 
@@ -72,6 +73,7 @@ public:
     Stmt& bindTextOrNull(int index, const QString& value); // empty -> NULL
     Stmt& bindInt(int index, qint64 value);
     Stmt& bindNull(int index);
+    Stmt& bindBlob(int index, const QByteArray& value);
 
     bool step(); // true while a row is available
     void run(); // step to completion, then reset
@@ -80,6 +82,7 @@ public:
     qint64 colInt(int col) const; // 0-based, as in SQLite
     QString colText(int col) const; // NULL -> null QString
     bool colIsNull(int col) const;
+    QByteArray colBlob(int col) const;
 
 private:
     [[noreturn]] void fail(int rc, const char* what) const;

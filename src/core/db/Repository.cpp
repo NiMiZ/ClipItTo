@@ -14,8 +14,9 @@ namespace clipitto::db {
 namespace {
 
 // Column order read by readEntry().
-#define CLIP_COLUMNS \
-    "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position"
+#define CLIP_COLUMNS                                                                                   \
+    "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position, " \
+    "c.kind, c.content_hash"
 
 Entry readEntry(const Stmt& s)
 {
@@ -28,6 +29,8 @@ Entry readEntry(const Stmt& s)
     e.createdAt = QDateTime::fromString(s.colText(5), Qt::ISODateWithMs);
     e.lastUsed = QDateTime::fromString(s.colText(6), Qt::ISODateWithMs);
     e.pinPosition = s.colIsNull(7) ? -1 : int(s.colInt(7));
+    e.image = s.colText(8) == QLatin1String("image");
+    e.contentHash = s.colText(9);
     return e;
 }
 
@@ -42,6 +45,11 @@ Repository::Repository(Db& db, Clock clock)
         INSERT INTO clips(content, content_hash, created_at, last_used) VALUES (?1, ?2, ?3, ?3)
         ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
         RETURNING id, created_at = last_used)");
+    m_ingestImage = std::make_unique<Stmt>(m_db, R"(
+        INSERT INTO clips(content, content_hash, created_at, last_used, kind) VALUES (?1, ?2, ?3, ?3, 'image')
+        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
+        RETURNING id, created_at = last_used)");
+    m_imageDetails = std::make_unique<Stmt>(m_db, "SELECT width, height, thumbnail FROM clip_images WHERE clip_id = ?1");
 
     m_recentAll = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
@@ -75,9 +83,9 @@ Repository::Repository(Db& db, Clock clock)
 
     m_prune = std::make_unique<Stmt>(m_db, R"(
         DELETE FROM clips WHERE id IN (
-            SELECT id FROM clips WHERE is_saved = 0
+            SELECT id FROM clips WHERE is_saved = 0 AND kind = 'text'
             ORDER BY last_used ASC, id ASC
-            LIMIT max(0, (SELECT count(*) FROM clips WHERE is_saved = 0) - ?1)))");
+            LIMIT max(0, (SELECT count(*) FROM clips WHERE is_saved = 0 AND kind = 'text') - ?1)))");
 
     m_count = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips");
     m_countUnsaved = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips WHERE is_saved = 0");
@@ -113,6 +121,46 @@ Repository::IngestResult Repository::ingest(const QString& text)
     return result;
 }
 
+Repository::IngestResult Repository::ingestImage(const ImageClip& image)
+{
+    Transaction tx(m_db);
+    Stmt& s = *m_ingestImage;
+    s.reset();
+    const QString stamp = image.copiedAt.isValid() ? image.copiedAt.toUTC().toString(Qt::ISODateWithMs) : now();
+    s.bindText(1, image.label()).bindText(2, QStringLiteral("image:") + image.pixelHash).bindText(3, stamp);
+    s.step();
+    const IngestResult result{s.colInt(0), s.colInt(1) != 0};
+    s.run();
+    if (result.inserted) {
+        Stmt store(m_db, "INSERT INTO clip_images(clip_id, png, thumbnail, width, height) VALUES (?1, ?2, ?3, ?4, ?5)");
+        store.bindInt(1, result.id).bindBlob(2, image.png).bindBlob(3, image.thumbnail);
+        store.bindInt(4, image.width).bindInt(5, image.height);
+        store.run();
+    }
+    tx.commit();
+    return result;
+}
+
+QByteArray Repository::imageData(qint64 id)
+{
+    Stmt s(m_db, "SELECT png FROM clip_images WHERE clip_id = ?1");
+    s.bindInt(1, id);
+    return s.step() ? s.colBlob(0) : QByteArray();
+}
+
+void Repository::loadImageDetails(Entry& entry)
+{
+    Stmt& s = *m_imageDetails;
+    s.reset();
+    s.bindInt(1, entry.id);
+    if (s.step()) {
+        entry.imageWidth = int(s.colInt(0));
+        entry.imageHeight = int(s.colInt(1));
+        entry.thumbnail = s.colBlob(2);
+    }
+    s.reset();
+}
+
 std::vector<Entry> Repository::collect(Stmt& stmt)
 {
     std::vector<Entry> result;
@@ -120,6 +168,13 @@ std::vector<Entry> Repository::collect(Stmt& stmt)
         result.push_back(readEntry(stmt));
     }
     stmt.reset();
+    // Lists show a handful of images at most: their thumbnails are fetched one by one,
+    // keeping every list query free of joins.
+    for (Entry& e : result) {
+        if (e.image) {
+            loadImageDetails(e);
+        }
+    }
     return result;
 }
 
@@ -507,6 +562,25 @@ qint64 Repository::prune(int maxUnsaved)
     m_prune->bindInt(1, maxUnsaved);
     m_prune->run();
     return m_db.changes();
+}
+
+qint64 Repository::pruneImages(int maxUnsaved)
+{
+    Stmt s(m_db, R"(
+        DELETE FROM clips WHERE id IN (
+            SELECT id FROM clips WHERE is_saved = 0 AND kind = 'image'
+            ORDER BY last_used ASC, id ASC
+            LIMIT max(0, (SELECT count(*) FROM clips WHERE is_saved = 0 AND kind = 'image') - ?1)))");
+    s.bindInt(1, qMax(0, maxUnsaved));
+    s.run();
+    return m_db.changes();
+}
+
+qint64 Repository::countImages()
+{
+    Stmt s(m_db, "SELECT count(*) FROM clips WHERE kind = 'image'");
+    s.step();
+    return s.colInt(0);
 }
 
 QStringList Repository::groups()

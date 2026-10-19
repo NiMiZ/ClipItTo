@@ -88,6 +88,62 @@ bool markerIsZero(UINT format)
     return !memory.data() || memory.size() < sizeof(DWORD) || *static_cast<const DWORD*>(memory.data()) == 0;
 }
 
+// The largest picture copied out of the clipboard, as the source app encoded it.
+constexpr SIZE_T kMaxPictureBytes = 512 * 1024 * 1024;
+
+// The device-independent bitmap (CF_DIB: a BITMAPINFOHEADER, colors, pixels) as a BMP file:
+// the same bytes behind a BITMAPFILEHEADER, which says where the pixels start.
+QByteArray dibAsBmp(const void* dib, SIZE_T size)
+{
+    if (size < sizeof(BITMAPINFOHEADER)) {
+        return {};
+    }
+    const auto* info = static_cast<const BITMAPINFOHEADER*>(dib);
+    DWORD colors = info->biClrUsed;
+    if (colors == 0 && info->biBitCount <= 8) {
+        colors = 1u << info->biBitCount;
+    }
+    DWORD headerBytes = info->biSize + colors * sizeof(RGBQUAD);
+    if (info->biSize == sizeof(BITMAPINFOHEADER) && info->biCompression == BI_BITFIELDS) {
+        headerBytes += 3 * sizeof(DWORD); // the color masks follow a plain BITMAPINFOHEADER
+    }
+    if (headerBytes > size) {
+        return {};
+    }
+    BITMAPFILEHEADER file = {};
+    file.bfType = 0x4d42; // "BM"
+    file.bfSize = DWORD(sizeof(file) + size);
+    file.bfOffBits = DWORD(sizeof(file) + headerBytes);
+    QByteArray bmp(reinterpret_cast<const char*>(&file), sizeof(file));
+    bmp.append(static_cast<const char*>(dib), qsizetype(size));
+    return bmp;
+}
+
+// Reads the picture of a copy without text: PNG if offered (keeps transparency), else the DIB.
+NativeClipboardRead::Status readPicture(NativeClipboardRead& result)
+{
+    const UINT png = RegisterClipboardFormatW(L"PNG");
+    const UINT format = IsClipboardFormatAvailable(png) ? png : (IsClipboardFormatAvailable(CF_DIB) ? CF_DIB : 0);
+    if (format == 0) {
+        return NativeClipboardRead::Status::NoText;
+    }
+    const LockedMemory memory(GetClipboardData(format));
+    if (!memory.data()) {
+        return NativeClipboardRead::Status::Busy; // listed but not rendered yet
+    }
+    if (memory.size() > kMaxPictureBytes) {
+        return NativeClipboardRead::Status::NoText; // far over any limit: not worth copying
+    }
+    if (format == png) {
+        result.image = QByteArray(static_cast<const char*>(memory.data()), qsizetype(memory.size()));
+        result.imageType = QStringLiteral("image/png");
+    } else {
+        result.image = dibAsBmp(memory.data(), memory.size());
+        result.imageType = QStringLiteral("image/bmp");
+    }
+    return result.image.isEmpty() ? NativeClipboardRead::Status::NoText : NativeClipboardRead::Status::Ok;
+}
+
 } // namespace
 
 NativeClipboardRead readNativeClipboard()
@@ -119,8 +175,9 @@ NativeClipboardRead readNativeClipboard()
         return result;
     }
     if (!hasUnicodeText) {
-        // Windows offers CF_UNICODETEXT for every text copy (converting CF_TEXT if needed).
-        result.status = NativeClipboardRead::Status::NoText;
+        // Windows offers CF_UNICODETEXT for every text copy (converting CF_TEXT if needed):
+        // without it, this is a picture or something we don't record.
+        result.status = readPicture(result);
         return result;
     }
 

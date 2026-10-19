@@ -119,6 +119,7 @@ export function resetState() {
     state.ownedNames = new Map();
     state.service = null;
     state.textReads = 0;
+    state.contentReads = [];
     state.clipboardSet = [];
     state.activated = [];
     state.moved = [];

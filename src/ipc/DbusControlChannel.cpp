@@ -4,6 +4,7 @@
 #include "DbusNames.h"
 
 #include <QDBusConnectionInterface>
+#include <QDebug>
 
 namespace clipitto::ipc {
 
@@ -69,6 +70,19 @@ void DbusControlChannel::Show(const QString& activationToken)
 void DbusControlChannel::Hide()
 {
     emit hideRequested();
+}
+
+void DbusControlChannel::IngestImage(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes)
+{
+    if (calledFromDBus()) {
+        const QString sender = message().service();
+        const QString shell = m_bus.interface()->serviceOwner(QStringLiteral("org.gnome.Shell")).value();
+        if (shell.isEmpty() || sender != shell) {
+            qWarning().noquote() << "IngestImage refused: the caller" << sender << "is not GNOME Shell";
+            return;
+        }
+    }
+    emit ingestImageRequested(data, mimeType, mimeTypes);
 }
 
 void DbusControlChannel::Ingest(const QString& text, const QStringList& mimeTypes)

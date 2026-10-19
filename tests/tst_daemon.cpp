@@ -11,7 +11,11 @@
 #include "SyntheticPaste.h"
 #include "db/Repository.h"
 
+#include <QBuffer>
 #include <QClipboard>
+#include <QImage>
+#include <QMimeData>
+#include <QPixmap>
 #include <QFile>
 #include <QApplication>
 #include <QGuiApplication>
@@ -27,6 +31,7 @@ using clipitto::DesktopIntegration;
 using clipitto::PasteKeys;
 using clipitto::Daemon;
 using clipitto::DaemonOptions;
+using clipitto::ui::HistoryModel;
 
 namespace {
 
@@ -55,6 +60,7 @@ public:
     bool isAvailable() const override { return m_available; }
     void activatePopup() override { ++activations; }
     void setClipboard(const QString& text) override { clipboardTexts << text; }
+    void setClipboardImage(const QByteArray& png) override { clipboardImages << png; }
     void paste(PasteKeys keys) override { pastes << keys; }
 
     void setAvailable(bool available)
@@ -65,6 +71,7 @@ public:
 
     int activations = 0;
     QStringList clipboardTexts;
+    QList<QByteArray> clipboardImages;
     QList<PasteKeys> pastes;
 
 private:
@@ -282,6 +289,90 @@ private slots:
         emit d.control()->ingestRequested(QStringLiteral("try0"), {});
         QCOMPARE(d.repository()->count(), 3);
         QCOMPARE(d.repository()->recentUnpinned(10).front().content, QStringLiteral("try0"));
+    }
+
+    void picturesAreStoredAndPastedBack()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QImage picture(200, 100, QImage::Format_RGB32);
+        picture.fill(QColor(200, 40, 40));
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        picture.save(&buffer, "PNG");
+
+        // The GNOME extension's IngestImage: decoded off the GUI thread, then stored.
+        emit d.control()->ingestImageRequested(png, QStringLiteral("image/png"), {QStringLiteral("image/png")});
+        QTRY_COMPARE(d.repository()->countImages(), 1);
+        QCOMPARE(d.control()->status().value(QStringLiteral("images")).toInt(), 1);
+        emit d.control()->ingestRequested(QStringLiteral("a newer text"), {});
+
+        // Choosing it in the popup puts the picture back on the clipboard...
+        emit d.control()->showRequested(QString());
+        QModelIndex image;
+        for (int i = 0; i < d.popup()->model()->rowCount(); ++i) {
+            const QModelIndex index = d.popup()->model()->index(i, 0);
+            if (const auto* e = d.popup()->model()->entryAt(index); e && e->image) {
+                image = index;
+            }
+        }
+        QVERIFY(image.isValid());
+        QCOMPARE(image.data(HistoryModel::TitleRole).toString(), QStringLiteral("Image 200×100"));
+        QVERIFY(!image.data(HistoryModel::ThumbnailRole).value<QPixmap>().isNull());
+        emit d.popup()->view()->activateRequested(image);
+#if defined(_WIN32)
+        // Windows: a bitmap for every app, plus the standard "PNG" format.
+        const QImage pasted = QGuiApplication::clipboard()->image();
+        QVERIFY(QGuiApplication::clipboard()->mimeData()->hasFormat(
+            QStringLiteral("application/x-qt-windows-mime;value=\"PNG\"")));
+#else
+        // Linux: the stored PNG as it is.
+        const QImage pasted =
+            QImage::fromData(QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("image/png")), "PNG");
+#endif
+        QCOMPARE(pasted.size(), QSize(200, 100));
+        QCOMPARE(pasted.pixelColor(10, 10), QColor(200, 40, 40));
+
+        // ...and that clipboard change is not a second copy; the picture is the latest.
+        QTest::qWait(300);
+        QCOMPARE(d.repository()->countImages(), 1);
+        QCOMPARE(d.repository()->count(), 2);
+        QVERIFY(d.repository()->recentUnpinned(1).front().image);
+    }
+
+    void picturesArePastedThroughTheShellExtension()
+    {
+        auto integration = std::make_unique<FakeIntegration>(true);
+        FakeIntegration* fake = integration.get();
+        Daemon d(options(), std::make_unique<FakeControl>(), std::move(integration));
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QImage picture(30, 30, QImage::Format_RGB32);
+        picture.fill(Qt::green);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        picture.save(&buffer, "PNG");
+        emit d.control()->ingestImageRequested(png, QStringLiteral("image/png"), {});
+        QTRY_COMPARE(d.repository()->countImages(), 1);
+
+        emit d.control()->showRequested(QString());
+        emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
+        QCOMPARE(fake->clipboardImages.size(), 1);
+        QCOMPARE(QImage::fromData(fake->clipboardImages.front(), "PNG").pixelColor(1, 1), QColor(Qt::green));
+        QVERIFY(fake->clipboardTexts.isEmpty());
+    }
+
+    void picturesCanBeTurnedOff()
+    {
+        writeConfig("max_images = 0\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QImage picture(10, 10, QImage::Format_RGB32);
+        picture.fill(Qt::red);
+        QGuiApplication::clipboard()->setImage(picture); // copied in another app
+        QTest::qWait(300);
+        QCOMPARE(d.repository()->countImages(), 0);
     }
 
     void latestAfterPasteCanBeTurnedOff()

@@ -118,6 +118,7 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
+          $env:CLIPITTO_TEST_REAL_CLIPBOARD = '1' # the runner's clipboard is ours to use
           $out = ctest --preset windows --output-on-failure 2>&1 | Out-String
           Write-Host $out
           if ($LASTEXITCODE -ne 0) {

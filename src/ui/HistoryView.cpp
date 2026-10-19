@@ -2,8 +2,13 @@
 
 #include "HistoryModel.h"
 
+#include <QGuiApplication>
+#include <QHelpEvent>
 #include <QKeyEvent>
+#include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
+#include <QScreen>
 
 namespace clipitto::ui {
 
@@ -159,6 +164,82 @@ QModelIndex HistoryView::moveCursor(CursorAction action, Qt::KeyboardModifiers m
     }
     }
     return target.isValid() ? target : current;
+}
+
+bool HistoryView::viewportEvent(QEvent* event)
+{
+    switch (event->type()) {
+    case QEvent::ToolTip: {
+        // Pictures get a larger preview instead of a text tooltip.
+        auto* help = static_cast<QHelpEvent*>(event);
+        const QModelIndex index = indexAt(help->pos());
+        if (!index.data(HistoryModel::ThumbnailRole).value<QPixmap>().isNull()) {
+            showImagePreview(index, help->globalPos());
+            return true;
+        }
+        hideImagePreview();
+        break;
+    }
+    case QEvent::MouseMove:
+        if (m_preview && m_preview->isVisible()
+            && indexAt(static_cast<QMouseEvent*>(event)->position().toPoint()) != m_previewIndex) {
+            hideImagePreview();
+        }
+        break;
+    case QEvent::Leave:
+    case QEvent::Wheel:
+        hideImagePreview();
+        break;
+    default:
+        break;
+    }
+    return QTreeView::viewportEvent(event);
+}
+
+void HistoryView::hideEvent(QHideEvent* event)
+{
+    hideImagePreview();
+    QTreeView::hideEvent(event);
+}
+
+void HistoryView::showImagePreview(const QModelIndex& index, const QPoint& globalPos)
+{
+    if (!m_preview) {
+        auto* label = new QLabel(this, Qt::ToolTip | Qt::FramelessWindowHint);
+        label->setFrameShape(QFrame::Box);
+        label->setMargin(2);
+        label->setAlignment(Qt::AlignCenter);
+        m_preview = label;
+    }
+    auto* label = static_cast<QLabel*>(m_preview);
+    label->setPixmap(index.data(HistoryModel::ThumbnailRole).value<QPixmap>());
+    label->adjustSize();
+    // Below and right of the pointer, kept on its screen.
+    QPoint pos = globalPos + QPoint(16, 16);
+    // screenAt has no answer on Wayland (no global positions): then the view's own screen.
+    QScreen* screen = QGuiApplication::screenAt(globalPos);
+    if (!screen) {
+        screen = this->screen();
+    }
+    if (screen) {
+        const QRect area = screen->availableGeometry();
+        pos.setX(qMin(pos.x(), area.right() + 1 - label->width()));
+        if (pos.y() + label->height() > area.bottom() + 1) {
+            pos.setY(globalPos.y() - 16 - label->height()); // above, when there's no room below
+        }
+    }
+    label->move(pos);
+    label->show();
+    m_previewIndex = index;
+}
+
+void HistoryView::hideImagePreview()
+{
+    if (m_preview) {
+        m_preview->hide();
+        static_cast<QLabel*>(m_preview)->clear(); // don't keep a deleted picture around
+    }
+    m_previewIndex = QPersistentModelIndex();
 }
 
 void HistoryView::keyPressEvent(QKeyEvent* event)

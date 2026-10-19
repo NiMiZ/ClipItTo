@@ -23,6 +23,19 @@ QSet<qint64> idSet(const std::vector<Entry>& entries)
     return {list.begin(), list.end()};
 }
 
+
+// A stored picture as the capture side would hand it over (the bytes needn't decode here).
+clipitto::ImageClip fakeImage(int n, int w = 800, int h = 600)
+{
+    clipitto::ImageClip clip;
+    clip.png = QByteArray("PNG-") + QByteArray::number(n) + QByteArray(64, 'x');
+    clip.thumbnail = QByteArray("THUMB-") + QByteArray::number(n);
+    clip.width = w;
+    clip.height = h;
+    clip.pixelHash = QStringLiteral("hash%1").arg(n);
+    return clip;
+}
+
 } // namespace
 
 class TestRepository : public QObject {
@@ -293,6 +306,61 @@ private slots:
         // Grouped (saved) copies rank before others matching only by text.
         const auto other = t.repo->ingest(QStringLiteral("Servers list, not grouped")).id;
         QCOMPARE(t.repo->search(QStringLiteral("Servers"), 100, m).back().id, other);
+    }
+
+    void picturesAreStoredWithThumbnailAndDeduplicated()
+    {
+        TestDb t;
+        const auto text = t.repo->ingest(QStringLiteral("some text")).id;
+        const auto first = t.repo->ingestImage(fakeImage(1, 1920, 1080));
+        QVERIFY(first.inserted);
+        const auto e = t.repo->get(first.id);
+        QVERIFY(e && e->image);
+        QCOMPARE(e->content, QStringLiteral("Image 1920×1080")); // the label search matches
+        QCOMPARE(e->imageWidth, 1920);
+        QCOMPARE(e->imageHeight, 1080);
+        QCOMPARE(e->thumbnail, QByteArray("THUMB-1"));
+        QCOMPARE(e->contentHash, QStringLiteral("image:hash1"));
+        QCOMPARE(t.repo->imageData(first.id), fakeImage(1).png);
+        QVERIFY(t.repo->imageData(text).isEmpty());
+        QVERIFY(!t.repo->get(text)->image);
+
+        // The same pixels again: one entry, now the latest.
+        const auto again = t.repo->ingestImage(fakeImage(1, 1920, 1080));
+        QVERIFY(!again.inserted);
+        QCOMPARE(again.id, first.id);
+        QCOMPARE(ids(t.repo->recentUnpinned(10)), (QList<qint64>{first.id, text}));
+        QCOMPARE(t.repo->recentUnpinned(10).front().thumbnail, QByteArray("THUMB-1"));
+        QCOMPARE(t.repo->countImages(), 1);
+
+        // Found by its label; deleting it takes the picture along.
+        QCOMPARE(ids(t.repo->search(QStringLiteral("image"))), (QList<qint64>{first.id}));
+        t.repo->remove(first.id);
+        QVERIFY(t.repo->imageData(first.id).isEmpty());
+        QCOMPARE(t.repo->countImages(), 0);
+    }
+
+    void picturesHaveTheirOwnLimit()
+    {
+        TestDb t;
+        for (int i = 0; i < 5; ++i) {
+            t.repo->ingest(QStringLiteral("text %1").arg(i));
+        }
+        QList<qint64> images;
+        for (int i = 0; i < 4; ++i) {
+            images << t.repo->ingestImage(fakeImage(i)).id;
+        }
+        t.repo->setFavorite(images[0], true); // a starred picture is always kept
+
+        QCOMPARE(t.repo->pruneImages(2), 1); // 3 unsaved pictures -> 2
+        QVERIFY(t.repo->get(images[0])); // starred, oldest: kept
+        QVERIFY(!t.repo->get(images[1])); // the oldest unsaved one went
+        QVERIFY(t.repo->get(images[2]) && t.repo->get(images[3]));
+        QCOMPARE(t.repo->count(), 5 + 3); // text untouched
+
+        // The text limit doesn't touch pictures.
+        QCOMPARE(t.repo->prune(2), 3);
+        QCOMPARE(t.repo->countImages(), 3);
     }
 
     void groupsKeepTheUsersOrder()

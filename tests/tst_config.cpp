@@ -92,6 +92,17 @@ private slots:
         }
     }
 
+    void pictureLimits()
+    {
+        QCOMPARE(Config{}.maxImages, 100);
+        QCOMPARE(Config{}.maxImageBytes, 50LL * 1024 * 1024);
+        const Config c = Config::fromToml("max_images = 0\nmax_image_bytes = 1048576");
+        QCOMPARE(c.maxImages, 0);
+        QCOMPARE(c.maxImageBytes, 1048576);
+        QCOMPARE(Config::fromToml(c.toToml()).maxImages, 0);
+        QCOMPARE(Config::fromToml("max_images = -1").maxImages, 100); // out of range: default
+    }
+
     void favoritesLimitIsOneToTwenty()
     {
         QStringList warnings;

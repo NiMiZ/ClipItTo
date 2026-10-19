@@ -25,6 +25,15 @@ void CapturePipeline::setLimits(int maxHistory, qint64 maxItemBytes)
     m_filter.setMaxBytes(maxItemBytes);
 }
 
+void CapturePipeline::setImageLimits(int maxImages, qint64 maxImageBytes)
+{
+    m_maxImages = qMax(0, maxImages);
+    m_filter.setMaxImageBytes(maxImageBytes);
+    if (m_maxImages == 0) {
+        m_waitingImages.clear(); // turned off: don't store what was waiting either
+    }
+}
+
 void CapturePipeline::setPaused(bool paused)
 {
     m_paused = paused;
@@ -34,6 +43,45 @@ void CapturePipeline::setPaused(bool paused)
     const QList<QString> waiting = std::exchange(m_waiting, {});
     for (const QString& text : waiting) {
         store(text);
+    }
+    const QList<ImageClip> images = std::exchange(m_waitingImages, {});
+    for (const ImageClip& image : images) {
+        storeImage(image);
+    }
+}
+
+void CapturePipeline::processImage(const ImageClip& image, const QStringList& mimeTypes)
+{
+    if (m_maxImages == 0) {
+        return; // pictures are turned off
+    }
+    const ClipFilter::Verdict verdict = m_filter.checkImage(image, mimeTypes);
+    if (verdict != ClipFilter::Verdict::Accept) {
+        qCDebug(lcCapture) << "skipped image, verdict" << int(verdict) << "bytes" << image.png.size();
+        emit rejected(verdict);
+        return;
+    }
+    if (m_paused) {
+        constexpr qsizetype kMaxWaitingImages = 2; // pictures are big, and held unencrypted here
+        m_waitingImages << image;
+        while (m_waitingImages.size() > kMaxWaitingImages) {
+            m_waitingImages.removeFirst();
+        }
+        return;
+    }
+    storeImage(image);
+}
+
+void CapturePipeline::storeImage(const ImageClip& image)
+{
+    try {
+        const auto result = m_repo.ingestImage(image);
+        if (result.inserted) {
+            m_repo.pruneImages(m_maxImages);
+        }
+        emit stored(result.id, result.inserted);
+    } catch (const db::DbError& e) {
+        qCWarning(lcCapture) << "failed to store image:" << e.what();
     }
 }
 

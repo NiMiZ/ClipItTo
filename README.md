@@ -1,7 +1,8 @@
 # ClipItTo
 Clipboard manager with history, groups and favorites for Linux and Windows
 
-Press a shortcut, type a few letters, press Enter: the clip is back on your clipboard.
+Press a shortcut, type a few letters, press Enter: the clip (text or picture) is back on
+your clipboard.
 Pin up to 10 clips to the top, star clips into Favorites, sort clips into your own groups
 (none of these are ever pruned), and give clips a readable title with a note.
 
@@ -116,8 +117,16 @@ pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are n
 (pasting a copy from ClipItTo counts as copying it), starred and grouped copies included.
 Only pinned copies are left out, as they are listed right above.
 
+**Pictures:** copied images (screenshots, "Copy Image" in a browser, ...) are kept too, shown
+as a thumbnail with their size; hover a row for a larger preview, and choose it to put the
+picture back on the clipboard. A copy that has both text and a picture is kept as text.
+Pictures have their own limit, *Pictures kept in history* in Settings (`max_images`, default
+100 unsaved pictures; 0 records none), and pictures larger than 50 MB (`max_image_bytes`) are
+skipped. They are stored, and encrypted when that's on, in the same history file. Search
+finds them by note, group or "image".
+
 **Settings** (⚙): theme (system / light / dark), how many copies are listed, how many text
-lines each copy shows, how many copies the history keeps, how many Favorites to keep, where the popup opens (near the pointer, centered, a corner, or where it was last: drag it by its name), whether a copy you choose becomes the latest, the shortcut
+lines each copy shows, how many copies and pictures the history keeps, how many Favorites to keep, where the popup opens (near the pointer, centered, a corner, or where it was last: drag it by its name), whether a copy you choose becomes the latest, the shortcut
 (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows ClipItTo registers it, on GNOME it
 becomes the GNOME keyboard shortcut), history encryption, and group management (new,
 sub-group, rename/move, delete, move up/down; saved immediately). Saving keeps your own comments and

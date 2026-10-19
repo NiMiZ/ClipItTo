@@ -3,7 +3,8 @@
 // GNOME's Wayland session offers regular apps no way to watch the clipboard, take focus
 // or type keys into other windows. This extension runs inside the shell and does those
 // things for the ClipItTo daemon:
-//   - reports every clipboard change to the daemon (io.github.nimiz.ClipItTo.Ingest);
+//   - reports every clipboard change to the daemon (io.github.nimiz.ClipItTo.Ingest, or
+//     IngestImage for a copied picture);
 //   - exports io.github.nimiz.ClipItTo.Shell so the daemon can focus its popup, set the
 //     clipboard and paste;
 //   - optionally binds a shortcut that toggles the popup.
@@ -31,6 +32,10 @@ const SHELL_IFACE_XML = `
     <method name="SetClipboard">
       <arg name="text" type="s" direction="in"/>
     </method>
+    <method name="SetClipboardContent">
+      <arg name="data" type="ay" direction="in"/>
+      <arg name="mime_type" type="s" direction="in"/>
+    </method>
     <method name="Paste">
       <arg name="keys" type="s" direction="in"/>
     </method>
@@ -43,6 +48,10 @@ const X11_CLASSES = ['clipitto', 'clipitto-daemon'];
 
 // Larger texts are not worth a D-Bus round trip; the daemon applies its own, configurable cap.
 const MAX_TEXT_LENGTH = 1024 * 1024;
+// Pictures: the daemon applies its own limit (max_image_bytes, 50 MB by default) and accepts
+// only these formats.
+const MAX_IMAGE_BYTES = 64 * 1024 * 1024;
+const IMAGE_TYPES = ['image/png', 'image/bmp', 'image/jpeg', 'image/gif'];
 const SENSITIVE_MIME_TYPES = [
     'x-kde-passwordmanagerhint',
     'application/x-kde-passwordmanagerhint',
@@ -59,6 +68,17 @@ export function isSensitive(mimeTypes) {
 
 export function hasText(mimeTypes) {
     return mimeTypes.some(type => type.startsWith('text/') || X11_TEXT_TARGETS.includes(type));
+}
+
+// Plain text, as opposed to e.g. only text/html (what a browser offers for a copied picture).
+export function hasPlainText(mimeTypes) {
+    return mimeTypes.some(type => type.toLowerCase().startsWith('text/plain') || X11_TEXT_TARGETS.includes(type));
+}
+
+// The picture type to fetch (PNG preferred), or null when there is none the daemon accepts.
+export function imageType(mimeTypes) {
+    const lower = mimeTypes.map(type => type.toLowerCase());
+    return IMAGE_TYPES.find(type => lower.includes(type)) ?? null;
 }
 
 export function isPopupWindow(win) {
@@ -81,6 +101,10 @@ export default class ClipItToExtension extends Extension {
         this._dbus = Gio.DBusExportedObject.wrapJSObject(SHELL_IFACE_XML, {
             ActivateWindow: () => this._activatePopup(),
             SetClipboard: text => St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text),
+            SetClipboardContent: (data, mimeType) => {
+                if (mimeType === 'image/png') // the daemon only ever sends PNG pictures
+                    St.Clipboard.get_default().set_content(St.ClipboardType.CLIPBOARD, mimeType, new GLib.Bytes(data));
+            },
             Paste: keys => this._paste(keys),
         });
         this._dbus.export(Gio.DBus.session, SHELL_PATH);
@@ -116,9 +140,17 @@ export default class ClipItToExtension extends Extension {
         else
             return;
 
-        // Check the MIME types first so the content of a secret is never even read.
+        // Check the MIME types first so the content of a secret is never even read. Plain
+        // text first, then a picture (clipboard only), then any other text.
         const mimeTypes = this._selection.get_mimetypes(type);
-        if (isSensitive(mimeTypes) || !hasText(mimeTypes))
+        if (isSensitive(mimeTypes))
+            return;
+        const picture = imageType(mimeTypes);
+        if (!hasPlainText(mimeTypes) && picture && stType === St.ClipboardType.CLIPBOARD) {
+            this._sendImage(stType, picture, mimeTypes);
+            return;
+        }
+        if (!hasText(mimeTypes))
             return;
 
         St.Clipboard.get_default().get_text(stType, (_clipboard, text) => {
@@ -127,6 +159,19 @@ export default class ClipItToExtension extends Extension {
             // NO_AUTO_START: a stopped daemon stays stopped; the copy simply isn't recorded.
             this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, mimeTypes]),
                 Gio.DBusCallFlags.NO_AUTO_START);
+        });
+    }
+
+    _sendImage(stType, mimeType, mimeTypes) {
+        St.Clipboard.get_default().get_content(stType, mimeType, (_clipboard, bytes) => {
+            const size = bytes?.get_size() ?? 0;
+            if (size === 0 || size > MAX_IMAGE_BYTES)
+                return;
+            // Wrapped without copying the picture into a JavaScript array first.
+            const data = GLib.Variant.new_from_bytes(new GLib.VariantType('ay'), bytes, true);
+            const parameters = GLib.Variant.new_tuple(
+                [data, new GLib.Variant('s', mimeType), new GLib.Variant('as', mimeTypes)]);
+            this._callDaemon('IngestImage', parameters, Gio.DBusCallFlags.NO_AUTO_START);
         });
     }
 

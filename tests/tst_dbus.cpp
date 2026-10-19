@@ -4,6 +4,8 @@
 #include "GnomeShellIntegration.h"
 #include "db/Repository.h"
 
+#include <QBuffer>
+#include <QImage>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -32,6 +34,10 @@ public slots:
     Q_SCRIPTABLE void ActivateWindow() { calls << QStringLiteral("ActivateWindow"); }
     Q_SCRIPTABLE void SetClipboard(const QString& text) { calls << QStringLiteral("SetClipboard:") + text; }
     Q_SCRIPTABLE void Paste(const QString& keys) { calls << QStringLiteral("Paste:") + keys; }
+    Q_SCRIPTABLE void SetClipboardContent(const QByteArray& data, const QString& mimeType)
+    {
+        calls << QStringLiteral("SetClipboardContent:%1:%2").arg(mimeType).arg(data.size());
+    }
 };
 
 // Integration tests against a real session bus. ctest runs this under dbus-run-session,
@@ -119,6 +125,35 @@ private slots:
         QCOMPARE(m_daemon->repository()->count(), before);
     }
 
+    void ingestImageOnlyFromGnomeShell()
+    {
+        QImage picture(40, 20, QImage::Format_RGB32);
+        picture.fill(Qt::magenta);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        picture.save(&buffer, "PNG");
+        const QVariantList args{png, QStringLiteral("image/png"), QStringList{QStringLiteral("image/png")}};
+
+        // Any other session client: refused.
+        call(QStringLiteral("IngestImage"), args);
+        QTest::qWait(300);
+        QCOMPARE(m_daemon->repository()->countImages(), 0);
+
+        // From the owner of org.gnome.Shell (where the extension runs): stored.
+        QDBusConnection shell = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("gnome-shell"));
+        QVERIFY(shell.registerService(QStringLiteral("org.gnome.Shell")));
+        auto msg = QDBusMessage::createMethodCall(QString::fromLatin1(clipitto::ipc::kServiceName),
+                                                  QString::fromLatin1(clipitto::ipc::kObjectPath),
+                                                  QString::fromLatin1(clipitto::ipc::kInterface),
+                                                  QStringLiteral("IngestImage"));
+        msg.setArguments(args);
+        shell.asyncCall(msg);
+        QTRY_COMPARE(m_daemon->repository()->countImages(), 1);
+        shell.unregisterService(QStringLiteral("org.gnome.Shell"));
+        QDBusConnection::disconnectFromBus(QStringLiteral("gnome-shell"));
+    }
+
     void statusReportsState()
     {
         const auto reply = call(QStringLiteral("Status"));
@@ -170,9 +205,11 @@ private slots:
         integration.activatePopup();
         integration.setClipboard(QStringLiteral("from history"));
         integration.paste(clipitto::PasteKeys::CtrlV);
+        integration.setClipboardImage(QByteArray(10, 'p'));
         QTRY_COMPARE(extension.calls, (QStringList{QStringLiteral("ActivateWindow"),
                                                     QStringLiteral("SetClipboard:from history"),
-                                                    QStringLiteral("Paste:ctrl+v")}));
+                                                    QStringLiteral("Paste:ctrl+v"),
+                                                    QStringLiteral("SetClipboardContent:image/png:10")}));
 
         shell.unregisterService(QString::fromLatin1(clipitto::ipc::kShellServiceName));
         QTRY_VERIFY(!integration.isAvailable());
