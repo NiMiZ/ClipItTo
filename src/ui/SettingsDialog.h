@@ -16,6 +16,7 @@ class QPushButton;
 class QSpinBox;
 class QTabWidget;
 class QTreeWidget;
+class QToolButton;
 
 namespace clipitto {
 namespace db {
@@ -28,7 +29,7 @@ namespace clipitto::ui {
 // Whether this platform/session lets ClipItTo set its own global shortcut.
 struct ShortcutSupport {
     bool editable = true;
-    QString note; // shown under the shortcut field
+    QString note; // behind the (i) next to the shortcut; also shown under it when not editable
 };
 
 // Whether the history can be encrypted here (build support + a reachable system keyring).
@@ -69,6 +70,10 @@ public:
 
     QComboBox* themeBox() const { return m_theme; }
     QSpinBox* copiesBox() const { return m_copies; }
+    QSpinBox* keptBox() const { return m_kept; }
+    QToolButton* encryptionInfo() const { return m_encryptionInfo; }
+    QToolButton* shortcutInfo() const { return m_shortcutInfo; }
+    QLabel* encryptionStatus() const { return m_encryptionStatus; }
     QSpinBox* linesBox() const { return m_lines; }
     QSpinBox* favoritesBox() const { return m_favorites; }
     QComboBox* positionBox() const { return m_position; }
@@ -94,6 +99,7 @@ private:
 
     QComboBox* m_theme;
     QSpinBox* m_copies;
+    QSpinBox* m_kept;
     QSpinBox* m_lines;
     QSpinBox* m_favorites;
     QComboBox* m_position;
@@ -103,7 +109,10 @@ private:
     QTabWidget* m_tabs;
     QDialogButtonBox* m_buttons;
     QKeySequenceEdit* m_shortcut;
-    QLabel* m_shortcutStatus;
+    QLabel* m_shortcutStatus; // feedback on an edited shortcut; hidden while empty
+    QToolButton* m_shortcutInfo;
+    QToolButton* m_encryptionInfo;
+    QLabel* m_encryptionStatus; // only when something is wrong (not available, not encrypted)
     QLabel* m_version; // "ClipItTo 0.2.1", next to the buttons
     QTreeWidget* m_groups;
     QPushButton* m_subGroupButton;

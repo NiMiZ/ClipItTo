@@ -117,7 +117,7 @@ pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are n
 Only pinned copies are left out, as they are listed right above.
 
 **Settings** (⚙): theme (system / light / dark), how many copies are listed, how many text
-lines each copy shows, how many Favorites to keep, where the popup opens (near the pointer, centered, a corner, or where it was last: drag it by its name), whether a copy you choose becomes the latest, the shortcut
+lines each copy shows, how many copies the history keeps, how many Favorites to keep, where the popup opens (near the pointer, centered, a corner, or where it was last: drag it by its name), whether a copy you choose becomes the latest, the shortcut
 (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows ClipItTo registers it, on GNOME it
 becomes the GNOME keyboard shortcut), history encryption, and group management (new,
 sub-group, rename/move, delete, move up/down; saved immediately). Saving keeps your own comments and
