@@ -1,6 +1,8 @@
 #include "WlPasteBackend.h"
 
+#include <QBuffer>
 #include <QDir>
+#include <QImage>
 #include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -59,6 +61,34 @@ private slots:
         QFile reads(m_dir.filePath(QStringLiteral("reads")));
         QVERIFY(reads.open(QIODevice::ReadOnly));
         QCOMPARE(reads.readAll().trimmed(), QByteArray("UTF8_STRING"));
+    }
+
+    void fetchesPicturesWhenThereIsNoPlainText()
+    {
+        QImage picture(64, 32, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        picture.save(&buffer, "PNG");
+        write(QStringLiteral("image"), png);
+        // A browser's "Copy Image": text/html plus the picture, no plain text.
+        write(QStringLiteral("types"), "text/html\nimage/jpeg\nimage/png\n");
+
+        QCOMPARE(WlPasteBackend::imageType({"text/html", "image/jpeg", "image/png"}), QStringLiteral("image/png"));
+        QVERIFY(WlPasteBackend::imageType({"text/plain"}).isEmpty());
+
+        WlPasteBackend backend(m_program);
+        QSignalSpy captured(&backend, &WlPasteBackend::captured);
+        QSignalSpy images(&backend, &WlPasteBackend::capturedImage);
+        backend.start();
+        QTRY_COMPARE(images.size(), 1);
+        const auto clip = images.at(0).at(0).value<clipitto::ImageClip>();
+        QCOMPARE(QSize(clip.width, clip.height), QSize(64, 32));
+        QCOMPARE(captured.size(), 0);
+        QFile reads(m_dir.filePath(QStringLiteral("reads")));
+        QVERIFY(reads.open(QIODevice::ReadOnly));
+        QCOMPARE(reads.readAll().trimmed(), QByteArray("image/png")); // PNG preferred
     }
 
     void probeDetectsDataControl()

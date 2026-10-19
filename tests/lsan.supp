@@ -1,0 +1,4 @@
+# LeakSanitizer suppressions for the asan preset (see CMakePresets.json).
+# Qt 6.4's PNG writer leaks a row buffer when the device refuses a write midway, which
+# ImageCodec's size-limited buffer does on purpose for pictures over max_image_bytes.
+leak:QImageWriter::write

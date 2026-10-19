@@ -4,6 +4,8 @@
 
 #include <QHash>
 #include <QLocale>
+#include <QPixmap>
+#include <QPixmapCache>
 
 namespace clipitto::ui {
 
@@ -69,6 +71,7 @@ struct HistoryModel::Node {
     Entry entry;
     QString title;
     QString preview;
+    QByteArray thumbnail; // pictures: PNG, decoded when first painted (see ThumbnailRole)
     int count = 0;
     Node* parent = nullptr;
     int row = 0;
@@ -99,6 +102,14 @@ std::unique_ptr<HistoryModel::Node> HistoryModel::makeEntryNode(const Entry& ent
     node->entry = entry;
     node->path = parent && (parent->kind == Kind::Group || parent->kind == Kind::Favorites) ? parent->path : QString();
     // Precomputed once per refresh instead of on every paint.
+    if (entry.image) {
+        // Title: the note if there is one, else the label ("Image 1920×1080"); with a note,
+        // the label follows as the preview.
+        node->title = entry.note.isEmpty() ? entry.content : entry.note;
+        node->preview = entry.note.isEmpty() ? QString() : entry.content;
+        node->thumbnail = entry.thumbnail;
+        return node;
+    }
     if (m_previewLines == 1) {
         node->title = entry.note.isEmpty() ? previewText(entry.content) : entry.note;
         node->preview = entry.note.isEmpty() ? QString() : previewText(entry.content);
@@ -241,13 +252,26 @@ QVariant HistoryModel::data(const QModelIndex& index, int role) const
     case PreviewRole:
         return n->preview;
     case Qt::ToolTipRole:
-        return e.content.left(2000);
+        return e.image ? QVariant() : QVariant(e.content.left(2000)); // pictures: a preview instead
     case FavoriteRole:
         return e.favorite;
     case HasNoteRole:
         return !e.note.isEmpty();
     case PinnedRole:
         return e.pinned();
+    case ThumbnailRole: {
+        if (n->thumbnail.isEmpty()) {
+            return QPixmap();
+        }
+        // Decoded only for rows that get painted, and kept across refreshes.
+        const QString key = QStringLiteral("clipitto-thumb-") + e.contentHash;
+        QPixmap pixmap;
+        if (!QPixmapCache::find(key, &pixmap)) {
+            pixmap.loadFromData(n->thumbnail, "PNG");
+            QPixmapCache::insert(key, pixmap);
+        }
+        return pixmap;
+    }
     case GroupRole:
         return e.group;
     case LastUsedRole:

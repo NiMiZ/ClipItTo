@@ -14,13 +14,18 @@ namespace clipitto::capture {
 // instead of falling back, so the caller can try again shortly.
 struct NativeClipboardRead {
     enum class Status {
-        Ok, // text and formats are filled in (text stays empty when a privacy marker is set)
-        NoText, // the clipboard holds no text (formats may still be filled in)
+        Ok, // text, or a picture (image, imageType), and formats are filled in; both stay
+            // empty when a privacy marker is set
+        NoText, // the clipboard holds neither text nor a picture (formats may be filled in)
         Busy, // another program holds the clipboard, or the text isn't ready yet: retry
         Unsupported, // no native reader on this platform: use QClipboard
     };
     Status status = Status::Unsupported;
     QString text;
+    // A picture when the copy has no text, read in the same clipboard session as the markers:
+    // the "PNG" format (image/png) or the device-independent bitmap as a BMP file (image/bmp).
+    QByteArray image;
+    QString imageType;
     // Format names, with privacy markers that apply reported under the names
     // ClipFilter::isSensitive() knows (e.g. "ExcludeClipboardContentFromMonitorProcessing").
     QStringList formats;

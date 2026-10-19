@@ -6,7 +6,11 @@
 #include <QClipboard>
 #include <QTimer>
 
+#include <QDateTime>
+#include <QImage>
+
 #include <functional>
+#include <optional>
 
 namespace clipitto::capture {
 
@@ -35,6 +39,20 @@ public:
 private:
     void read(QClipboard::Mode mode);
     void readNative();
+    void readImage(const QStringList& formats); // the clipboard's picture through Qt, if any
+
+    // A picture waiting to be encoded: decoded already (Qt path) or as bytes (native path).
+    struct PendingImage {
+        QImage image;
+        QByteArray data;
+        QString type;
+        QStringList formats;
+        QDateTime copiedAt;
+    };
+    // One encode at a time; a newer picture replaces one still waiting.
+    void encode(PendingImage pending);
+    bool m_encoding = false;
+    std::optional<PendingImage> m_waiting;
 
     QClipboard* m_clipboard;
     bool m_capturePrimary;

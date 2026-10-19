@@ -7,6 +7,23 @@
 using clipitto::CapturePipeline;
 using clipitto::ClipFilter;
 
+
+namespace {
+
+// A stored picture as the capture side would hand it over (the bytes needn't decode here).
+clipitto::ImageClip fakeImage(int n, int w = 800, int h = 600)
+{
+    clipitto::ImageClip clip;
+    clip.png = QByteArray("PNG-") + QByteArray::number(n) + QByteArray(64, 'x');
+    clip.thumbnail = QByteArray("THUMB-") + QByteArray::number(n);
+    clip.width = w;
+    clip.height = h;
+    clip.pixelHash = QStringLiteral("hash%1").arg(n);
+    return clip;
+}
+
+} // namespace
+
 class TestPipeline : public QObject {
     Q_OBJECT
 
@@ -26,6 +43,41 @@ private slots:
         QCOMPARE(stored.size(), 2);
         QCOMPARE(stored.at(1).at(1).toBool(), false); // dedupe bump
         QCOMPARE(t.repo->count(), 1);
+    }
+
+    void storesPicturesWithinTheirLimits()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        p.setImageLimits(2, 1000);
+        QSignalSpy stored(&p, &CapturePipeline::stored);
+        QSignalSpy rejected(&p, &CapturePipeline::rejected);
+
+        for (int i = 0; i < 3; ++i) {
+            p.processImage(fakeImage(i), {QStringLiteral("image/png")});
+        }
+        QCOMPARE(stored.size(), 3);
+        QCOMPARE(t.repo->countImages(), 2); // pruned to the image limit
+
+        clipitto::ImageClip big = fakeImage(9);
+        big.png = QByteArray(1001, 'x');
+        p.processImage(big, {});
+        p.processImage(fakeImage(8), {QStringLiteral("image/png"), QStringLiteral("x-kde-passwordManagerHint")});
+        QCOMPARE(rejected.size(), 2);
+        QCOMPARE(rejected.at(0).at(0).value<ClipFilter::Verdict>(), ClipFilter::Verdict::TooLarge);
+        QCOMPARE(rejected.at(1).at(0).value<ClipFilter::Verdict>(), ClipFilter::Verdict::Sensitive);
+
+        // Our own pasted picture coming back is not a new copy.
+        p.filter().noteOwnImage(fakeImage(7).pixelHash);
+        p.processImage(fakeImage(7), {});
+        QCOMPARE(rejected.size(), 3);
+        QCOMPARE(rejected.at(2).at(0).value<ClipFilter::Verdict>(), ClipFilter::Verdict::OwnWrite);
+
+        // 0 = pictures off: nothing is stored, nothing reported.
+        p.setImageLimits(0, 1000);
+        p.processImage(fakeImage(20), {});
+        QCOMPARE(t.repo->countImages(), 2);
+        QCOMPARE(rejected.size(), 3);
     }
 
     void rejectsFilteredText()

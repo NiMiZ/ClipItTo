@@ -59,10 +59,32 @@ ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mi
     if (text.size() * 3 > m_maxBytes && text.toUtf8().size() > m_maxBytes) {
         return Verdict::TooLarge;
     }
-    if (m_hasOwn && text == m_ownText && m_clock() - m_ownAtMs <= ownWriteWindowMs) {
+    if (text == m_ownText && isOwnEcho(m_hasOwn, m_ownAtMs)) {
         return Verdict::OwnWrite;
     }
     return Verdict::Accept;
+}
+
+ClipFilter::Verdict ClipFilter::checkImage(const ImageClip& image, const QStringList& mimeTypes) const
+{
+    if (isSensitive(mimeTypes)) {
+        return Verdict::Sensitive;
+    }
+    if (!image.isValid()) {
+        return Verdict::Empty;
+    }
+    if (image.png.size() > m_maxImageBytes) {
+        return Verdict::TooLarge;
+    }
+    if (image.pixelHash == m_ownImageHash && isOwnEcho(m_hasOwnImage, m_ownImageAtMs)) {
+        return Verdict::OwnWrite;
+    }
+    return Verdict::Accept;
+}
+
+bool ClipFilter::isOwnEcho(bool has, qint64 atMs) const
+{
+    return has && m_clock() - atMs <= ownWriteWindowMs;
 }
 
 void ClipFilter::noteOwnWrite(const QString& text)
@@ -70,6 +92,13 @@ void ClipFilter::noteOwnWrite(const QString& text)
     m_ownText = text;
     m_ownAtMs = m_clock();
     m_hasOwn = true;
+}
+
+void ClipFilter::noteOwnImage(const QString& pixelHash)
+{
+    m_ownImageHash = pixelHash;
+    m_ownImageAtMs = m_clock();
+    m_hasOwnImage = true;
 }
 
 } // namespace clipitto

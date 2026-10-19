@@ -10,6 +10,10 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QBuffer>
+#include <QHelpEvent>
+#include <QImage>
+#include <QPixmap>
 #include <QComboBox>
 #include <QEnterEvent>
 #include <QLabel>
@@ -309,6 +313,44 @@ private slots:
         f.popup->resize(area.width() + 300, area.height() + 300);
         QVERIFY(f.show());
         QCOMPARE(f.popup->pos(), area.topLeft());
+    }
+
+    void pictureRowsShowAThumbnailAndPreviewOnHover()
+    {
+        Fixture f;
+        QImage thumb(160, 90, QImage::Format_RGB32);
+        thumb.fill(Qt::darkCyan);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        thumb.save(&buffer, "PNG");
+        clipitto::ImageClip clip;
+        clip.png = png;
+        clip.thumbnail = png;
+        clip.width = 1600;
+        clip.height = 900;
+        clip.pixelHash = QStringLiteral("abc");
+        const qint64 id = f.t.repo->ingestImage(clip).id;
+        QVERIFY(f.show());
+
+        const QModelIndex image = f.model()->findEntry(id); // first in Recent (newest)
+        QVERIFY(f.model()->entryAt(image)->image);
+        QCOMPARE(image.data(HistoryModel::TitleRole).toString(), QStringLiteral("Image 1600×900"));
+        QVERIFY(!image.data(HistoryModel::ThumbnailRole).value<QPixmap>().isNull());
+        // At least two lines tall, even with one preview line per copy.
+        auto* view = f.popup->view();
+        const QModelIndex text = f.model()->findEntry(f.t.repo->search(QStringLiteral("gamma")).front().id);
+        QVERIFY(view->visualRect(image).height() > view->visualRect(text).height());
+
+        // Hovering shows the larger preview; a text row shows none.
+        QHelpEvent hover(QEvent::ToolTip, view->visualRect(image).center(),
+                         view->viewport()->mapToGlobal(view->visualRect(image).center()));
+        QCoreApplication::sendEvent(view->viewport(), &hover);
+        QVERIFY(view->imagePreview() && view->imagePreview()->isVisible());
+        QHelpEvent elsewhere(QEvent::ToolTip, view->visualRect(text).center(),
+                             view->viewport()->mapToGlobal(view->visualRect(text).center()));
+        QCoreApplication::sendEvent(view->viewport(), &elsewhere);
+        QVERIFY(!view->imagePreview()->isVisible());
     }
 
     void choosingACopyHidesThePopup()

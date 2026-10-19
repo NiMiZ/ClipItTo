@@ -48,6 +48,7 @@ public:
         CountRole, // copies in a group and its sub-groups
         HasNoteRole, // the title is the user's note (drawn bold), not the content
         PinnedRole,
+        ThumbnailRole, // QPixmap for a picture copy, null otherwise
     };
 
     enum class Kind { Header, Entry, GroupsRoot, Group, Favorites };

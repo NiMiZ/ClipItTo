@@ -88,6 +88,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_theme(new QComboBox(this))
     , m_copies(new QSpinBox(this))
     , m_kept(new QSpinBox(this))
+    , m_images(new QSpinBox(this))
     , m_lines(new QSpinBox(this))
     , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
@@ -137,6 +138,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_kept->setToolTip(tr("How many copies the history keeps before the oldest are deleted (10-1,000,000). "
                           "Pinned, starred and grouped copies are always kept and don't count."));
     form->addRow(tr("Copies kept in history:"), m_kept);
+
+    m_images->setRange(0, 100'000);
+    m_images->setGroupSeparatorShown(true);
+    m_images->setSpecialValueText(tr("Don't record pictures")); // shown for 0
+    m_images->setValue(config.maxImages);
+    m_images->setToolTip(tr("How many copied pictures the history keeps, apart from text copies (0-100,000; 0 "
+                            "records no pictures). Pinned, starred and grouped pictures are always kept. "
+                            "Pictures larger than %1 MB are not recorded.")
+                             .arg(config.maxImageBytes / (1024 * 1024)));
+    form->addRow(tr("Pictures kept in history:"), m_images);
 
     m_lines->setRange(1, 10);
     m_lines->setValue(config.previewLines);
@@ -310,6 +321,7 @@ Config SettingsDialog::config() const
     c.theme = Theme(m_theme->currentData().toInt());
     c.recentCount = m_copies->value();
     c.maxHistory = m_kept->value();
+    c.maxImages = m_images->value();
     c.previewLines = m_lines->value();
     c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;

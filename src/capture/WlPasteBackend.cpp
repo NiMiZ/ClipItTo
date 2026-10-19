@@ -1,11 +1,16 @@
 #include "WlPasteBackend.h"
 
 #include "ClipFilter.h"
+#include "ImageCodec.h"
 
 #include <QLoggingCategory>
 #include <QProcess>
+#include <QDateTime>
+#include <QTimer>
 
 #include <algorithm>
+#include <memory>
+#include <utility>
 
 Q_LOGGING_CATEGORY(lcWlPaste, "clipitto.capture.wlpaste")
 
@@ -24,7 +29,29 @@ bool hasText(const QStringList& mimeTypes)
     });
 }
 
+// Plain text, as opposed to e.g. text/html only (what a browser offers for a copied picture).
+bool hasPlainText(const QStringList& mimeTypes)
+{
+    static const QStringList plain = {QStringLiteral("UTF8_STRING"), QStringLiteral("STRING"), QStringLiteral("TEXT")};
+    return std::any_of(mimeTypes.begin(), mimeTypes.end(), [](const QString& type) {
+        return type.startsWith(QLatin1String("text/plain"), Qt::CaseInsensitive) || plain.contains(type);
+    });
+}
+
 } // namespace
+
+QString WlPasteBackend::imageType(const QStringList& mimeTypes)
+{
+    // Only formats with a known, well-tested decoder (see isSupportedImageType), PNG first.
+    static const QStringList preferred = {QStringLiteral("image/png"), QStringLiteral("image/bmp"),
+                                          QStringLiteral("image/jpeg"), QStringLiteral("image/gif")};
+    for (const QString& type : preferred) {
+        if (mimeTypes.contains(type, Qt::CaseInsensitive)) {
+            return type;
+        }
+    }
+    return {};
+}
 
 QString WlPasteBackend::textType(const QStringList& mimeTypes)
 {
@@ -139,12 +166,19 @@ void WlPasteBackend::fetch()
         const QStringList mimeTypes = status == QProcess::NormalExit && exitCode == 0
             ? QString::fromUtf8(types->readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts)
             : QStringList();
-        // Never read the content of secrets, and skip images and other non-text selections.
-        if (ClipFilter::isSensitive(mimeTypes) || !hasText(mimeTypes)) {
+        // Never read the content of secrets. Plain text first, then a picture, then any
+        // other text (e.g. only text/html).
+        if (ClipFilter::isSensitive(mimeTypes)) {
             fetchDone();
-            return;
+        } else if (hasPlainText(mimeTypes)) {
+            fetchText(mimeTypes);
+        } else if (!imageType(mimeTypes).isEmpty()) {
+            fetchImage(mimeTypes);
+        } else if (hasText(mimeTypes)) {
+            fetchText(mimeTypes);
+        } else {
+            fetchDone();
         }
-        fetchText(mimeTypes);
     });
     connect(types, &QProcess::errorOccurred, this, [this, types](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
@@ -172,6 +206,55 @@ void WlPasteBackend::fetchText(const QStringList& mimeTypes)
         }
     });
     text->start(m_program, {QStringLiteral("--no-newline"), QStringLiteral("--type"), textType(mimeTypes)});
+}
+
+void WlPasteBackend::fetchImage(const QStringList& mimeTypes)
+{
+    const QString type = imageType(mimeTypes);
+    // The picture as the source offers it: allowed somewhat more than the PNG limit (BMP is
+    // uncompressed), and only for a while, so a huge or stuck source can't hold us up.
+    const qint64 limit = 4 * maxImageBytes();
+    constexpr int kTimeoutMs = 15000;
+    const QDateTime copiedAt = QDateTime::currentDateTimeUtc();
+    auto* image = new QProcess(this);
+    auto data = std::make_shared<QByteArray>(); // shared by the handlers below
+    auto* timeout = new QTimer(image);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, image, [image] { image->kill(); });
+    connect(image, &QProcess::readyReadStandardOutput, image, [image, data, limit] {
+        data->append(image->readAllStandardOutput());
+        if (data->size() > limit) {
+            image->kill();
+        }
+    });
+    connect(image, &QProcess::finished, this,
+            [this, image, data, limit, type, mimeTypes, copiedAt](int exitCode, QProcess::ExitStatus status) {
+                image->deleteLater();
+                data->append(image->readAllStandardOutput());
+                const QByteArray bytes = std::exchange(*data, {});
+                if (!m_running || status != QProcess::NormalExit || exitCode != 0 || bytes.size() > limit) {
+                    fetchDone();
+                    return;
+                }
+                // Still "fetching" until encoded: a burst of copies coalesces into one more
+                // fetch instead of piling up decodes.
+                encodeImageDataAsync(bytes, type, maxImageBytes(), this,
+                                     [this, mimeTypes, copiedAt](std::optional<ImageClip> clip) {
+                                         if (m_running && clip) {
+                                             clip->copiedAt = copiedAt;
+                                             emit capturedImage(*clip, mimeTypes);
+                                         }
+                                         fetchDone();
+                                     });
+            });
+    connect(image, &QProcess::errorOccurred, this, [this, image](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            image->deleteLater();
+            fetchDone();
+        }
+    });
+    image->start(m_program, {QStringLiteral("--type"), type});
+    timeout->start(kTimeoutMs);
 }
 
 void WlPasteBackend::fetchDone()

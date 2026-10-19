@@ -19,6 +19,8 @@ public:
 
     // Without an integration on Wayland, this must run while one of our windows has focus.
     void setText(const QString& text);
+    // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo.
+    void setImage(const QByteArray& png, const QString& pixelHash);
 
 private:
     QClipboard* m_clipboard;

@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPixmap>
 
 namespace clipitto::ui {
 
@@ -40,6 +41,19 @@ QFont caption(QFont font)
     font.setCapitalization(QFont::AllUppercase);
     font.setBold(true);
     return font;
+}
+
+// Lines a picture row spans: the configured preview lines, at least two so the thumbnail
+// is recognizable.
+int imageLines(const QModelIndex& index)
+{
+    const auto* model = qobject_cast<const HistoryModel*>(index.model());
+    return qMax(2, model ? model->previewLineCount() : 1);
+}
+
+bool isImage(const QModelIndex& index)
+{
+    return !index.data(HistoryModel::ThumbnailRole).value<QPixmap>().isNull();
 }
 
 int previewLineCount(const QModelIndex& index)
@@ -86,7 +100,7 @@ QSize HistoryDelegate::sizeHint(const QStyleOptionViewItem& option, const QModel
     case Kind::Entry:
         break;
     }
-    const int extra = previewLineCount(index);
+    const int extra = isImage(index) ? imageLines(index) - 1 : previewLineCount(index);
     return {0, (1 + extra) * fm.height() + extra * 2 + 2 * kVPad + 2};
 }
 
@@ -209,6 +223,25 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         painter->drawText(chip, Qt::AlignCenter, label);
         painter->setFont(option.font);
         right -= w + kGap;
+    }
+
+    // A picture: its thumbnail first, as tall as the row's lines and at most twice as wide,
+    // then the title (note or "Image 1920×1080") beside it.
+    const QPixmap thumbnail = index.data(HistoryModel::ThumbnailRole).value<QPixmap>();
+    if (!thumbnail.isNull()) {
+        const int lines = imageLines(index);
+        const int height = lines * fm.height() + (lines - 1) * 2;
+        const QSize fitted = thumbnail.size().scaled(QSize(2 * height, height), Qt::KeepAspectRatio);
+        const QRect box(content.left(), content.top() + (height - fitted.height()) / 2, fitted.width(), fitted.height());
+        painter->setRenderHint(QPainter::SmoothPixmapTransform);
+        painter->drawPixmap(box, thumbnail);
+        QColor frame = text;
+        frame.setAlphaF(0.25);
+        painter->setPen(frame);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(QRectF(box).adjusted(0.5, 0.5, -0.5, -0.5));
+        content.setLeft(content.left() + fitted.width() + kGap);
+        right = qMax(right, content.left());
     }
 
     const QString title = index.data(HistoryModel::TitleRole).toString();

@@ -100,7 +100,8 @@
         "outputOnFailure": true
       },
       "environment": {
-        "QT_QPA_PLATFORM": "offscreen"
+        "QT_QPA_PLATFORM": "offscreen",
+        "LSAN_OPTIONS": "suppressions=${sourceDir}/tests/lsan.supp"
       }
     },
     {
