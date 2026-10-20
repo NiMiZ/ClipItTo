@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTest>
+#include <QToolButton>
 #include <QTreeWidget>
 
 using clipitto::Config;
@@ -74,7 +75,7 @@ private slots:
         c.recentCount = 30;
         c.previewLines = 2;
         c.hotkey = QStringLiteral("Ctrl+`");
-        c.maxHistory = 77; // not on the dialog: must survive untouched
+        c.maxItemBytes = 4096; // not on the dialog: must survive untouched
         SettingsDialog d(c, *t.repo, {});
         QCOMPARE(d.themeBox()->currentData().toInt(), int(Theme::Dark));
         QCOMPARE(d.copiesBox()->value(), 30);
@@ -101,7 +102,7 @@ private slots:
         QCOMPARE(d.config().favoritesLimit, 15);
         QCOMPARE(edited.recentCount, 50);
         QCOMPARE(edited.previewLines, 3);
-        QCOMPARE(edited.maxHistory, 77);
+        QCOMPARE(edited.maxItemBytes, 4096);
     }
 
     void showsTheRunningVersion()
@@ -216,13 +217,51 @@ private slots:
         QVERIFY(!available.config().encryptHistory);
         QVERIFY(available.config().popupPosition == clipitto::PopupPosition::Cursor);
 
+        // Asked for but not encrypted (yet): said plainly in the window.
+        QVERIFY(!available.encryptionStatus()->isHidden());
+        QVERIFY(available.encryptionStatus()->text().contains(QLatin1String("Currently NOT encrypted")));
+
+        // On and working: no note in the window; the explanation is behind the (i).
+        SettingsDialog working(c, *t.repo, {}, {true, {}, true, {}});
+        QVERIFY(working.encryptionStatus()->isHidden());
+        QVERIFY(working.encryptionInfo()->toolTip().contains(QLatin1String("ChaCha20")));
+
+        // Unavailable: a short visible note; the technical reason is behind the (i).
         SettingsDialog unavailable(Config{}, *t.repo, {}, {false, QStringLiteral("no keyring here"), false, {}});
         QVERIFY(!unavailable.encryptBox()->isEnabled());
-        bool reasonShown = false;
-        for (QLabel* l : unavailable.findChildren<QLabel*>()) {
-            reasonShown = reasonShown || l->text() == QLatin1String("Not available: no keyring here");
-        }
-        QVERIFY(reasonShown);
+        QVERIFY(!unavailable.encryptionStatus()->isHidden());
+        QCOMPARE(unavailable.encryptionStatus()->text(), QStringLiteral("Not available on this system."));
+        QVERIFY(unavailable.encryptionInfo()->toolTip().contains(QLatin1String("no keyring here")));
+    }
+
+    void longNotesAreBehindInfoButtonsAndTheWindowFits()
+    {
+        TestDb t;
+        ShortcutSupport support{true, QStringLiteral("Saved as the GNOME keyboard shortcut for ClipItTo.")};
+        SettingsDialog d(Config{}, *t.repo, support, {true, {}, false, {}});
+        // Editable shortcut: its note is behind the (i), nothing under the field until edited.
+        QVERIFY(d.shortcutInfo()->toolTip().contains(QLatin1String("GNOME keyboard shortcut")));
+        QVERIFY(d.shortcutStatus()->isHidden());
+        d.shortcutEdit()->setKeySequence(QKeySequence(QStringLiteral("Ctrl+`")));
+        QVERIFY(!d.shortcutStatus()->isHidden()); // feedback on the new shortcut is shown
+
+        // Every row fits: the dialog is at least as large as its contents need.
+        QVERIFY(d.height() >= d.sizeHint().height());
+        QVERIFY(d.width() >= d.minimumSizeHint().width());
+    }
+
+    void historySizeIsASetting()
+    {
+        TestDb t;
+        Config c;
+        c.maxHistory = 5000;
+        SettingsDialog d(c, *t.repo, {});
+        QCOMPARE(d.keptBox()->value(), 5000);
+        QCOMPARE(d.keptBox()->minimum(), 10);
+        QCOMPARE(d.keptBox()->maximum(), 1'000'000);
+        QCOMPARE(d.copiesBox()->maximum(), 500);
+        d.keptBox()->setValue(250);
+        QCOMPARE(d.config().maxHistory, 250);
     }
 
     void requestedButInactiveEncryptionIsStatedPlainly()

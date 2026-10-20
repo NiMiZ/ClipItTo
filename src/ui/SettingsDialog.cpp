@@ -19,6 +19,9 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QStyle>
+#include <QToolButton>
+#include <QToolTip>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -40,6 +43,40 @@ QKeySequence sequenceFor(const QString& hotkey)
     return QKeySequence::fromString(hotkey, QKeySequence::PortableText);
 }
 
+// An (i) icon whose explanation shows as a tooltip on hover, or right away on click, so
+// longer notes don't take room in the window. `html` may hold simple markup.
+QToolButton* makeInfoButton(QWidget* parent)
+{
+    auto* button = new QToolButton(parent);
+    const QIcon icon = parent->style()->standardIcon(QStyle::SP_MessageBoxInformation);
+    if (icon.isNull()) {
+        button->setText(QStringLiteral("ⓘ"));
+    } else {
+        button->setIcon(icon);
+        button->setIconSize(QSize(16, 16));
+    }
+    button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::TabFocus);
+    button->setAccessibleName(SettingsDialog::tr("More information"));
+    QObject::connect(button, &QToolButton::clicked, button, [button] {
+        QToolTip::showText(button->mapToGlobal(QPoint(0, button->height())), button->toolTip(), button);
+    });
+    return button;
+}
+
+void setInfo(QToolButton* button, const QString& html)
+{
+    // A paragraph makes Qt treat it as rich text, which wraps instead of one long line.
+    button->setToolTip(QStringLiteral("<p>%1</p>").arg(html));
+}
+
+// A dim, wrapping note under a field, hidden while it has nothing to say.
+void setNote(QLabel* label, const QString& text)
+{
+    label->setText(text);
+    label->setVisible(!text.isEmpty());
+}
+
 } // namespace
 
 SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
@@ -50,6 +87,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_hotkey(config.hotkey)
     , m_theme(new QComboBox(this))
     , m_copies(new QSpinBox(this))
+    , m_kept(new QSpinBox(this))
     , m_lines(new QSpinBox(this))
     , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
@@ -60,6 +98,9 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
     , m_shortcut(new QKeySequenceEdit(this))
     , m_shortcutStatus(new QLabel(this))
+    , m_shortcutInfo(makeInfoButton(this))
+    , m_encryptionInfo(makeInfoButton(this))
+    , m_encryptionStatus(new QLabel(this))
     , m_version(new QLabel(this))
     , m_groups(new QTreeWidget(this))
     , m_subGroupButton(new QPushButton(tr("New sub-group…"), this))
@@ -72,7 +113,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_notify([](QWidget* p, const QString& message) { QMessageBox::warning(p, QStringLiteral("ClipItTo"), message); })
 {
     setWindowTitle(tr("ClipItTo Settings"));
-    resize(480, 440);
+    setMinimumWidth(480); // the height follows the contents (see the end)
 
     // --- General -----------------------------------------------------------------------
     auto* general = new QWidget(this);
@@ -86,8 +127,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
 
     m_copies->setRange(1, 500);
     m_copies->setValue(config.recentCount);
-    m_copies->setToolTip(tr("How many recent copies are listed when the search box is empty"));
+    m_copies->setToolTip(tr("How many recent copies the popup lists when the search box is empty (1-500). "
+                            "Searching looks through the whole history."));
     form->addRow(tr("Copies listed:"), m_copies);
+
+    m_kept->setRange(10, 1'000'000);
+    m_kept->setGroupSeparatorShown(true);
+    m_kept->setValue(config.maxHistory);
+    m_kept->setToolTip(tr("How many copies the history keeps before the oldest are deleted (10-1,000,000). "
+                          "Pinned, starred and grouped copies are always kept and don't count."));
+    form->addRow(tr("Copies kept in history:"), m_kept);
 
     m_lines->setRange(1, 10);
     m_lines->setValue(config.previewLines);
@@ -125,10 +174,15 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     resetShortcut->setToolTip(kDefaultHotkey);
     shortcutRow->addWidget(m_shortcut, 1);
     shortcutRow->addWidget(resetShortcut);
+    shortcutRow->addWidget(m_shortcutInfo);
     form->addRow(tr("Shortcut:"), shortcutRow);
+    setInfo(m_shortcutInfo, shortcut.note.toHtmlEscaped());
+    m_shortcutInfo->setVisible(!shortcut.note.isEmpty());
     m_shortcutStatus->setWordWrap(true);
     m_shortcutStatus->setEnabled(false); // dim
-    m_shortcutStatus->setText(shortcut.note);
+    // Shown only when it matters: why the field can't be changed here; later, feedback on
+    // a newly typed shortcut.
+    setNote(m_shortcutStatus, shortcut.editable ? QString() : shortcut.note);
     form->addRow(QString(), m_shortcutStatus);
     if (!shortcut.editable) {
         m_shortcut->setEnabled(false);
@@ -137,23 +191,31 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     connect(m_shortcut, &QKeySequenceEdit::keySequenceChanged, this, &SettingsDialog::onShortcutEdited);
 
     m_encrypt->setChecked(config.encryptHistory);
-    form->addRow(tr("Privacy:"), m_encrypt);
-    auto* encryptNote = new QLabel(this);
-    encryptNote->setWordWrap(true);
-    encryptNote->setEnabled(false); // dim
-    QString note = encryption.available ? tr(kEncryptionNote) : tr("Not available: %1").arg(encryption.reason);
+    auto* encryptRow = new QHBoxLayout;
+    encryptRow->addWidget(m_encrypt);
+    encryptRow->addWidget(m_encryptionInfo);
+    encryptRow->addStretch(1);
+    form->addRow(tr("Privacy:"), encryptRow);
+    // The explanation lives behind the (i); the window only says something when it's wrong.
+    QString info = tr(kEncryptionNote).toHtmlEscaped();
+    QString status;
     if (!encryption.available) {
         m_encrypt->setEnabled(false); // keep the current state visible but unchangeable
+        status = tr("Not available on this system.");
+        info = tr("<b>Not available:</b> %1").arg(encryption.reason.toHtmlEscaped()) + QStringLiteral("<br><br>") + info;
     }
     if (config.encryptHistory && !encryption.active) {
         // The setting asks for it, the file is not: say so plainly, never let it look done.
-        note = tr("<b>Currently NOT encrypted</b>%1. ")
-                   .arg(encryption.problem.isEmpty() ? QString() : QStringLiteral(": ") + encryption.problem.toHtmlEscaped())
-            + note.toHtmlEscaped();
-        encryptNote->setEnabled(true);
+        status = tr("<b>Currently NOT encrypted.</b>") + (encryption.available ? QString() : QLatin1Char(' ') + status);
+        if (!encryption.problem.isEmpty()) {
+            info = tr("<b>Last problem:</b> %1").arg(encryption.problem.toHtmlEscaped()) + QStringLiteral("<br><br>") + info;
+        }
     }
-    encryptNote->setText(note);
-    form->addRow(QString(), encryptNote);
+    setInfo(m_encryptionInfo, info);
+    m_encryptionStatus->setWordWrap(true);
+    m_encryptionStatus->setEnabled(config.encryptHistory && !encryption.active); // a warning isn't dimmed
+    setNote(m_encryptionStatus, status);
+    form->addRow(QString(), m_encryptionStatus);
     connect(resetShortcut, &QPushButton::clicked, this, [this] { m_shortcut->setKeySequence(sequenceFor(kDefaultHotkey)); });
 
     // --- Groups ------------------------------------------------------------------------
@@ -237,6 +299,9 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     bottom->addStretch(1);
     bottom->addWidget(m_buttons);
     layout->addLayout(bottom);
+    // As tall as the contents need (wrapped notes included), instead of a fixed size that
+    // cut text off with larger fonts.
+    resize(qMax(520, sizeHint().width()), sizeHint().height());
 }
 
 Config SettingsDialog::config() const
@@ -244,6 +309,7 @@ Config SettingsDialog::config() const
     Config c = m_config;
     c.theme = Theme(m_theme->currentData().toInt());
     c.recentCount = m_copies->value();
+    c.maxHistory = m_kept->value();
     c.previewLines = m_lines->value();
     c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;
@@ -269,9 +335,9 @@ void SettingsDialog::onShortcutEdited()
     const auto parsed = parseHotkey(first.toString(QKeySequence::PortableText));
     if (parsed) {
         m_hotkey = parsed->canonical;
-        m_shortcutStatus->setText(tr("Opens the popup: %1").arg(m_hotkey));
+        setNote(m_shortcutStatus, tr("Opens the popup: %1").arg(m_hotkey));
     } else {
-        m_shortcutStatus->setText(tr("%1 can't be used: use Ctrl, Alt, Shift or Super with a letter, digit, "
+        setNote(m_shortcutStatus, tr("%1 can't be used: use Ctrl, Alt, Shift or Super with a letter, digit, "
                                      "F-key or ` - = [ ] ; ' , . /. Keeping %2.")
                                       .arg(first.toString(QKeySequence::NativeText), m_hotkey));
     }
