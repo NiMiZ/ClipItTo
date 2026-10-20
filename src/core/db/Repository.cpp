@@ -5,6 +5,7 @@
 #include "db/Sqlite.h"
 
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QHash>
 
 #include <algorithm>
@@ -40,6 +41,14 @@ Repository::Repository(Db& db, Clock clock)
     : m_db(db)
     , m_clock(clock ? std::move(clock) : Clock([] { return QDateTime::currentDateTimeUtc(); }))
 {
+    // Deleting a copy then also removes its text from the search index right away, not only
+    // at the next merge (SQLite 3.42+; older versions merge on clear and at shutdown).
+    try {
+        m_db.exec("INSERT INTO clips_fts(clips_fts, rank) VALUES ('secure-delete', 1);");
+    } catch (const DbError& e) {
+        qWarning() << "search index secure-delete unavailable (SQLite before 3.42):" << e.what();
+    }
+
     // created_at = last_used only holds right after an insert, which tells us whether the upsert inserted.
     m_ingest = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used) VALUES (?1, ?2, ?3, ?3)
@@ -554,6 +563,40 @@ void Repository::remove(qint64 id)
     m_remove->reset();
     m_remove->bindInt(1, id);
     m_remove->run();
+}
+
+qint64 Repository::clearHistory(bool everything)
+{
+    qint64 deleted = 0;
+    {
+        Transaction tx(m_db);
+        Stmt s(m_db, everything ? "DELETE FROM clips" : "DELETE FROM clips WHERE is_saved = 0");
+        s.run();
+        deleted = m_db.changes();
+        // The search index only marks deleted rows; their text stays in its segments until
+        // they are merged. Merge now, so nothing of the cleared copies is left in it.
+        m_db.exec(everything ? "INSERT INTO clips_fts(clips_fts) VALUES ('delete-all');"
+                             : "INSERT INTO clips_fts(clips_fts) VALUES ('optimize');");
+        tx.commit();
+    }
+    // Freed pages were zeroed (secure_delete); the WAL still holds earlier copies of them
+    // until a checkpoint folds it in and truncates it.
+    if (!checkpoint()) {
+        qWarning() << "history cleared, but the write-ahead log is still in use; it is folded in later";
+    }
+    return deleted;
+}
+
+bool Repository::checkpoint()
+{
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        Stmt s(m_db, "PRAGMA wal_checkpoint(TRUNCATE)");
+        // (busy, log frames, checkpointed frames): done when not busy and all were copied.
+        if (s.step() && s.colInt(0) == 0 && s.colInt(1) == s.colInt(2)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 qint64 Repository::prune(int maxUnsaved)

@@ -85,6 +85,11 @@ public:
     HistoryModel* model() const { return m_model; }
     SearchController* controller() const { return m_controller; }
     QToolButton* settingsButton() const { return m_settingsButton; }
+    QToolButton* clearButton() const { return m_clearButton; }
+
+    // Deletes the history after asking: unsaved copies, or with `everything` also starred,
+    // pinned and grouped ones (groups stay). The Clear button and its menu call these.
+    void clearHistory(bool everything);
     QWidget* dragHandle() const { return m_dragHandle; }
 
     // Hands a drag of the popup to the compositor (Wayland, where only it may move windows).
@@ -133,7 +138,7 @@ private:
     void moveGroup(const QString& path, int delta);
     void editGroup(qint64 id);
     void editNote(qint64 id);
-    void remove(const QModelIndex& index);
+    void remove(const QModelIndex& index, bool focusList = true);
     void newGroup(const QString& parentPath);
     void renameGroup(const QString& path);
     void deleteGroup(const QString& path);
@@ -150,6 +155,7 @@ private:
     SearchController* m_controller;
     SearchBar* m_search;
     QToolButton* m_settingsButton;
+    QToolButton* m_clearButton;
     QWidget* m_dragHandle; // the app name: drag it to move the popup
     HistoryView* m_view;
     QLabel* m_footer;

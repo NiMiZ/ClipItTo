@@ -21,6 +21,7 @@
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPixmapCache>
 #include <QPointer>
 #include <QMessageBox>
 #include <QScreen>
@@ -161,6 +162,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_controller(new SearchController(repo, *m_model, this))
     , m_search(new SearchBar(this))
     , m_settingsButton(new QToolButton(this))
+    , m_clearButton(new QToolButton(this))
     , m_dragHandle(new DragHandle(this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
@@ -196,6 +198,28 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     auto* settingsShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma), this);
     connect(settingsShortcut, &QShortcut::activated, this, &PopupWindow::settingsRequested);
 
+    // Clear: the button clears the history and keeps starred, pinned and grouped copies; its
+    // menu also offers clearing those. Both ask first.
+    const QIcon clearIcon = QIcon::fromTheme(QStringLiteral("edit-clear-history"),
+                                             QIcon::fromTheme(QStringLiteral("edit-clear-all"),
+                                                              QIcon::fromTheme(QStringLiteral("edit-clear"))));
+    if (clearIcon.isNull()) {
+        m_clearButton->setText(tr("Clear"));
+    } else {
+        m_clearButton->setIcon(clearIcon);
+    }
+    m_clearButton->setAutoRaise(true);
+    m_clearButton->setFocusPolicy(Qt::NoFocus);
+    m_clearButton->setToolTip(tr("Clear the history (starred, pinned and grouped copies are kept)"));
+    m_clearButton->setPopupMode(QToolButton::MenuButtonPopup);
+    auto* clearMenu = new QMenu(m_clearButton);
+    clearMenu->addAction(tr("Clear history (keep starred, pinned and grouped)"), this, [this] { clearHistory(false); });
+    clearMenu->addAction(tr("Clear everything, also in groups…"), this, [this] { clearHistory(true); });
+    connect(clearMenu, &QMenu::aboutToShow, this, [this] { ++m_modalDepth; });
+    connect(clearMenu, &QMenu::aboutToHide, this, [this] { --m_modalDepth; });
+    m_clearButton->setMenu(clearMenu);
+    connect(m_clearButton, &QToolButton::clicked, this, [this] { clearHistory(false); });
+
     m_footer->setText(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+P pin · Ctrl+G group · Ctrl+E note · "
                          "Alt+↑↓ move · Del remove"));
     m_footer->setToolTip(tr("Alt+↑/↓ moves a group, or a pinned copy, up or down. Esc closes."));
@@ -222,6 +246,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     top->addWidget(m_dragHandle);
     top->addSpacing(4);
     top->addWidget(m_search, 1);
+    top->addWidget(m_clearButton);
     top->addWidget(m_settingsButton);
     auto* inner = new QVBoxLayout(frame);
     inner->setContentsMargins(8, 8, 8, 6);
@@ -259,6 +284,17 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
         m_view->selectIndex(target);
     });
     connect(m_search, &SearchBar::openGroupsRequested, this, &PopupWindow::openGroups);
+    connect(m_search, &SearchBar::deleteCurrentRequested, this, [this] {
+        if (m_controller->isPending()) {
+            // The list still shows the previous search: bring it up to date, and let the user
+            // see what is selected before a Delete removes anything.
+            m_controller->refresh();
+            return;
+        }
+        if (entryFor(m_view->currentIndex())) {
+            remove(m_view->currentIndex(), /*focusList=*/false); // typing stays in the search box
+        }
+    });
     connect(m_search, &SearchBar::activateRequested, this, [this] {
         if (m_controller->isPending()) {
             m_controller->refresh(); // Enter right after typing: use the up-to-date results
@@ -435,6 +471,10 @@ int PopupWindow::execDialog(QDialog& dialog)
 
 void PopupWindow::placeOnScreen()
 {
+    // Place it at its final size: the layout may still enlarge it to its minimum.
+    if (layout()) {
+        layout()->activate();
+    }
     // Wayland clients cannot position top-level windows; the compositor places us.
     if (QGuiApplication::platformName() == QLatin1String("wayland")) {
         return;
@@ -659,13 +699,59 @@ void PopupWindow::editNote(qint64 id)
     refreshSelecting(selectionOf(m_view->currentIndex()));
 }
 
-void PopupWindow::remove(const QModelIndex& index)
+void PopupWindow::clearHistory(bool everything)
+{
+    if (isBusy()) {
+        return;
+    }
+    qint64 count = 0;
+    try {
+        count = everything ? m_repo.count() : m_repo.countUnsaved();
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "counting copies failed:" << err.what();
+        return;
+    }
+    if (count == 0) {
+        showMessage(everything ? tr("The history is already empty.")
+                               : tr("Nothing to clear: only starred, pinned and grouped copies are left."));
+        return;
+    }
+    bool confirmed = false;
+    {
+        ModalGuard guard(m_modalDepth);
+        const QString copies = count == 1 ? tr("1 copy") : tr("%1 copies").arg(count);
+        confirmed = m_confirm(this, everything
+                                        ? tr("Delete all %1, including starred, pinned and grouped ones?\n"
+                                             "Your groups stay, empty. This can't be undone.")
+                                              .arg(copies)
+                                        : tr("Delete %1 from the history?\n"
+                                             "Starred, pinned and grouped copies are kept.")
+                                              .arg(copies));
+    }
+    if (!confirmed) {
+        refreshSelecting(selectionOf(m_view->currentIndex()), /*focusList=*/false);
+        return;
+    }
+    try {
+        m_repo.clearHistory(everything);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "clearing the history failed:" << err.what();
+    }
+    QPixmapCache::clear(); // no thumbnails of cleared pictures stay in memory
+    refreshSelecting(std::nullopt, /*focusList=*/false);
+    m_search->setFocus();
+}
+
+void PopupWindow::remove(const QModelIndex& index, bool focusList)
 {
     const Entry* e = entryFor(index);
     if (!e) {
         return;
     }
     const qint64 id = e->id;
+    if (e->image) {
+        QPixmapCache::remove(QStringLiteral("clipitto-thumb-") + e->contentHash); // see HistoryModel
+    }
     // Keep the cursor in place: select the copy that slides into this row.
     std::optional<Selection> next;
     for (QModelIndex i = m_view->indexBelow(index); i.isValid(); i = m_view->indexBelow(i)) {
@@ -687,7 +773,7 @@ void PopupWindow::remove(const QModelIndex& index)
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "delete failed:" << err.what();
     }
-    refreshSelecting(next);
+    refreshSelecting(next, focusList);
 }
 
 void PopupWindow::newGroup(const QString& parentPath)

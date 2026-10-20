@@ -22,6 +22,10 @@ option(CLIPITTO_DBUS "Build the D-Bus control channel, Linux daemon entry point 
 
 if(MSVC)
     add_compile_options(/utf-8) # sources and test literals are UTF-8
+    if(MSVC_VERSION GREATER_EQUAL 1950)
+        # Qt 6.5's headers still use stdext iterators, which MSVC 14.50 removed.
+        add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${PROJECT_SOURCE_DIR}/cmake/msvc_stdext_shim.h>")
+    endif()
 endif()
 if(WIN32)
     add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)

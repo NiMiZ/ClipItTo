@@ -363,6 +363,70 @@ private slots:
         QCOMPARE(t.repo->countImages(), 3);
     }
 
+    void clearHistoryKeepsSavedCopiesUnlessEverything()
+    {
+        TestDb t;
+        const auto plain = t.repo->ingest(QStringLiteral("plain")).id;
+        const auto star = t.repo->ingest(QStringLiteral("starred")).id;
+        const auto pin = t.repo->ingest(QStringLiteral("pinned")).id;
+        const auto grouped = t.repo->ingest(QStringLiteral("grouped")).id;
+        const auto picture = t.repo->ingestImage(fakeImage(1)).id;
+        t.repo->setFavorite(star, true);
+        t.repo->setPinned(pin, true);
+        t.repo->setGroup(grouped, QStringLiteral("Work"));
+        t.repo->createGroup(QStringLiteral("Empty"));
+
+        QCOMPARE(t.repo->clearHistory(false), 2); // the plain text and the picture
+        QVERIFY(!t.repo->get(plain) && !t.repo->get(picture));
+        QVERIFY(t.repo->imageData(picture).isEmpty());
+        QCOMPARE(idSet(t.repo->recent(10, false)), (QSet<qint64>{star, pin, grouped}));
+        QVERIFY(t.repo->search(QStringLiteral("plain")).empty()); // gone from the search index too
+
+        QCOMPARE(t.repo->clearHistory(true), 3);
+        QCOMPARE(t.repo->count(), 0);
+        QCOMPARE(t.repo->groups(), (QStringList{"Empty", "Work"})); // groups stay, empty
+    }
+
+    void clearedTextLeavesNothingInTheSearchIndex()
+    {
+        // The index's own storage, not search results (those join clips and would hide it).
+        const auto indexHolds = [](TestDb& t, const QByteArray& fragment) {
+            clipitto::db::Stmt s(t.db, "SELECT block FROM clips_fts_data");
+            while (s.step()) {
+                if (s.colBlob(0).contains(fragment)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        TestDb t;
+        t.repo->ingest(QStringLiteral("zqxwvu cleared secret"));
+        const auto kept = t.repo->ingest(QStringLiteral("kjhgfd kept")).id;
+        t.repo->setFavorite(kept, true);
+        QVERIFY(indexHolds(t, "zqx"));
+
+        t.repo->clearHistory(false);
+        QVERIFY(!indexHolds(t, "zqx"));
+        QVERIFY(!indexHolds(t, "vu "));
+        QCOMPARE(t.repo->search(QStringLiteral("kjhgfd")).size(), 1u); // the starred copy is still searchable
+
+        // Deleting one copy removes its text from the index too (secure-delete).
+        const auto single = t.repo->ingest(QStringLiteral("ppoiuy single")).id;
+        QVERIFY(indexHolds(t, "poi"));
+        t.repo->remove(single);
+        QVERIFY(!indexHolds(t, "poi"));
+
+        // Everything: a note that is a single trigram starting with a character no other term
+        // starts with (so stored literally, not prefix-compressed) goes too.
+        t.repo->setNote(kept, QStringLiteral("~~~"));
+        QVERIFY(indexHolds(t, "~~~"));
+        t.repo->clearHistory(true);
+        QVERIFY(!indexHolds(t, "~~~"));
+        QVERIFY(t.repo->search(QStringLiteral("kjhgfd")).empty());
+        t.repo->ingest(QStringLiteral("after clearing"));
+        QCOMPARE(t.repo->search(QStringLiteral("clearing")).size(), 1u); // the index still works
+    }
+
     void groupsKeepTheUsersOrder()
     {
         TestDb t;

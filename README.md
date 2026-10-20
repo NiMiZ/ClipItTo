@@ -95,7 +95,7 @@ clipitto-setup
 | `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
 | `Ctrl+G` / `Ctrl+E` | assign group (on a group: rename) / edit note |
 | `Alt+↑` / `Alt+↓` | move a group, or a pinned copy, up or down |
-| `Del` | delete the entry (on a group: delete the group, its copies are kept) |
+| `Del` | delete the entry (on a group: delete the group, its copies are kept); in the search box too, when the cursor is at the end |
 | right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |
 | `Ctrl+,` or ⚙ | settings |
 | `Esc` | close |
@@ -116,6 +116,10 @@ pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are n
 **Recent** is your copy history: each text once, the one you last copied or pasted first
 (pasting a copy from ClipItTo counts as copying it), starred and grouped copies included.
 Only pinned copies are left out, as they are listed right above.
+
+**Clear** (the button next to ⚙) deletes the history but keeps starred, pinned and grouped
+copies; its menu (the arrow) also offers *Clear everything, also in groups*, which deletes those
+as well and leaves the groups empty. Both ask first and can't be undone.
 
 **Pictures:** copied images (screenshots, "Copy Image" in a browser, ...) are kept too, shown
 as a thumbnail with their size; hover a row for a larger preview, and choose it to put the
