@@ -18,6 +18,7 @@
 #include <QEnterEvent>
 #include <QLabel>
 #include <QMenu>
+#include <QToolButton>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
@@ -351,6 +352,84 @@ private slots:
                              view->viewport()->mapToGlobal(view->visualRect(text).center()));
         QCoreApplication::sendEvent(view->viewport(), &elsewhere);
         QVERIFY(!view->imagePreview()->isVisible());
+    }
+
+    void clearButtonKeepsSavedCopiesAndItsMenuClearsEverything()
+    {
+        Fixture f; // ssh (pinned), alpha, beta, gamma ray
+        f.t.repo->setGroup(f.t.repo->search(QStringLiteral("alpha")).front().id, QStringLiteral("Work"));
+        QStringList asked;
+        bool answer = false;
+        f.popup->setConfirmPrompt([&](QWidget*, const QString& question) {
+            asked << question;
+            return answer;
+        });
+        QVERIFY(f.show());
+        QToolButton* clear = f.popup->clearButton();
+        QVERIFY(clear->isVisible());
+        QCOMPARE(clear->popupMode(), QToolButton::MenuButtonPopup);
+
+        // Cancelled: nothing changes.
+        clear->click();
+        QCOMPARE(asked.size(), 1);
+        QVERIFY2(asked.last().contains(QLatin1String("Delete 2 copies")), qPrintable(asked.last()));
+        QCOMPARE(f.t.repo->count(), 4);
+
+        // The button: beta and gamma ray go; the pinned and the grouped copy stay.
+        answer = true;
+        clear->click();
+        QCOMPARE(f.t.repo->count(), 2);
+        QCOMPARE(f.t.repo->search(QStringLiteral("gamma")).size(), 0u);
+        QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
+
+        // The menu's second entry: everything, also in groups.
+        const QList<QAction*> actions = clear->menu()->actions();
+        QCOMPARE(actions.size(), 2);
+        actions.at(1)->trigger();
+        QVERIFY2(asked.last().contains(QLatin1String("Delete all 2 copies")), qPrintable(asked.last()));
+        QCOMPARE(f.t.repo->count(), 0);
+        QCOMPARE(f.t.repo->groups(), QStringList{QStringLiteral("Work")});
+
+        // Nothing left: says so instead of asking.
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        clear->click();
+        QCOMPARE(messages.size(), 1);
+        QCOMPARE(asked.size(), 3);
+    }
+
+    void deleteInTheSearchBoxRemovesTheSelectedCopy()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        QCOMPARE(f.currentContent(), QStringLiteral("ssh -J bastion app")); // selected on opening
+        QTest::keyClick(search, Qt::Key_Down); // gamma ray
+        QTest::keyClick(f.popup->view(), Qt::Key_Up); // back on ssh... in the list
+        f.popup->searchBar()->setFocus();
+        QTest::keyClick(search, Qt::Key_Delete); // empty box: deletes the selected copy
+        QCOMPARE(f.t.repo->count(), 3);
+        QVERIFY(f.t.repo->search(QStringLiteral("bastion")).empty());
+        QCOMPARE(QApplication::focusWidget(), search); // still typing in the search box
+        QCOMPARE(f.currentContent(), QStringLiteral("gamma ray")); // the next copy is selected
+
+        // Right after typing, while the search hasn't run yet, Delete first brings the list
+        // up to date instead of deleting what the previous search had selected.
+        QTest::keyClicks(search, QStringLiteral("alp"));
+        QVERIFY(f.popup->controller()->isPending());
+        QTest::keyClick(search, Qt::Key_Delete);
+        QCOMPARE(f.t.repo->count(), 3);
+        QCOMPARE(f.currentContent(), QStringLiteral("alpha"));
+        search->clear();
+
+        // With text: Delete at the end removes the selected match, elsewhere it edits.
+        QTest::keyClicks(search, QStringLiteral("beta"));
+        f.popup->controller()->refresh();
+        QCOMPARE(f.currentContent(), QStringLiteral("beta"));
+        search->setCursorPosition(1);
+        QTest::keyClick(search, Qt::Key_Delete);
+        QCOMPARE(search->text(), QStringLiteral("bta")); // edited, nothing deleted
+        QCOMPARE(f.t.repo->count(), 3);
     }
 
     void choosingACopyHidesThePopup()

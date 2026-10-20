@@ -87,6 +87,9 @@ public:
     bool movePinned(qint64 id, int delta); // -1 = up one place; false at either end
     void setNote(qint64 id, const QString& note); // empty clears the note
     void remove(qint64 id);
+    // Deletes the history: unsaved copies (text and pictures) only, or with `everything` also
+    // starred, pinned and grouped ones. Groups themselves stay. Returns the number deleted.
+    qint64 clearHistory(bool everything);
 
     // Deletes the oldest unsaved text entries so at most maxUnsaved remain. Returns the number
     // deleted. Images have their own limit (pruneImages).
@@ -122,6 +125,7 @@ public:
 private:
     QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
+    bool checkpoint(); // WAL folded in and truncated; false if a reader kept it busy
     void loadImageDetails(Entry& entry);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
     Stmt& likeStatement(int tokenCount);
