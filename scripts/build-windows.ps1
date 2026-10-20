@@ -42,7 +42,18 @@ Write-Host "vcpkg: $Vcpkg"
 
 Push-Location $root
 try {
-    cmake --preset windows
+    # Visual Studio updates move the compiler: a build folder still pointing at the old one
+    # is configured again from scratch.
+    $fresh = @()
+    $cache = Join-Path $root 'build\windows\CMakeCache.txt'
+    if (Test-Path $cache) {
+        $compiler = (Select-String -Path $cache -Pattern '^CMAKE_CXX_COMPILER:\w+=(.+)$').Matches | Select-Object -First 1
+        if ($compiler -and -not (Test-Path $compiler.Groups[1].Value)) {
+            Write-Host 'The compiler moved (Visual Studio was updated): configuring from scratch.'
+            $fresh = @('--fresh')
+        }
+    }
+    cmake --preset windows @fresh
     if ($LASTEXITCODE) { throw 'configure failed' }
     cmake --build --preset windows
     if ($LASTEXITCODE) { throw 'build failed' }
