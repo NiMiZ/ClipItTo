@@ -3,7 +3,7 @@
 #   Windows:      Qt 6.5+ (MSVC) plus vcpkg in manifest mode (see vcpkg.json and the
 #                 "windows" preset), which provides SQLite (with FTS5) and toml++.
 
-set(CLIPITTO_QT_COMPONENTS Core Gui Widgets)
+set(CLIPITTO_QT_COMPONENTS Core Gui Widgets Concurrent) # Concurrent: encoding copied pictures off the GUI thread
 if(CLIPITTO_DBUS)
     list(APPEND CLIPITTO_QT_COMPONENTS DBus)
 else()

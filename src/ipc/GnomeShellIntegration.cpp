@@ -63,6 +63,11 @@ void GnomeShellIntegration::setClipboard(const QString& text)
     call(QStringLiteral("SetClipboard"), {text});
 }
 
+void GnomeShellIntegration::setClipboardImage(const QByteArray& png)
+{
+    call(QStringLiteral("SetClipboardContent"), {png, QStringLiteral("image/png")});
+}
+
 void GnomeShellIntegration::paste(PasteKeys keys)
 {
     call(QStringLiteral("Paste"),

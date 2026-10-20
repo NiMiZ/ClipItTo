@@ -110,6 +110,7 @@ private:
     std::optional<bool> m_wlDataControl; // probed lazily, once
     QVariantMap m_extraStatus;
     bool m_encrypted = false;
+    bool m_decodingImage = false; // an IngestImage picture is being decoded
     bool m_converting = false;
     QString m_encryptionError;
     QString m_startupWarning; // shown once, the first time the popup opens

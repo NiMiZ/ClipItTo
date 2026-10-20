@@ -3,6 +3,8 @@
 #include <QGuiApplication>
 #include <QMimeData>
 #include <QSignalSpy>
+#include <QBuffer>
+#include <QImage>
 #include <QTest>
 
 #include <memory>
@@ -26,12 +28,29 @@ struct ScriptedReader {
 
 NativeClipboardRead busy()
 {
-    return {NativeClipboardRead::Status::Busy, {}, {}};
+    NativeClipboardRead read;
+    read.status = NativeClipboardRead::Status::Busy;
+    return read;
 }
 
 NativeClipboardRead ok(const QString& text, const QStringList& formats = {QStringLiteral("text/plain")})
 {
-    return {NativeClipboardRead::Status::Ok, text, formats};
+    NativeClipboardRead read;
+    read.status = NativeClipboardRead::Status::Ok;
+    read.text = text;
+    read.formats = formats;
+    return read;
+}
+
+// A picture as the Windows native reader returns it (bytes plus their type).
+NativeClipboardRead picture(const QByteArray& data, const QString& type, const QStringList& formats = {})
+{
+    NativeClipboardRead read;
+    read.status = NativeClipboardRead::Status::Ok;
+    read.image = data;
+    read.imageType = type;
+    read.formats = formats;
+    return read;
 }
 
 } // namespace
@@ -124,6 +143,69 @@ private slots:
         QGuiApplication::clipboard()->setText(QStringLiteral("again"));
         QTRY_COMPARE(captured.size(), 2);
         QCOMPARE(*reader.calls, 1); // asked once, then Qt only
+    }
+
+    void nativePictureBytesAreEncodedOneAtATime()
+    {
+        // The Windows reader hands over the picture's bytes; a burst of copies keeps the
+        // first (already encoding) and the newest, not every one in between.
+        auto pngOf = [](QColor color) {
+            QImage image(50, 40, QImage::Format_RGB32);
+            image.fill(color);
+            QByteArray png;
+            QBuffer buffer(&png);
+            buffer.open(QIODevice::WriteOnly);
+            image.save(&buffer, "PNG");
+            return png;
+        };
+        ScriptedReader reader;
+        *reader.script << picture(pngOf(Qt::red), QStringLiteral("image/png"), {QStringLiteral("PNG")})
+                       << picture(pngOf(Qt::green), QStringLiteral("image/png"))
+                       << picture(pngOf(Qt::blue), QStringLiteral("image/png"));
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false, nullptr, reader);
+        QSignalSpy images(&backend, &QtClipboardBackend::capturedImage);
+        backend.start();
+        const QDateTime before = QDateTime::currentDateTimeUtc();
+        for (int i = 0; i < 3; ++i) {
+            QGuiApplication::clipboard()->setText(QStringLiteral("change %1").arg(i)); // any change
+        }
+        QTRY_COMPARE(images.size(), 2);
+        QTest::qWait(200);
+        QCOMPARE(images.size(), 2);
+        const auto first = images.at(0).at(0).value<clipitto::ImageClip>();
+        const auto last = images.at(1).at(0).value<clipitto::ImageClip>();
+        QCOMPARE(QImage::fromData(first.png, "PNG").pixelColor(1, 1), QColor(Qt::red));
+        QCOMPARE(QImage::fromData(last.png, "PNG").pixelColor(1, 1), QColor(Qt::blue));
+        QCOMPARE(images.at(0).at(1).toStringList(), QStringList{QStringLiteral("PNG")});
+        // Stamped when copied, not when the encode finished.
+        QVERIFY(first.copiedAt >= before && first.copiedAt <= last.copiedAt);
+    }
+
+    void emitsCopiedPicturesWhenThereIsNoText()
+    {
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
+        QSignalSpy images(&backend, &QtClipboardBackend::capturedImage);
+        backend.start();
+
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(QColor(10, 200, 30));
+        QGuiApplication::clipboard()->setImage(picture);
+        QTRY_COMPARE(images.size(), 1); // encoded off the GUI thread, then reported
+        const auto clip = images.at(0).at(0).value<clipitto::ImageClip>();
+        QCOMPARE(clip.width, 120);
+        QCOMPARE(clip.height, 80);
+        QCOMPARE(QImage::fromData(clip.png, "PNG").pixelColor(5, 5), QColor(10, 200, 30));
+        QCOMPARE(captured.size(), 0);
+
+        // Text and a picture together: text wins (e.g. spreadsheet cells).
+        auto* both = new QMimeData;
+        both->setText(QStringLiteral("cells"));
+        both->setImageData(picture);
+        QGuiApplication::clipboard()->setMimeData(both);
+        QTRY_COMPARE(captured.size(), 1);
+        QTest::qWait(200);
+        QCOMPARE(images.size(), 1);
     }
 
     void stopDisconnects()

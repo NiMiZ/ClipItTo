@@ -104,7 +104,7 @@ private slots:
         db.exec("INSERT INTO clips(content, content_hash, is_favorite, group_name) VALUES "
                 "('star', 'h1', 1, NULL), ('grouped', 'h2', 0, 'Work'), ('plain', 'h3', 0, NULL)");
         db.exec("INSERT INTO groups(path) VALUES ('Work')");
-        migrate(db);
+        migrate(db, {migrations[0], migrations[1], migrations[2]}); // up to schema 3
         QCOMPARE(schemaVersion(db), 3);
 
         Stmt s(db, "SELECT content, is_saved, pin_position FROM clips ORDER BY id");
@@ -120,6 +120,29 @@ private slots:
         Stmt order(db, "SELECT position FROM groups WHERE path = 'Work'");
         QVERIFY(order.step());
         QVERIFY(order.colIsNull(0)); // unordered until the user moves it
+    }
+
+    void imagesMigrationAddsKindAndCascadingImageTable()
+    {
+        Db db(QStringLiteral(":memory:"));
+        configureConnection(db); // foreign_keys = ON, as the daemon runs it
+        auto migrations = builtinMigrations();
+        migrate(db, {migrations[0], migrations[1], migrations[2]}); // schema 3
+        db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
+        migrate(db);
+        QCOMPARE(schemaVersion(db), 4);
+
+        Stmt kind(db, "SELECT kind FROM clips WHERE content = 'old text'");
+        QVERIFY(kind.step());
+        QCOMPARE(kind.colText(0), QStringLiteral("text")); // existing rows are text
+
+        db.exec("INSERT INTO clips(content, content_hash, kind) VALUES ('Image 2×1', 'image:x', 'image')");
+        db.exec("INSERT INTO clip_images(clip_id, png, thumbnail, width, height) "
+                "SELECT id, x'89504e47', x'89504e47', 2, 1 FROM clips WHERE kind = 'image'");
+        db.exec("DELETE FROM clips WHERE kind = 'image'");
+        Stmt left(db, "SELECT count(*) FROM clip_images");
+        QVERIFY(left.step());
+        QCOMPARE(left.colInt(0), 0); // the picture went with its row
     }
 
     void newerSchemaIsRejected()

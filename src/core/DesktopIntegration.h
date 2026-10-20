@@ -21,6 +21,7 @@ public:
 
     virtual void activatePopup() = 0; // focus the (just shown) popup window
     virtual void setClipboard(const QString& text) = 0;
+    virtual void setClipboardImage(const QByteArray& png) = 0; // a PNG picture
     virtual void paste(PasteKeys keys) = 0;
 
 signals:

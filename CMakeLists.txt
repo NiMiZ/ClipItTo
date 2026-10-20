@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(ClipItTo
-    VERSION 0.2.3
+    VERSION 0.3.0
     DESCRIPTION "Clipboard manager with history, groups and favorites for Linux"
     LANGUAGES C CXX)
 

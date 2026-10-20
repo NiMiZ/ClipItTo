@@ -262,6 +262,13 @@ private slots:
         QCOMPARE(d.copiesBox()->maximum(), 500);
         d.keptBox()->setValue(250);
         QCOMPARE(d.config().maxHistory, 250);
+
+        // Pictures have their own limit; 0 turns them off.
+        QCOMPARE(d.imagesBox()->value(), 100);
+        QCOMPARE(d.imagesBox()->minimum(), 0);
+        d.imagesBox()->setValue(0);
+        QCOMPARE(d.imagesBox()->text(), QStringLiteral("Don't record pictures"));
+        QCOMPARE(d.config().maxImages, 0);
     }
 
     void requestedButInactiveEncryptionIsStatedPlainly()

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QDateTime>
 #include <QString>
 #include <QtGlobal>
@@ -15,6 +16,14 @@ struct Entry {
     int pinPosition = -1; // order in the Pinned list; -1 when not pinned
     QDateTime createdAt;
     QDateTime lastUsed;
+
+    // An image copy: `content` is its label ("Image 1920×1080", what search matches), the
+    // picture itself stays in the database (Repository::imageData) except a small thumbnail.
+    bool image = false;
+    int imageWidth = 0;
+    int imageHeight = 0;
+    QByteArray thumbnail; // PNG, at most kThumbnailSize on each side
+    QString contentHash; // content_hash: for images "image:<sha256 of the pixels>"
 
     bool pinned() const { return pinPosition >= 0; }
     // Saved items are immune to pruning and rank first in search.
