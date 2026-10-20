@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Entry.h"
+#include "ImageClip.h"
 
 #include <QDateTime>
 #include <QStringList>
@@ -54,6 +55,10 @@ public:
     Repository& operator=(const Repository&) = delete;
 
     IngestResult ingest(const QString& text);
+    // The same picture (same pixels) again only bumps its last_used, like text.
+    IngestResult ingestImage(const ImageClip& image);
+    // The full picture (PNG) of an image entry; empty for text or a missing id.
+    QByteArray imageData(qint64 id);
 
     void setLimits(const Limits& limits) { m_limits = limits; }
     const Limits& limits() const { return m_limits; }
@@ -83,8 +88,11 @@ public:
     void setNote(qint64 id, const QString& note); // empty clears the note
     void remove(qint64 id);
 
-    // Deletes the oldest unsaved entries so at most maxUnsaved remain. Returns the number deleted.
+    // Deletes the oldest unsaved text entries so at most maxUnsaved remain. Returns the number
+    // deleted. Images have their own limit (pruneImages).
     qint64 prune(int maxUnsaved);
+    // The same for images: at most maxUnsaved unsaved images remain.
+    qint64 pruneImages(int maxUnsaved);
 
     // --- Groups: a tree of paths (see GroupPath.h). Parents of a group always exist.
     // Every group path, depth first: parents before children, siblings in the user's order
@@ -104,6 +112,7 @@ public:
 
     qint64 count();
     qint64 countUnsaved();
+    qint64 countImages();
 
     // PRAGMA optimize + FTS segment merge; cheap enough for shutdown or a weekly timer.
     void optimize();
@@ -113,6 +122,7 @@ public:
 private:
     QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
+    void loadImageDetails(Entry& entry);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
     Stmt& likeStatement(int tokenCount);
     int starsIn(const QString& group); // "" = Favorites (starred, no group)
@@ -123,6 +133,8 @@ private:
     Limits m_limits;
     QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;
+    std::unique_ptr<Stmt> m_ingestImage;
+    std::unique_ptr<Stmt> m_imageDetails;
     std::unique_ptr<Stmt> m_recentAll;
     std::unique_ptr<Stmt> m_recentUnsaved;
     std::unique_ptr<Stmt> m_recentUnpinned;

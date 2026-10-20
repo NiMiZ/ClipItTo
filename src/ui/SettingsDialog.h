@@ -71,6 +71,7 @@ public:
     QComboBox* themeBox() const { return m_theme; }
     QSpinBox* copiesBox() const { return m_copies; }
     QSpinBox* keptBox() const { return m_kept; }
+    QSpinBox* imagesBox() const { return m_images; }
     QToolButton* encryptionInfo() const { return m_encryptionInfo; }
     QToolButton* shortcutInfo() const { return m_shortcutInfo; }
     QLabel* encryptionStatus() const { return m_encryptionStatus; }
@@ -100,6 +101,7 @@ private:
     QComboBox* m_theme;
     QSpinBox* m_copies;
     QSpinBox* m_kept;
+    QSpinBox* m_images;
     QSpinBox* m_lines;
     QSpinBox* m_favorites;
     QComboBox* m_position;

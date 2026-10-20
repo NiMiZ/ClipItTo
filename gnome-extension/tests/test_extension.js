@@ -3,7 +3,7 @@
 import System from 'system';
 
 import {CLIPBOARD, PRIMARY, makeWindow, resetState, state} from './stubs/state.js';
-import ClipItToExtension, {hasText, isPopupWindow, isSensitive} from './extension.js';
+import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupWindow, isSensitive} from './extension.js';
 
 const NO_AUTO_START = 1;
 let passed = 0;
@@ -46,6 +46,11 @@ test('MIME helpers', () => {
     assert(hasText(['text/html']));
     assert(hasText(['UTF8_STRING']));
     assert(!hasText(['image/png']));
+    assert(hasPlainText(['UTF8_STRING']) && hasPlainText(['text/plain;charset=utf-8']));
+    assert(!hasPlainText(['text/html', 'image/png']));
+    assertEq(imageType(['text/html', 'image/jpeg', 'image/png']), 'image/png');
+    assertEq(imageType(['image/webp', 'image/svg+xml']), null); // only formats the daemon decodes
+    assertEq(imageType(TEXT), null);
     assert(isSensitive(['text/plain', 'x-kde-passwordManagerHint']));
     assert(!isSensitive(TEXT));
 });
@@ -77,10 +82,47 @@ test('secrets are never read', () => {
     ext.disable();
 });
 
+test('a copied picture is sent as IngestImage', () => {
+    const ext = enabled();
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const types = ['text/html', 'image/png'];
+    state.selection.setOwner(CLIPBOARD, types, png); // a browser's "Copy Image"
+    assertEq(state.textReads, 0, 'not read as text');
+    assertEq(state.contentReads, ['image/png']);
+    assertEq(state.dbusCalls.length, 1, 'calls');
+    const call = state.dbusCalls[0];
+    assertEq(call.method, 'IngestImage');
+    const [data, mimeType, mimeTypes] = call.params.deepUnpack();
+    assertEq([Array.from(data), mimeType, mimeTypes], [Array.from(png), 'image/png', types]);
+    assertEq(call.flags, NO_AUTO_START, 'flags');
+
+    // Plain text wins when a copy offers both (e.g. cells from a spreadsheet).
+    state.selection.setOwner(CLIPBOARD, [...TEXT, 'image/png'], 'cells');
+    assertEq(state.dbusCalls[1].method, 'Ingest');
+    // A marked secret is never read, picture or not.
+    state.selection.setOwner(CLIPBOARD, ['image/png', 'x-kde-passwordManagerHint'], png);
+    assertEq(state.contentReads.length, 1, 'content reads');
+    // No pictures from the primary selection.
+    state.settings.values['capture-primary'] = true;
+    state.selection.setOwner(PRIMARY, ['image/png'], png);
+    assertEq(state.dbusCalls.length, 2, 'calls at the end');
+    ext.disable();
+});
+
+test('SetClipboardContent puts a picture on the clipboard', () => {
+    const ext = enabled();
+    state.service.SetClipboardContent(new Uint8Array([1, 2, 3]), 'image/png');
+    assertEq(state.clipboardSet, [{type: CLIPBOARD, mimeType: 'image/png', data: [1, 2, 3]}]);
+    state.service.SetClipboardContent(new Uint8Array([1]), 'text/html'); // only PNG pictures
+    assertEq(state.clipboardSet.length, 1);
+    assert(state.serviceXml.includes('<method name="SetClipboardContent">'));
+    ext.disable();
+});
+
 test('non-text, empty and oversized selections are skipped', () => {
     const ext = enabled();
-    state.selection.setOwner(CLIPBOARD, ['image/png'], null);
-    assertEq(state.textReads, 0, 'image read');
+    state.selection.setOwner(CLIPBOARD, ['application/octet-stream'], null);
+    assertEq(state.textReads, 0, 'binary read');
     state.selection.setOwner(CLIPBOARD, TEXT, '');
     state.selection.setOwner(CLIPBOARD, TEXT, 'x'.repeat(1024 * 1024 + 1));
     assertEq(state.dbusCalls.length, 0, 'calls');

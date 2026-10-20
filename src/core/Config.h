@@ -26,6 +26,8 @@ struct Config {
     int savedCap = 15; // at most this many pinned copies listed (pins themselves are capped at 10)
     int favoritesLimit = 10; // starred copies without a group (1..20); 10 per group otherwise
     qint64 maxItemBytes = 1024 * 1024;
+    int maxImages = 100; // unsaved pictures kept, apart from maxHistory; 0 = don't record pictures
+    qint64 maxImageBytes = 50LL * 1024 * 1024; // larger pictures (PNG-encoded) are skipped
     bool capturePrimary = false;
     bool pasteOnEnter = true; // choosing a copy also pastes it into the window you came from
     bool latestAfterPaste = true; // a chosen copy becomes the latest in the history, as if copied

@@ -8,6 +8,7 @@
 #include "ClipboardWriter.h"
 #include "PopupWindow.h"
 #include "WlPasteBackend.h"
+#include "ImageCodec.h"
 #include "SyntheticPaste.h"
 #include "Paths.h"
 #include "db/Migrator.h"
@@ -21,6 +22,7 @@
 #include <QSaveFile>
 #include <QGuiApplication>
 #include <QLoggingCategory>
+#include <QThreadPool>
 #include <QTimer>
 
 Q_LOGGING_CATEGORY(lcDaemon, "clipitto.daemon")
@@ -76,6 +78,8 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
 
 Daemon::~Daemon()
 {
+    // Picture decodes still running use Qt's image plugins: let them finish while Qt is up.
+    QThreadPool::globalInstance()->waitForDone();
     if (m_worker.joinable()) {
         m_worker.join(); // a conversion in flight: let it finish, the file stays consistent
     }
@@ -115,7 +119,8 @@ Daemon::StartResult Daemon::start(QString* error)
         db::migrate(*m_db);
         m_repo = std::make_unique<db::Repository>(*m_db);
         m_repo->setLimits(repositoryLimits(m_config));
-        m_repo->prune(m_config.maxHistory); // the limit may have been lowered since last run
+        m_repo->prune(m_config.maxHistory); // the limits may have been lowered since last run
+        m_repo->pruneImages(m_config.maxImages);
     } catch (const db::DbError& e) {
         m_repo.reset();
         m_db.reset();
@@ -126,7 +131,30 @@ Daemon::StartResult Daemon::start(QString* error)
     }
 
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
+    m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
+    // A picture from a capture helper (the GNOME extension), decoded off the GUI thread.
+    connect(m_control, &ControlChannel::ingestImageRequested, this,
+            [this](const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes) {
+                // One at a time and within the size limit: a flood of calls can't pile up
+                // decodes in memory. (Who may call is checked by the D-Bus channel.)
+                // Marked secrets are refused before anything is decoded.
+                if (!m_pipeline || m_pipeline->maxImages() == 0 || data.size() > m_config.maxImageBytes
+                    || m_decodingImage || !capture::isSupportedImageType(mimeType)
+                    || ClipFilter::isSensitive(mimeTypes)) {
+                    return;
+                }
+                m_decodingImage = true;
+                const QDateTime copiedAt = QDateTime::currentDateTimeUtc();
+                capture::encodeImageDataAsync(data, mimeType, m_config.maxImageBytes, this,
+                                              [this, mimeTypes, copiedAt](std::optional<ImageClip> clip) {
+                    m_decodingImage = false;
+                    if (clip && m_pipeline) {
+                        clip->copiedAt = copiedAt;
+                        m_pipeline->processImage(*clip, mimeTypes);
+                    }
+                });
+            });
     startCapture();
 
     m_writer = std::make_unique<ClipboardWriter>(QGuiApplication::clipboard(), m_pipeline->filter(), m_integration);
@@ -195,6 +223,9 @@ void Daemon::startCapture()
                                        m_options.wlPasteProgram);
     connect(m_capture.backend.get(), &capture::CaptureBackend::captured, m_pipeline.get(),
             &CapturePipeline::process);
+    connect(m_capture.backend.get(), &capture::CaptureBackend::capturedImage, m_pipeline.get(),
+            &CapturePipeline::processImage);
+    m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
     m_capture.backend->start();
 
     if (m_capture.degraded) {
@@ -232,7 +263,20 @@ void Daemon::onEntryActivated(const Entry& entry)
 {
     // Runs before the popup hides: without the shell integration on Wayland, setting the
     // clipboard needs our focus.
-    m_writer->setText(entry.content);
+    if (entry.image) {
+        QByteArray png;
+        try {
+            png = m_repo->imageData(entry.id);
+        } catch (const db::DbError& e) {
+            qCWarning(lcDaemon) << "failed to read the picture:" << e.what();
+        }
+        if (png.isEmpty()) {
+            return;
+        }
+        m_writer->setImage(png, entry.contentHash.mid(int(qstrlen("image:"))));
+    } else {
+        m_writer->setText(entry.content);
+    }
     if (m_config.latestAfterPaste) {
         // As if it had been copied again: the latest in the history. (The clipboard's echo
         // of our own write is ignored by the capture filter either way.)
@@ -527,6 +571,10 @@ void Daemon::reload(bool forceShortcut)
         return;
     }
     m_pipeline->setLimits(m_config.maxHistory, m_config.maxItemBytes);
+    m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
+    if (m_capture.backend) {
+        m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
+    }
     m_repo->setLimits(repositoryLimits(m_config));
     if (m_config.theme != previous.theme) {
         ui::applyTheme(m_config.theme);
@@ -537,6 +585,9 @@ void Daemon::reload(bool forceShortcut)
     }
     if (m_config.encryptHistory != previous.encryptHistory) {
         setEncryption(m_config.encryptHistory);
+    }
+    if (m_config.maxImages < previous.maxImages && !m_converting) {
+        m_repo->pruneImages(m_config.maxImages); // 0: "don't record pictures" removes the unsaved ones
     }
     if (m_config.maxHistory < previous.maxHistory && !m_converting) {
         m_repo->prune(m_config.maxHistory);
@@ -578,6 +629,7 @@ QVariantMap Daemon::status() const
         try {
             s[QStringLiteral("items")] = m_repo->count();
             s[QStringLiteral("unsaved_items")] = m_repo->countUnsaved();
+            s[QStringLiteral("images")] = m_repo->countImages();
         } catch (const db::DbError& e) {
             s[QStringLiteral("error")] = QString::fromUtf8(e.what());
         }

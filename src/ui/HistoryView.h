@@ -24,6 +24,8 @@ public:
     QModelIndex nextSelectable(QModelIndex from, bool down) const; // invalid at either end
     void toggleExpanded(const QModelIndex& index);
     void setEmptyText(const QString& text); // shown when the model has no rows
+    // The larger preview of a picture row, shown on hover (null until first shown).
+    QWidget* imagePreview() const { return m_preview; }
 
 signals:
     void focusSearchRequested(); // Up on the first row
@@ -38,6 +40,8 @@ signals:
     void contextMenuRequested(const QModelIndex& index, const QPoint& globalPos);
 
 protected:
+    bool viewportEvent(QEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     QModelIndex moveCursor(CursorAction action, Qt::KeyboardModifiers modifiers) override;
     void paintEvent(QPaintEvent* event) override;
@@ -48,6 +52,10 @@ private:
 
     HistoryModel* m_model = nullptr;
     QString m_emptyText;
+    void showImagePreview(const QModelIndex& index, const QPoint& globalPos);
+    void hideImagePreview();
+    QWidget* m_preview = nullptr; // a QLabel in a tooltip-style window
+    QPersistentModelIndex m_previewIndex;
 };
 
 } // namespace clipitto::ui

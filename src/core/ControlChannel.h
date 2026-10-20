@@ -31,6 +31,8 @@ signals:
     void showRequested(const QString& activationToken);
     void hideRequested();
     void ingestRequested(const QString& text, const QStringList& mimeTypes);
+    // An encoded picture (`mimeType`, e.g. image/png) from a capture helper.
+    void ingestImageRequested(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void reloadRequested();
     void quitRequested();
 

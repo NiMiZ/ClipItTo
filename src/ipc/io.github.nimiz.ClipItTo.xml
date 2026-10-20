@@ -20,6 +20,14 @@
       <arg name="mime_types" type="as" direction="in"/>
     </method>
 
+    <!-- The same for a copied picture with no plain text: its bytes as the source offered
+         them (PNG preferred) and that MIME type. The daemon decodes, re-encodes and stores it. -->
+    <method name="IngestImage">
+      <arg name="data" type="ay" direction="in"/>
+      <arg name="mime_type" type="s" direction="in"/>
+      <arg name="mime_types" type="as" direction="in"/>
+    </method>
+
     <method name="ReloadConfig"/>
 
     <!-- Exits the daemon. Under systemd, prefer stopping the clipitto.service user unit. -->

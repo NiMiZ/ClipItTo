@@ -3,12 +3,13 @@
 #include "ControlChannel.h"
 
 #include <QDBusConnection>
+#include <QDBusContext>
 
 namespace clipitto::ipc {
 
 // ControlChannel over the D-Bus session bus. The generated ControlAdaptor (from
 // io.github.nimiz.ClipItTo.xml) forwards incoming calls to the public slots below.
-class DbusControlChannel : public ControlChannel {
+class DbusControlChannel : public ControlChannel, protected QDBusContext {
     Q_OBJECT
 
 public:
@@ -23,6 +24,9 @@ public slots: // D-Bus methods
     void Show(const QString& activationToken);
     void Hide();
     void Ingest(const QString& text, const QStringList& mimeTypes);
+    // Only from GNOME Shell (where the ClipItTo extension runs): pictures are big, and no
+    // other session client should be able to slip one into the history.
+    void IngestImage(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void ReloadConfig();
     void Quit();
     QVariantMap Status();

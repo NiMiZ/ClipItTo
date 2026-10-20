@@ -153,7 +153,10 @@ qint64 Db::changes() const
 void configureConnection(Db& db)
 {
     sqlite3_busy_timeout(db.handle(), 2000);
+    // secure_delete: deleted copies and pictures are overwritten with zeros, not left
+    // readable in free pages of the file.
     db.exec("PRAGMA journal_mode = WAL;"
+            "PRAGMA secure_delete = ON;"
             "PRAGMA synchronous = NORMAL;"
             "PRAGMA foreign_keys = ON;"
             "PRAGMA temp_store = MEMORY;");
@@ -206,6 +209,15 @@ Stmt& Stmt::bindNull(int index)
     return *this;
 }
 
+Stmt& Stmt::bindBlob(int index, const QByteArray& value)
+{
+    const int rc = sqlite3_bind_blob64(m_stmt, index, value.constData(), sqlite3_uint64(value.size()), SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) {
+        fail(rc, "bind");
+    }
+    return *this;
+}
+
 bool Stmt::step()
 {
     const int rc = sqlite3_step(m_stmt);
@@ -243,6 +255,12 @@ QString Stmt::colText(int col) const
         return {};
     }
     return QString::fromUtf8(text, sqlite3_column_bytes(m_stmt, col));
+}
+
+QByteArray Stmt::colBlob(int col) const
+{
+    const auto* data = static_cast<const char*>(sqlite3_column_blob(m_stmt, col));
+    return data ? QByteArray(data, sqlite3_column_bytes(m_stmt, col)) : QByteArray();
 }
 
 bool Stmt::colIsNull(int col) const
