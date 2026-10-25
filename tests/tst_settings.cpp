@@ -91,6 +91,10 @@ private slots:
         d.latestBox()->setChecked(false);
         QVERIFY(!d.config().latestAfterPaste);
         QCOMPARE(d.positionBox()->count(), 7); // pointer, center, four corners, last place
+        QCOMPARE(d.startFocusBox()->count(), 3); // pinned, group, unsaved
+        QCOMPARE(d.startFocusBox()->currentData().toInt(), int(clipitto::StartFocus::Pinned));
+        d.startFocusBox()->setCurrentIndex(d.startFocusBox()->findData(int(clipitto::StartFocus::Unsaved)));
+        QVERIFY(d.config().startFocus == clipitto::StartFocus::Unsaved);
         d.positionBox()->setCurrentIndex(d.positionBox()->findData(int(clipitto::PopupPosition::BottomRight)));
         QVERIFY(d.config().popupPosition == clipitto::PopupPosition::BottomRight);
         QVERIFY(d.pasteBox()->isChecked()); // pasting is the default

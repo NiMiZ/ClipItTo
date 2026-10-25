@@ -301,7 +301,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
         }
         // From the search box, Enter always copies: the selected copy, else the first one.
         const QModelIndex current = m_view->currentIndex();
-        activate(entryFor(current) ? current : m_model->firstEntry());
+        activate(entryFor(current) ? current : m_model->firstEntry(m_startFocus));
     });
     connect(m_view, &HistoryView::focusSearchRequested, this, [this] {
         m_search->setFocus();
@@ -372,6 +372,7 @@ void PopupWindow::applyConfig(const Config& config)
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
     m_position = config.popupPosition;
+    m_startFocus = config.startFocus;
     if (isVisible()) {
         refresh(); // preview lines or counts may have changed
     }
@@ -914,7 +915,7 @@ void PopupWindow::onResultsUpdated()
     if (target.isValid()) {
         m_view->selectIndex(target);
     } else {
-        m_view->selectFirstEntry();
+        m_view->selectFirstEntry(m_startFocus); // on opening and after each search
     }
 }
 

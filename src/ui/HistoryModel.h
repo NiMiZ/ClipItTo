@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Config.h"
 #include "Entry.h"
 
 #include <QAbstractItemModel>
@@ -92,6 +93,9 @@ public:
     QModelIndex groupsRoot() const; // invalid when there are no groups
     QModelIndex findGroup(const QString& path) const;
     QModelIndex firstEntry() const; // first copy in the sections
+    // The first copy of that kind in the sections (pinned / in a group / unsaved), else the
+    // first copy: where the selection starts (start_focus).
+    QModelIndex firstEntry(StartFocus focus) const;
     // A copy by id: in the sections first, else in the group tree (inside `path` if given).
     QModelIndex findEntry(qint64 id, const QString& groupPath = {}) const;
 

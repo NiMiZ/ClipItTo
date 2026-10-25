@@ -16,6 +16,9 @@ enum class Theme { System, Light, Dark };
 // Where the popup opens (X11 and Windows; Wayland compositors place windows themselves).
 // Last: where it was when it last closed, e.g. after dragging it by its name.
 enum class PopupPosition { Cursor, Center, TopLeft, TopRight, BottomLeft, BottomRight, Last };
+// Where the selection starts when the popup opens and after each search: on the first copy
+// of that kind in the list (the first copy, when there is none).
+enum class StartFocus { Pinned, Grouped, Unsaved };
 
 // User settings from ~/.config/clipitto/config.toml. Missing or invalid keys fall back to defaults.
 struct Config {
@@ -39,6 +42,7 @@ struct Config {
     QString hotkey = QStringLiteral("Ctrl+Alt+V"); // Windows: registered by the daemon; GNOME: custom shortcut
     Theme theme = Theme::System;
     PopupPosition popupPosition = PopupPosition::Cursor; // X11/Windows; Wayland compositors place it
+    StartFocus startFocus = StartFocus::Pinned;
     bool encryptHistory = false; // history.db encrypted at rest, key in the system keyring
 
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)

@@ -78,6 +78,7 @@ public:
     QSpinBox* linesBox() const { return m_lines; }
     QSpinBox* favoritesBox() const { return m_favorites; }
     QComboBox* positionBox() const { return m_position; }
+    QComboBox* startFocusBox() const { return m_startFocus; }
     QCheckBox* encryptBox() const { return m_encrypt; }
     QCheckBox* pasteBox() const { return m_paste; }
     QCheckBox* latestBox() const { return m_latest; }
@@ -105,6 +106,7 @@ private:
     QSpinBox* m_lines;
     QSpinBox* m_favorites;
     QComboBox* m_position;
+    QComboBox* m_startFocus;
     QCheckBox* m_encrypt;
     QCheckBox* m_paste;
     QCheckBox* m_latest;

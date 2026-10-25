@@ -33,6 +33,8 @@ constexpr EnumNames<PopupPosition, 7> kPopupPositions{{{PopupPosition::Cursor, "
                                                        {PopupPosition::BottomLeft, "bottom-left"},
                                                        {PopupPosition::BottomRight, "bottom-right"},
                                                        {PopupPosition::Last, "last"}}};
+constexpr EnumNames<StartFocus, 3> kStartFocus{
+    {{StartFocus::Pinned, "pinned"}, {StartFocus::Grouped, "grouped"}, {StartFocus::Unsaved, "unsaved"}}};
 constexpr EnumNames<Theme, 3> kThemes{{{Theme::System, "system"}, {Theme::Light, "light"}, {Theme::Dark, "dark"}}};
 constexpr EnumNames<BackendChoice, 5> kBackends{{{BackendChoice::Auto, "auto"},
                                                  {BackendChoice::GnomeExt, "gnome-ext"},
@@ -190,6 +192,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.hotkey("hotkey", config.hotkey);
     r.choice("theme", config.theme, kThemes);
     r.choice("popup_position", config.popupPosition, kPopupPositions);
+    r.choice("start_focus", config.startFocus, kStartFocus);
     r.boolean("encrypt_history", config.encryptHistory);
     r.warnUnknownKeys();
     return config;
@@ -261,6 +264,8 @@ std::vector<Line> lines(const Config& c)
         {"theme", tomlString(nameOf(kThemes, c.theme)), "system | light | dark"},
         {"popup_position", tomlString(nameOf(kPopupPositions, c.popupPosition)),
          "cursor | center | top-left | top-right | bottom-left | bottom-right | last"},
+        {"start_focus", tomlString(nameOf(kStartFocus, c.startFocus)),
+         "where the selection starts: pinned | grouped | unsaved"},
         {"encrypt_history", tomlBool(c.encryptHistory), "encrypt history.db; key kept in the system keyring"},
     };
 }

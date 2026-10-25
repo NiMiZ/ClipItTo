@@ -432,6 +432,45 @@ private slots:
         QCOMPARE(f.t.repo->count(), 3);
     }
 
+    void startFocusPicksWhereTheSelectionStarts()
+    {
+        // Fixture: ssh (pinned), then Recent: gamma ray, beta, alpha (alpha put in a group).
+        const auto start = [](clipitto::StartFocus focus, const QString& group) {
+            Config cfg;
+            cfg.startFocus = focus;
+            auto f = std::make_unique<Fixture>(cfg);
+            if (!group.isEmpty()) {
+                f->t.repo->setGroup(f->t.repo->search(QStringLiteral("alpha")).front().id, group);
+            }
+            return f;
+        };
+        auto pinned = start(clipitto::StartFocus::Pinned, QStringLiteral("Work"));
+        QVERIFY(pinned->show());
+        QCOMPARE(pinned->currentContent(), QStringLiteral("ssh -J bastion app"));
+
+        auto grouped = start(clipitto::StartFocus::Grouped, QStringLiteral("Work"));
+        QVERIFY(grouped->show());
+        QCOMPARE(grouped->currentContent(), QStringLiteral("alpha"));
+
+        auto unsaved = start(clipitto::StartFocus::Unsaved, QStringLiteral("Work"));
+        QVERIFY(unsaved->show());
+        QCOMPARE(unsaved->currentContent(), QStringLiteral("gamma ray"));
+        // After a search too: the first unsaved match, not the pinned one listed above it.
+        QTest::keyClicks(unsaved->popup->searchBar(), QStringLiteral("a"));
+        unsaved->popup->controller()->refresh();
+        QVERIFY(!unsaved->model()->entryAt(unsaved->current())->isSaved());
+        // Enter from the search box copies that one.
+        QSignalSpy activated(unsaved->popup.get(), &PopupWindow::entryActivated);
+        QTest::keyClick(unsaved->popup->searchBar(), Qt::Key_Return);
+        QCOMPARE(activated.size(), 1);
+        QVERIFY(!activated.at(0).at(0).value<Entry>().isSaved());
+
+        // Nothing of that kind: the first copy.
+        auto none = start(clipitto::StartFocus::Grouped, QString());
+        QVERIFY(none->show());
+        QCOMPARE(none->currentContent(), QStringLiteral("ssh -J bastion app"));
+    }
+
     void choosingACopyHidesThePopup()
     {
         Fixture f;
