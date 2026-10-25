@@ -4,6 +4,7 @@ store=${FAKE_GSETTINGS_DIR:?}
 file() { printf '%s/%s' "$store" "$(printf '%s' "$1" | tr '/:' '__')"; }
 cmd=$1
 shift
+[ -n "${FAKE_GSETTINGS_LOG:-}" ] && printf '%s %s\n' "$cmd" "$*" >> "$FAKE_GSETTINGS_LOG"
 case "$cmd" in
 get) f=$(file "$1.$2"); if [ -e "$f" ]; then cat "$f"; else echo "@as []"; fi ;;
 set) printf '%s\n' "$3" > "$(file "$1.$2")" ;;

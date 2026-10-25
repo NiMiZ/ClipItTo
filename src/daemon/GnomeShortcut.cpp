@@ -56,6 +56,23 @@ QStringList parsePathList(QString value)
     return paths;
 }
 
+// Writes `value` only when the key holds something else, so a normal start is read-only.
+// gsettings prints strings in single quotes ('ClipItTo').
+bool setIfChanged(const QString& gsettings, const QString& entry, const QString& key, const QString& value,
+                  QString* error)
+{
+    QString current;
+    if (run(gsettings, {QStringLiteral("get"), entry, key}, &current, nullptr)) {
+        if (current.size() >= 2 && current.startsWith(QLatin1Char('\'')) && current.endsWith(QLatin1Char('\''))) {
+            current = current.mid(1, current.size() - 2);
+        }
+        if (current == value) {
+            return true;
+        }
+    }
+    return run(gsettings, {QStringLiteral("set"), entry, key, value}, nullptr, error);
+}
+
 } // namespace
 
 bool applyGnomeShortcut(const QString& accelerator, const QString& command, QString* error, const QString& gsettings)
@@ -78,10 +95,9 @@ bool applyGnomeShortcut(const QString& accelerator, const QString& command, QStr
         }
     }
     const QString entry = kSchema + QStringLiteral(".custom-keybinding:") + kPath;
-    return run(gsettings, {QStringLiteral("set"), entry, QStringLiteral("name"), QStringLiteral("ClipItTo")}, nullptr,
-               error)
-        && run(gsettings, {QStringLiteral("set"), entry, QStringLiteral("command"), command}, nullptr, error)
-        && run(gsettings, {QStringLiteral("set"), entry, QStringLiteral("binding"), accelerator}, nullptr, error);
+    return setIfChanged(gsettings, entry, QStringLiteral("name"), QStringLiteral("ClipItTo"), error)
+        && setIfChanged(gsettings, entry, QStringLiteral("command"), command, error)
+        && setIfChanged(gsettings, entry, QStringLiteral("binding"), accelerator, error);
 }
 
 } // namespace clipitto

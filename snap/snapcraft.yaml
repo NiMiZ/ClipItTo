@@ -1,0 +1,80 @@
+name: clipitto
+base: core24
+version: '0.4.1'
+summary: Clipboard history, search, groups and favorites — kept on your device.
+description: |
+  ClipItTo keeps a searchable history of copied text and pictures, with groups,
+  favorites and notes.
+
+  Clipboard history stays on your computer. ClipItTo makes no network connections
+  and has no cloud sync, accounts, telemetry or update checks. History is stored
+  locally and can optionally be encrypted with a random key kept in your system
+  keyring. Encryption is off by default.
+
+  On GNOME Wayland, clipboard monitoring and popup focus require the ClipItTo
+  GNOME Shell extension.
+
+license: GPL-3.0-only
+website: https://github.com/NiMiZ/ClipItTo#privacy
+source-code: https://github.com/NiMiZ/ClipItTo
+issues: https://github.com/NiMiZ/ClipItTo/issues
+grade: devel
+confinement: strict
+
+apps:
+  clipitto:
+    command: usr/bin/clipitto
+    desktop: usr/share/applications/io.github.nimiz.ClipItTo.desktop
+    plugs:
+      - desktop
+      - desktop-legacy
+      - home
+      - password-manager-service
+      - wayland
+      - x11
+  clipitto-daemon:
+    command: usr/bin/clipitto-daemon
+    daemon: simple
+    daemon-scope: user
+    restart-condition: on-failure
+    plugs:
+      - desktop
+      - desktop-legacy
+      - home
+      - password-manager-service
+      - wayland
+      - x11
+
+parts:
+  clipitto:
+    plugin: cmake
+    source: .
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DBUILD_TESTING=OFF
+      - -DCLIPITTO_DBUS=ON
+      - -DCLIPITTO_ENCRYPTION=ON
+      - -DCLIPITTO_X11_PASTE=ON
+    build-packages:
+      - cmake
+      - g++
+      - libgl-dev
+      - libglib2.0-bin
+      - libtomlplusplus-dev
+      - libx11-dev
+      - libxtst-dev
+      - ninja-build
+      - qt6-base-dev
+      - qt6-wayland-dev
+      - qtkeychain-qt6-dev
+    stage-packages:
+      - libqt6keychain1
+      - libqt6waylandclient6
+      - libqt6widgets6
+      - libtomlplusplus3t64
+      - libx11-6
+      - libxtst6
+      - qt6-qpa-plugins
+      - qt6-wayland
+      - wl-clipboard

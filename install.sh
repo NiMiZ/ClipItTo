@@ -88,16 +88,38 @@ fi
 chmod 644 "$dir/$name"
 sudo=
 [ "$(id -u)" -eq 0 ] || sudo=sudo
+if dpkg-query -W -f='${Status}' clipitto 2>/dev/null | grep -q '^install ok installed$'; then
+    was_installed=1
+else
+    was_installed=0
+fi
 echo "Installing (apt may ask for your password)..."
 # Fresh package lists, so apt finds the Qt libraries the package depends on.
 $sudo apt-get update -qq
 $sudo apt-get install -y "$dir/$name"
 
-cat <<'EOF'
+if command -v systemctl >/dev/null && systemctl --user is-active --quiet clipitto.service; then
+    echo "Restarting the running ClipItTo daemon..."
+    systemctl --user restart clipitto.service
+fi
+
+if [ "$was_installed" -eq 1 ]; then
+    cat <<'EOF'
+
+ClipItTo is updated. Your existing settings, including your configured shortcut, are preserved.
+Use your configured shortcut to open your clipboard history; you can change it in ClipItTo Settings.
+If GNOME Shell needs to reload an updated extension, log out and back in.
+EOF
+else
+    cat <<'EOF'
 
 ClipItTo is installed. To finish, as your normal user:
-  1. Log out and back in (so GNOME Shell loads the ClipItTo extension).
+  1. Log out and back in (so GNOME Shell loads the extension).
   2. Run: clipitto-setup
 Then press Ctrl+Alt+V to open your clipboard history.
+EOF
+fi
+
+cat <<'EOF'
 To remove it later: sudo apt remove clipitto
 EOF

@@ -17,7 +17,7 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it yourself:
-`sudo apt install ./clipitto_0.4.0_amd64.deb`. [install.sh](install.sh) also takes
+`sudo apt install ./clipitto_0.4.1_amd64.deb`. [install.sh](install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
@@ -64,7 +64,7 @@ Build the package (see [Building](#building) for the dependencies) and install i
 ```bash
 cmake --preset deb && cmake --build --preset deb
 (cd build/deb && cpack)
-sudo apt install ./build/deb/clipitto_0.4.0_amd64.deb
+sudo apt install ./build/deb/clipitto_0.4.1_amd64.deb
 ```
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run:
@@ -132,7 +132,8 @@ finds them by note, group or "image".
 **Settings** (⚙): theme (system / light / dark), how many copies are listed, how many text
 lines each copy shows, how many copies and pictures the history keeps, how many Favorites to keep, where the popup opens (near the pointer, centered, a corner, or where it was last: drag it by its name), where the selection starts when it opens and after a search (*Start on*: the first pinned copy, the first copy in a group, or the first unsaved one), whether a copy you choose becomes the latest, the shortcut
 (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows ClipItTo registers it, on GNOME it
-becomes the GNOME keyboard shortcut), history encryption, and group management (new,
+becomes the GNOME keyboard shortcut, set again at every start; on KDE, Sway and other
+desktops bind `clipitto --toggle` yourself, and `clipitto --status` reminds you), history encryption, and group management (new,
 sub-group, rename/move, delete, move up/down; saved immediately). Saving keeps your own comments and
 layout in `config.toml`.
 
