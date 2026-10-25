@@ -53,10 +53,10 @@ void HistoryView::selectIndex(const QModelIndex& index)
     }
 }
 
-void HistoryView::selectFirstEntry()
+void HistoryView::selectFirstEntry(StartFocus focus)
 {
     if (m_model) {
-        selectIndex(m_model->firstEntry());
+        selectIndex(m_model->firstEntry(focus));
         if (currentIndex() == firstSelectable() || currentIndex().row() <= 2) {
             scrollToTop(); // keep the Groups row and a leading section header visible
         }

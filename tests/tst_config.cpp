@@ -14,6 +14,18 @@ class TestConfig : public QObject {
     Q_OBJECT
 
 private slots:
+    void startFocus()
+    {
+        QVERIFY(Config{}.startFocus == clipitto::StartFocus::Pinned); // as before the setting
+        QVERIFY(Config::fromToml("start_focus = \"grouped\"").startFocus == clipitto::StartFocus::Grouped);
+        const Config unsaved = Config::fromToml("start_focus = \"unsaved\"");
+        QVERIFY(unsaved.startFocus == clipitto::StartFocus::Unsaved);
+        QVERIFY(Config::fromToml(unsaved.toToml()).startFocus == clipitto::StartFocus::Unsaved);
+        QStringList warnings;
+        QVERIFY(Config::fromToml("start_focus = \"top\"", &warnings).startFocus == clipitto::StartFocus::Pinned);
+        QCOMPARE(warnings.size(), 1);
+    }
+
     void defaultsMatchSpec()
     {
         const Config c;

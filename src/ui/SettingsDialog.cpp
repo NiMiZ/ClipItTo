@@ -92,6 +92,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_lines(new QSpinBox(this))
     , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
+    , m_startFocus(new QComboBox(this))
     , m_encrypt(new QCheckBox(tr("Encrypt the history on disk"), this))
     , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
     , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
@@ -178,6 +179,15 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_position->setCurrentIndex(m_position->findData(int(config.popupPosition)));
     m_position->setToolTip(tr("On Wayland desktops the desktop decides where the popup opens"));
     form->addRow(tr("Open the popup:"), m_position);
+
+    m_startFocus->addItem(tr("Pinned copies"), int(StartFocus::Pinned));
+    m_startFocus->addItem(tr("Group copies"), int(StartFocus::Grouped));
+    m_startFocus->addItem(tr("Unsaved history"), int(StartFocus::Unsaved));
+    m_startFocus->setCurrentIndex(m_startFocus->findData(int(config.startFocus)));
+    m_startFocus->setToolTip(tr("Where the selection starts when the popup opens and after each search: on the "
+                                "first copy of that kind (the first copy when there is none). Unsaved history: "
+                                "copies that aren't pinned, starred or in a group."));
+    form->addRow(tr("Start on:"), m_startFocus);
 
     auto* shortcutRow = new QHBoxLayout;
     m_shortcut->setKeySequence(sequenceFor(config.hotkey));
@@ -326,6 +336,7 @@ Config SettingsDialog::config() const
     c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;
     c.popupPosition = PopupPosition(m_position->currentData().toInt());
+    c.startFocus = StartFocus(m_startFocus->currentData().toInt());
     c.encryptHistory = m_encrypt->isChecked();
     c.pasteOnEnter = m_paste->isChecked();
     c.latestAfterPaste = m_latest->isChecked();

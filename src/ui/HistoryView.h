@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Config.h"
+
 #include <QTreeView>
 
 class QKeyEvent;
@@ -18,7 +20,8 @@ public:
 
     void setHistoryModel(HistoryModel* model);
     void selectIndex(const QModelIndex& index); // current + selected, scrolled into view
-    void selectFirstEntry(); // the first copy (what Enter in the search box copies)
+    // The first copy of the `focus` kind, else the first copy (what Enter in the search box copies).
+    void selectFirstEntry(StartFocus focus = StartFocus::Pinned);
     void selectFirstRow(); // the first selectable row (the Groups row when there are groups)
     QModelIndex firstSelectable() const;
     QModelIndex nextSelectable(QModelIndex from, bool down) const; // invalid at either end

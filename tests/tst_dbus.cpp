@@ -8,6 +8,7 @@
 #include <QImage>
 #include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
@@ -247,6 +248,13 @@ private slots:
     void cliReportsUnreachableDaemon()
     {
         m_daemon.reset(); // releases the bus name
+        // With ClipItTo installed on this machine, D-Bus activation starts it for the CLI's
+        // call, so there is no unreachable daemon to report.
+        const QStringList activatable =
+            QDBusConnection::sessionBus().interface()->activatableServiceNames().value();
+        if (activatable.contains(QString::fromLatin1(clipitto::ipc::kServiceName))) {
+            QSKIP("an installed ClipItTo would be started by D-Bus activation");
+        }
         const auto [code, output] = runCli({QStringLiteral("--status")});
         QCOMPARE(code, 1);
         QVERIFY(output.contains(QLatin1String("cannot reach the daemon")));

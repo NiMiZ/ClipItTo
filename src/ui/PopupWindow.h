@@ -167,6 +167,7 @@ private:
     bool m_hideOnFocusLoss = true;
     bool m_singleClick = true;
     PopupPosition m_position = PopupPosition::Cursor;
+    StartFocus m_startFocus = StartFocus::Pinned;
     std::optional<QPoint> m_lastPosition; // where it last closed
     QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss

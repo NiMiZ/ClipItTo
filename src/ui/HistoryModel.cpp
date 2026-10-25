@@ -363,6 +363,27 @@ QModelIndex HistoryModel::firstEntry() const
     return {};
 }
 
+QModelIndex HistoryModel::firstEntry(StartFocus focus) const
+{
+    const auto matches = [focus](const Entry& e) {
+        switch (focus) {
+        case StartFocus::Pinned:
+            return e.pinned();
+        case StartFocus::Grouped:
+            return !e.group.isEmpty();
+        case StartFocus::Unsaved:
+            return !e.isSaved();
+        }
+        return false;
+    };
+    for (const auto& child : m_root->children) {
+        if (child->kind == Kind::Entry && matches(child->entry)) {
+            return indexFor(child.get());
+        }
+    }
+    return firstEntry();
+}
+
 QModelIndex HistoryModel::findEntry(qint64 id, const QString& groupPath) const
 {
     if (groupPath.isEmpty()) {
