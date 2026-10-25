@@ -489,6 +489,16 @@ private slots:
         DaemonOptions o = options();
         o.session.isGnome = true;
         o.gsettingsProgram = QStringLiteral(CLIPITTO_FAKE_GSETTINGS);
+        writeConfig("hotkey = \"Ctrl+`\"\n");
+        const QString entry = QStringLiteral("org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
+                                             "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipitto/");
+        QFile staleBinding(store.filePath(QString(entry + QStringLiteral(".binding"))
+                                              .replace(QLatin1Char('/'), QLatin1Char('_'))
+                                              .replace(QLatin1Char(':'), QLatin1Char('_'))));
+        QVERIFY(staleBinding.open(QIODevice::WriteOnly));
+        staleBinding.write("<Control><Alt>v\n");
+        staleBinding.close();
+
         Daemon d(o, std::make_unique<FakeControl>());
         QVERIFY(d.start() == Daemon::StartResult::Ok);
 
@@ -496,8 +506,7 @@ private slots:
             QFile f(store.filePath(QString(key).replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char(':'), QLatin1Char('_'))));
             return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).trimmed() : QString();
         };
-        const QString entry = QStringLiteral("org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
-                                             "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipitto/");
+        QCOMPARE(stored(entry + QStringLiteral(".binding")), QStringLiteral("<Control>grave"));
 
         Config c = d.config();
         c.hotkey = QStringLiteral("Ctrl+`");

@@ -211,6 +211,7 @@ Daemon::StartResult Daemon::start(QString* error)
             }
         });
     }
+    applyDesktopShortcut();
     return StartResult::Ok;
 }
 
