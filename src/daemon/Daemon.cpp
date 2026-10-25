@@ -18,12 +18,14 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QRandomGenerator>
 #include <QSaveFile>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QThreadPool>
 #include <QTimer>
+#include <QtConcurrent>
 
 Q_LOGGING_CATEGORY(lcDaemon, "clipitto.daemon")
 
@@ -62,6 +64,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     , m_control(control.release())
     , m_integration(integration.release())
 {
+    m_shortcutPool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
@@ -548,19 +551,51 @@ QString Daemon::cliCommand() const
 
 void Daemon::applyDesktopShortcut()
 {
-    // Windows registers the hotkey in-process (see main.cpp, configReloaded); GNOME keeps
-    // it as a custom keyboard shortcut; elsewhere the user binds `clipitto --toggle`.
-    if (!m_options.session.isGnome || m_options.session.display == SessionEnv::Display::Windows) {
+    // Windows registers the hotkey in-process (see main.cpp, configReloaded) and reports it
+    // as "hotkey"; GNOME keeps it as a custom keyboard shortcut; elsewhere the user binds
+    // `clipitto --toggle` themselves.
+    if (m_options.session.display == SessionEnv::Display::Windows) {
+        return;
+    }
+    if (!m_options.session.isGnome) {
+        setStatusValue(QStringLiteral("shortcut"),
+                       QStringLiteral("not set automatically: bind \"clipitto --toggle\" in your desktop's keyboard settings"));
         return;
     }
     const auto hotkey = parseHotkey(m_config.hotkey);
-    QString error;
-    if (!hotkey || !applyGnomeShortcut(hotkey->gtkAccelerator, cliCommand(), &error, m_options.gsettingsProgram)) {
-        qCWarning(lcDaemon).noquote() << "could not set the GNOME shortcut:" << error;
-        setStatusValue(QStringLiteral("shortcut"), QStringLiteral("not set: ") + error);
-    } else {
-        setStatusValue(QStringLiteral("shortcut"), m_config.hotkey + QStringLiteral(" (GNOME)"));
+    if (!hotkey) {
+        qCWarning(lcDaemon).noquote() << "could not set the GNOME shortcut: unknown hotkey" << m_config.hotkey;
+        setStatusValue(QStringLiteral("shortcut"), QStringLiteral("not set: unknown hotkey ") + m_config.hotkey);
+        emit shortcutApplied();
+        return;
     }
+    // gsettings runs several times and each run may take seconds: keep it off the GUI thread.
+    const quint64 request = ++m_shortcutRequest;
+    auto* watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, request, shown = m_config.hotkey] {
+        const QString error = watcher->result();
+        watcher->deleteLater();
+        if (request != m_shortcutRequest) {
+            return; // a newer hotkey is queued behind this one
+        }
+        if (!error.isEmpty()) {
+            qCWarning(lcDaemon).noquote() << "could not set the GNOME shortcut:" << error;
+            setStatusValue(QStringLiteral("shortcut"), QStringLiteral("not set: ") + error);
+        } else {
+            setStatusValue(QStringLiteral("shortcut"), shown + QStringLiteral(" (GNOME)"));
+        }
+        emit shortcutApplied();
+    });
+    // Copies only: the job never touches the Daemon, so it is safe on the pool thread.
+    watcher->setFuture(QtConcurrent::run(&m_shortcutPool, [accelerator = hotkey->gtkAccelerator,
+                                                           command = cliCommand(),
+                                                           program = m_options.gsettingsProgram] {
+        QString error;
+        if (applyGnomeShortcut(accelerator, command, &error, program)) {
+            return QString();
+        }
+        return error.isEmpty() ? QStringLiteral("gsettings failed") : error;
+    }));
 }
 
 void Daemon::reload(bool forceShortcut)

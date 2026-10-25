@@ -4,7 +4,7 @@ add_library(clipitto_daemon_lib STATIC
     GnomeShortcut.cpp GnomeShortcut.h
 )
 target_include_directories(clipitto_daemon_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_output clipitto_ui)
+target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_output clipitto_ui Qt6::Concurrent)
 clipitto_set_warnings(clipitto_daemon_lib)
 
 # WIN32: a GUI-subsystem program on Windows (no console window); ignored elsewhere.

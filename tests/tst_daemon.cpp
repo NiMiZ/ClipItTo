@@ -29,6 +29,7 @@ using clipitto::Config;
 using clipitto::ControlChannel;
 using clipitto::DesktopIntegration;
 using clipitto::PasteKeys;
+using clipitto::SessionEnv;
 using clipitto::Daemon;
 using clipitto::DaemonOptions;
 using clipitto::ui::HistoryModel;
@@ -500,17 +501,20 @@ private slots:
         staleBinding.close();
 
         Daemon d(o, std::make_unique<FakeControl>());
+        QSignalSpy applied(&d, &Daemon::shortcutApplied);
         QVERIFY(d.start() == Daemon::StartResult::Ok);
 
         const auto stored = [&](const QString& key) {
             QFile f(store.filePath(QString(key).replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char(':'), QLatin1Char('_'))));
             return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).trimmed() : QString();
         };
+        QTRY_COMPARE(applied.count(), 1);
         QCOMPARE(stored(entry + QStringLiteral(".binding")), QStringLiteral("<Control>grave"));
 
         Config c = d.config();
         c.hotkey = QStringLiteral("Ctrl+`");
         QVERIFY(d.applySettings(c));
+        QTRY_COMPARE(applied.count(), 2);
         QCOMPARE(stored(entry + QStringLiteral(".binding")), QStringLiteral("<Control>grave"));
         QVERIFY(stored(entry + QStringLiteral(".command")).endsWith(QLatin1String("--toggle")));
         QVERIFY(stored(QStringLiteral("org.gnome.settings-daemon.plugins.media-keys.custom-keybindings"))
@@ -520,11 +524,78 @@ private slots:
         // Editing the file and reloading applies a changed shortcut too.
         writeConfig("hotkey = \"Ctrl+Alt+V\"\n");
         emit d.control()->reloadRequested();
+        QTRY_COMPARE(applied.count(), 3);
         QCOMPARE(stored(entry + QStringLiteral(".binding")), QStringLiteral("<Control><Alt>v"));
 #endif
     }
 
-    void nonGnomeSessionsLeaveTheShortcutAlone()
+    void startupDoesNotRewriteAnUnchangedShortcut()
+    {
+#if defined(_WIN32)
+        QSKIP("needs the POSIX fake gsettings");
+#else
+        QTemporaryDir store;
+        qputenv("FAKE_GSETTINGS_DIR", QFile::encodeName(store.path()));
+        const QString log = store.filePath(QStringLiteral("calls.log"));
+        DaemonOptions o = options();
+        o.session.isGnome = true;
+        o.gsettingsProgram = QStringLiteral(CLIPITTO_FAKE_GSETTINGS);
+        writeConfig("hotkey = \"Ctrl+`\"\n");
+        {
+            Daemon first(o, std::make_unique<FakeControl>());
+            QSignalSpy applied(&first, &Daemon::shortcutApplied);
+            QVERIFY(first.start() == Daemon::StartResult::Ok);
+            QTRY_COMPARE(applied.count(), 1);
+        }
+
+        qputenv("FAKE_GSETTINGS_LOG", QFile::encodeName(log));
+        Daemon second(o, std::make_unique<FakeControl>());
+        QSignalSpy applied(&second, &Daemon::shortcutApplied);
+        QVERIFY(second.start() == Daemon::StartResult::Ok);
+        QTRY_COMPARE(applied.count(), 1);
+        qunsetenv("FAKE_GSETTINGS_LOG");
+        QFile calls(log);
+        QVERIFY(calls.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(calls.readAll());
+        QVERIFY2(text.startsWith(QLatin1String("get ")), qPrintable(text));
+        QVERIFY2(!text.contains(QLatin1String("\nset ")) && !text.startsWith(QLatin1String("set ")), qPrintable(text));
+        QCOMPARE(second.status().value(QStringLiteral("shortcut")).toString(), QStringLiteral("Ctrl+` (GNOME)"));
+#endif
+    }
+
+    void aReloadDuringStartupWins()
+    {
+#if defined(_WIN32)
+        QSKIP("needs the POSIX fake gsettings");
+#else
+        QTemporaryDir store;
+        qputenv("FAKE_GSETTINGS_DIR", QFile::encodeName(store.path()));
+        DaemonOptions o = options();
+        o.session.isGnome = true;
+        o.gsettingsProgram = QStringLiteral(CLIPITTO_FAKE_GSETTINGS);
+        writeConfig("hotkey = \"Ctrl+Alt+V\"\n");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QSignalSpy applied(&d, &Daemon::shortcutApplied);
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        writeConfig("hotkey = \"Ctrl+`\"\n");
+        emit d.control()->reloadRequested(); // queued behind the start's update
+
+        // Only the newest request reports; the older result is dropped.
+        QTRY_COMPARE(applied.count(), 1);
+        QTest::qWait(200);
+        QCOMPARE(applied.count(), 1);
+        const QString entry = QStringLiteral("org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
+                                             "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipitto/");
+        QFile binding(store.filePath(QString(entry + QStringLiteral(".binding"))
+                                         .replace(QLatin1Char('/'), QLatin1Char('_'))
+                                         .replace(QLatin1Char(':'), QLatin1Char('_'))));
+        QVERIFY(binding.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(binding.readAll()).trimmed(), QStringLiteral("<Control>grave"));
+        QCOMPARE(d.status().value(QStringLiteral("shortcut")).toString(), QStringLiteral("Ctrl+` (GNOME)"));
+#endif
+    }
+
+    void nonGnomeSessionsReportTheManualShortcut()
     {
         DaemonOptions o = options();
         o.session.isGnome = false;
@@ -534,6 +605,20 @@ private slots:
         Config c = d.config();
         c.hotkey = QStringLiteral("Ctrl+`");
         QVERIFY(d.applySettings(c));
+        // The bogus gsettings path would make any attempt fail with "not set: ...".
+        const QString shortcut = d.status().value(QStringLiteral("shortcut")).toString();
+        QVERIFY2(shortcut.startsWith(QLatin1String("not set automatically")), qPrintable(shortcut));
+        QVERIFY(shortcut.contains(QLatin1String("clipitto --toggle")));
+    }
+
+    void windowsSessionsLeaveTheShortcutToTheHotkey()
+    {
+        // main.cpp registers the hotkey and reports "hotkey"; the daemon adds nothing.
+        DaemonOptions o = options();
+        o.session.display = SessionEnv::Display::Windows;
+        o.gsettingsProgram = QStringLiteral("/nonexistent/gsettings");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
         QVERIFY(!d.status().contains(QStringLiteral("shortcut")));
     }
 

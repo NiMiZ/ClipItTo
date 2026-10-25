@@ -69,3 +69,9 @@ Testing/
 
 # Claude Code agent worktrees (temporary checkouts)
 .claude/worktrees/
+
+# snapcraft build folders and output
+parts/
+stage/
+prime/
+*.snap

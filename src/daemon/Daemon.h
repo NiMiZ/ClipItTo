@@ -9,6 +9,7 @@
 #include "SessionEnv.h"
 
 #include <QObject>
+#include <QThreadPool>
 #include <QVariantMap>
 
 #include <array>
@@ -80,6 +81,7 @@ public:
 signals:
     void configReloaded();
     void encryptionFinished(bool ok, const QString& error); // after a runtime switch
+    void shortcutApplied(); // after each GNOME shortcut update, whether or not it worked
 
 private:
     void startCapture();
@@ -116,6 +118,8 @@ private:
     QString m_startupWarning; // shown once, the first time the popup opens
     bool m_removeKeyAfterStart = false;
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
+    QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
+    quint64 m_shortcutRequest = 0; // results of older requests don't overwrite the status
 };
 
 } // namespace clipitto
