@@ -48,4 +48,37 @@ void ClipboardWriter::setText(const QString& text)
     }
 }
 
+void ClipboardWriter::clear()
+{
+    if (m_integration && m_integration->isAvailable()) {
+        m_integration->setClipboard(QString());
+    } else {
+        m_clipboard->clear(QClipboard::Clipboard);
+    }
+}
+
+void ClipboardWriter::setPassword(const QString& text)
+{
+    m_filter.noteOwnPassword(text);
+    if (m_integration && m_integration->isAvailable()) {
+        m_integration->setClipboard(text);
+        return;
+    }
+    auto* data = new QMimeData;
+    data->setText(text);
+#if defined(_WIN32)
+    // The formats Windows' clipboard history and cloud clipboard honour (registered formats).
+    const QByteArray zero(4, '\0'); // DWORD 0
+    data->setData(QStringLiteral("application/x-qt-windows-mime;value=\"ExcludeClipboardContentFromMonitorProcessing\""),
+                  zero);
+    data->setData(QStringLiteral("application/x-qt-windows-mime;value=\"CanIncludeInClipboardHistory\""), zero);
+    data->setData(QStringLiteral("application/x-qt-windows-mime;value=\"CanUploadToCloudClipboard\""), zero);
+#elif defined(__linux__)
+    data->setData(QStringLiteral("x-kde-passwordManagerHint"), QByteArrayLiteral("secret"));
+#else
+#error "unsupported platform"
+#endif
+    m_clipboard->setMimeData(data, QClipboard::Clipboard);
+}
+
 } // namespace clipitto

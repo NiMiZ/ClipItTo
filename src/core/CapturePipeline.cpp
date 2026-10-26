@@ -1,5 +1,6 @@
 #include "CapturePipeline.h"
 
+#include "PasswordVault.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -34,6 +35,18 @@ void CapturePipeline::setImageLimits(int maxImages, qint64 maxImageBytes)
     }
 }
 
+void CapturePipeline::setPasswords(const PasswordVault* vault, bool keep, const QString& group)
+{
+    m_vault = vault;
+    m_keepPasswords = keep;
+    m_passwordGroup = group;
+}
+
+bool CapturePipeline::keepsPasswords() const
+{
+    return m_keepPasswords && m_vault && m_vault->isSetUp();
+}
+
 void CapturePipeline::setPaused(bool paused)
 {
     m_paused = paused;
@@ -43,6 +56,10 @@ void CapturePipeline::setPaused(bool paused)
     const QList<QString> waiting = std::exchange(m_waiting, {});
     for (const QString& text : waiting) {
         store(text);
+    }
+    const QList<SealedCopy> secrets = std::exchange(m_waitingSecrets, {});
+    for (const SealedCopy& copy : secrets) {
+        storeSecret(copy);
     }
     const QList<ImageClip> images = std::exchange(m_waitingImages, {});
     for (const ImageClip& image : images) {
@@ -88,6 +105,32 @@ void CapturePipeline::storeImage(const ImageClip& image)
 void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
 {
     const ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
+    if (verdict == ClipFilter::Verdict::Sensitive && m_keepPasswords && !keepsPasswords()) {
+        // Backends don't even read the text then; say why nothing was kept.
+        emit rejected(verdict);
+        emit passwordSkipped();
+        return;
+    }
+    if (verdict == ClipFilter::Verdict::Sensitive && keepsPasswords() && !text.trimmed().isEmpty()
+        && text.toUtf8().size() > m_filter.maxBytes()) {
+        emit rejected(ClipFilter::Verdict::TooLarge); // the same cap as any copy (max_item_bytes)
+        return;
+    }
+    if (verdict == ClipFilter::Verdict::Sensitive && keepsPasswords() && !text.trimmed().isEmpty()) {
+        // Sealed right away: the password is never stored, queued or logged in clear.
+        QByteArray plain = text.toUtf8();
+        SealedCopy copy{m_vault->seal(plain), m_vault->match(plain), ClipFilter::sourceApp(mimeTypes)};
+        PasswordVault::wipe(plain);
+        if (m_paused) {
+            m_waitingSecrets << copy;
+            while (m_waitingSecrets.size() > m_maxHistory) {
+                m_waitingSecrets.removeFirst();
+            }
+            return;
+        }
+        storeSecret(copy);
+        return;
+    }
     if (verdict != ClipFilter::Verdict::Accept) {
         qCDebug(lcCapture) << "skipped clip, verdict" << int(verdict);
         emit rejected(verdict);
@@ -102,6 +145,19 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
         return;
     }
     store(text);
+}
+
+void CapturePipeline::storeSecret(const SealedCopy& copy)
+{
+    try {
+        const auto result = m_repo.ingestSecret(copy.sealed, copy.match, copy.note, m_passwordGroup);
+        if (result.inserted) {
+            m_repo.prune(m_maxHistory);
+        }
+        emit stored(result.id, result.inserted);
+    } catch (const db::DbError& e) {
+        qCWarning(lcCapture) << "failed to store a password copy:" << e.what();
+    }
 }
 
 void CapturePipeline::store(const QString& text)

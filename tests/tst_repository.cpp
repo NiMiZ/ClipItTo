@@ -1,6 +1,9 @@
 #include "TestDb.h"
 
+#include <QDir>
+#include <QFile>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QTest>
 
 using clipitto::Entry;
@@ -425,6 +428,133 @@ private slots:
         QVERIFY(t.repo->search(QStringLiteral("kjhgfd")).empty());
         t.repo->ingest(QStringLiteral("after clearing"));
         QCOMPARE(t.repo->search(QStringLiteral("clearing")).size(), 1u); // the index still works
+    }
+
+    // --- Password copies ----------------------------------------------------------------
+
+    void secretsAreStoredSealedWithALabel()
+    {
+        TestDb t;
+        const auto r = t.repo->ingestSecret("SEALED-1", QStringLiteral("secret:aa"), QStringLiteral("Firefox"),
+                                            QString());
+        QVERIFY(r.inserted);
+        const auto e = t.repo->get(r.id);
+        QVERIFY(e);
+        QVERIFY(e->secret);
+        QCOMPARE(e->content, Repository::secretLabel());
+        QCOMPARE(e->note, QStringLiteral("Firefox"));
+        QVERIFY(e->group.isEmpty());
+        QCOMPARE(t.repo->sealedSecret(r.id), QByteArray("SEALED-1"));
+        QVERIFY(t.repo->sealedSecret(t.repo->ingest(QStringLiteral("text")).id).isEmpty());
+        QCOMPARE(t.repo->countSecrets(), 1);
+
+        // The same password again only moves it up; its note and sealed copy stay.
+        t.repo->ingest(QStringLiteral("newer"));
+        const auto again = t.repo->ingestSecret("SEALED-2", QStringLiteral("secret:aa"), QStringLiteral("Chrome"),
+                                                QStringLiteral("Passwords"));
+        QCOMPARE(again.id, r.id);
+        QVERIFY(!again.inserted);
+        QCOMPARE(t.repo->recent(1, false).front().id, r.id);
+        QCOMPARE(t.repo->get(r.id)->note, QStringLiteral("Firefox"));
+        QCOMPARE(t.repo->sealedSecret(r.id), QByteArray("SEALED-1"));
+
+        // Without a match key every copy is new.
+        const auto a = t.repo->ingestSecret("S", QString(), QString(), QStringLiteral("Passwords"));
+        const auto b = t.repo->ingestSecret("S", QString(), QString(), QString());
+        QVERIFY(a.inserted && b.inserted && a.id != b.id);
+        QCOMPARE(t.repo->get(a.id)->group, QStringLiteral("Passwords"));
+        QVERIFY(t.repo->groups().contains(QStringLiteral("Passwords")));
+        QCOMPARE(t.repo->allSealedSecrets().size(), 3u);
+        QCOMPARE(t.repo->allSealedSecrets().front().first, b.id); // newest first
+
+        QCOMPARE(t.repo->findSecret(QStringLiteral("secret:aa"))->id, r.id);
+        QVERIFY(!t.repo->findSecret(QStringLiteral("secret:bb")));
+        QVERIFY(!t.repo->findSecret(QString()));
+
+        // Search finds passwords by note and group, never by what they hold.
+        QCOMPARE(t.repo->search(QStringLiteral("Firefox")).size(), 1u);
+        t.repo->remove(r.id);
+        QVERIFY(t.repo->sealedSecret(r.id).isEmpty()); // went with its row
+    }
+
+    void markingAsPasswordWipesTheText()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("history.db"));
+        const auto fileHolds = [&](const QByteArray& needle) {
+            for (const QString& name : {path, path + QStringLiteral("-wal")}) {
+                QFile f(name);
+                if (f.open(QIODevice::ReadOnly) && f.readAll().contains(needle)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        {
+            clipitto::db::Db db(path);
+            clipitto::db::configureConnection(db);
+            clipitto::db::migrate(db);
+            Repository repo(db);
+            const auto id = repo.ingest(QStringLiteral("zqxw-hunter2-mkr")).id;
+            repo.setNote(id, QStringLiteral("bank"));
+            QVERIFY(fileHolds("zqxw-hunter2-mkr"));
+
+            QCOMPARE(repo.convertToSecret(id, "SEALED", QStringLiteral("secret:cc")), id);
+            const auto e = repo.get(id);
+            QVERIFY(e->secret);
+            QCOMPARE(e->note, QStringLiteral("bank")); // note kept
+            QCOMPARE(e->content, Repository::secretLabel());
+            QVERIFY(repo.search(QStringLiteral("hunter2")).empty());
+            QVERIFY(!fileHolds("zqxw-hunter2-mkr"));
+            QVERIFY(!fileHolds("hunter2"));
+
+            // Marking a copy of a password that is already kept merges them.
+            const auto dup = repo.ingest(QStringLiteral("other copy")).id;
+            QCOMPARE(repo.convertToSecret(dup, "SEALED-AGAIN", QStringLiteral("secret:cc")), id);
+            QVERIFY(!repo.get(dup));
+
+            // And back to text.
+            QCOMPARE(repo.convertToText(id, QStringLiteral("plain again")), id);
+            QVERIFY(!repo.get(id)->secret);
+            QCOMPARE(repo.get(id)->content, QStringLiteral("plain again"));
+            QVERIFY(repo.sealedSecret(id).isEmpty());
+            QCOMPARE(repo.search(QStringLiteral("plain again")).size(), 1u);
+            // ... merged when that text is already a copy.
+            const auto twin = repo.ingest(QStringLiteral("twin")).id;
+            const auto sealed = repo.ingestSecret("S", QString(), QString(), QString()).id;
+            QCOMPARE(repo.convertToText(sealed, QStringLiteral("twin")), twin);
+            QVERIFY(!repo.get(sealed));
+        }
+    }
+
+    void vaultIsStoredAndResetRemovesEveryPassword()
+    {
+        TestDb t;
+        QVERIFY(!t.repo->loadVault());
+        clipitto::PasswordVault::Stored stored;
+        stored.salt = QByteArray(16, 's');
+        stored.kdfBlocks = 64;
+        stored.kdfPasses = 1;
+        stored.publicKey = QByteArray(32, 'p');
+        stored.wrappedSecret = QByteArray(72, 'w');
+        t.repo->saveVault(stored);
+        auto loaded = t.repo->loadVault();
+        QVERIFY(loaded);
+        QCOMPARE(loaded->salt, stored.salt);
+        QCOMPARE(loaded->kdfBlocks, 64u);
+        QCOMPARE(loaded->wrappedSecret, stored.wrappedSecret);
+        QVERIFY(loaded->helloWrapped.isEmpty());
+        stored.helloWrapped = QByteArray(72, 'h');
+        t.repo->saveVault(stored); // replaces the one row
+        QCOMPARE(t.repo->loadVault()->helloWrapped, stored.helloWrapped);
+
+        const auto pw = t.repo->ingestSecret("S", QStringLiteral("secret:dd"), QString(), QStringLiteral("Passwords")).id;
+        const auto text = t.repo->ingest(QStringLiteral("kept text")).id;
+        t.repo->resetVault();
+        QVERIFY(!t.repo->loadVault());
+        QVERIFY(!t.repo->get(pw)); // even saved (grouped) passwords go
+        QVERIFY(t.repo->get(text));
+        QCOMPARE(t.repo->countSecrets(), 0);
     }
 
     void groupsKeepTheUsersOrder()

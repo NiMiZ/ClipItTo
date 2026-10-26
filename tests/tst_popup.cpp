@@ -1,5 +1,7 @@
 #include "Config.h"
+#include "FakeKeyStore.h"
 #include "HistoryModel.h"
+#include "PasswordKeeper.h"
 #include "db/Repository.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
@@ -9,6 +11,7 @@
 #include "TestDb.h"
 
 #include <QAction>
+#include <QClipboard>
 #include <QApplication>
 #include <QBuffer>
 #include <QHelpEvent>
@@ -81,6 +84,37 @@ private:
             t.repo->setGroup(alphaId, QStringLiteral("Work/Servers"));
             t.repo->setGroup(betaId, QStringLiteral("Work"));
         }
+    };
+
+    struct PasswordFixture : Fixture {
+        std::shared_ptr<FakeKeyStore> keys = std::make_shared<FakeKeyStore>();
+        clipitto::PasswordKeeper keeper{*t.repo, keys};
+        qint64 secretId = 0;
+        QStringList messages;
+        QStringList prompts;
+        std::optional<QString> answer = QStringLiteral("master");
+
+        PasswordFixture()
+        {
+            keeper.setKdfCost({64, 1});
+            bool set = false;
+            keeper.setMasterPassword("master", [&set](bool ok) { set = ok; });
+            if (!QTest::qWaitFor([&set] { return set; })) {
+                qFatal("the master password was not set");
+            }
+            const auto& v = keeper.vault();
+            secretId = t.repo->ingestSecret(v.seal("hunter2"), v.match("hunter2"), QStringLiteral("KeePassXC"),
+                                            QString()).id;
+            popup->setPasswords(&keeper);
+            popup->setNotify([this](QWidget*, const QString& message) { messages << message; });
+            popup->setPasswordPrompt([this](QWidget*, const QString& label) {
+                prompts << label;
+                return answer;
+            });
+            popup->refresh();
+        }
+
+        QModelIndex secretRow() const { return model()->findEntry(secretId); }
     };
 
 private slots:
@@ -1022,6 +1056,157 @@ private slots:
         QVERIFY(popup.isVisible()); // still active: nothing to close for
         QVERIFY(focusOther());
         QTRY_VERIFY(!popup.isVisible());
+    }
+
+    // --- Password copies ----------------------------------------------------------------
+
+    void passwordRowsAreHidden()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        const QModelIndex row = f.secretRow();
+        QVERIFY(row.isValid());
+        QVERIFY(row.data(HistoryModel::SecretRole).toBool());
+        QCOMPARE(row.data(HistoryModel::TitleRole).toString(), QStringLiteral("KeePassXC"));
+        QCOMPARE(row.data(HistoryModel::PreviewRole).toString(), HistoryModel::hiddenPassword());
+        QVERIFY(!row.data(Qt::ToolTipRole).isValid());
+    }
+
+    void enterOnALockedPasswordAsksFirst()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        f.popup->view()->selectIndex(f.secretRow());
+        f.enterList();
+
+        f.answer = std::nullopt; // cancelled: nothing happens
+        QTest::keyClick(f.popup->view(), Qt::Key_Return);
+        QCOMPARE(f.prompts.size(), 1);
+        QCOMPARE(activated.size(), 0);
+        QVERIFY(f.popup->isVisible());
+
+        f.answer = QStringLiteral("wrong");
+        QTest::keyClick(f.popup->view(), Qt::Key_Return);
+        QTRY_COMPARE(f.messages.size(), 1);
+        QCOMPARE(activated.size(), 0);
+
+        f.answer = QStringLiteral("master");
+        QTest::keyClick(f.popup->view(), Qt::Key_Return);
+        QTRY_COMPARE(activated.size(), 1);
+        QVERIFY(activated.at(0).at(0).value<Entry>().secret);
+        QVERIFY(f.keeper.isUnlocked());
+        QVERIFY(!f.popup->isVisible());
+
+        // Unlocked: no more questions.
+        QVERIFY(f.show());
+        f.popup->view()->selectIndex(f.secretRow());
+        f.enterList();
+        QTest::keyClick(f.popup->view(), Qt::Key_Return);
+        QCOMPARE(activated.size(), 2);
+        QCOMPARE(f.prompts.size(), 3);
+    }
+
+    void showPasswordRevealsForAWhile()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        f.popup->revealPassword(f.secretId);
+        QTRY_COMPARE(f.secretRow().data(HistoryModel::PreviewRole).toString(), QStringLiteral("hunter2"));
+        QVERIFY(f.model()->hasRevealed());
+        // Locking hides it again; so does closing the popup.
+        f.keeper.lock();
+        QCOMPARE(f.secretRow().data(HistoryModel::PreviewRole).toString(), HistoryModel::hiddenPassword());
+        f.answer = QStringLiteral("master");
+        f.popup->revealPassword(f.secretId);
+        QTRY_VERIFY(f.model()->hasRevealed());
+        f.popup->hidePopup();
+        QVERIFY(!f.model()->hasRevealed());
+    }
+
+    void contextMenuMarksAndUnmarks()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        const qint64 alpha = f.t.repo->search(QStringLiteral("alpha")).front().id;
+        const auto actionNamed = [](QMenu* menu, const QString& text) {
+            for (QAction* a : menu->actions()) {
+                if (a->text() == text) {
+                    return a;
+                }
+            }
+            return static_cast<QAction*>(nullptr);
+        };
+        std::unique_ptr<QMenu> menu(f.popup->createContextMenu(*f.t.repo->get(alpha), f.popup.get()));
+        QAction* mark = actionNamed(menu.get(), QStringLiteral("Mark as password"));
+        QVERIFY(mark && mark->isEnabled());
+        mark->trigger();
+        QVERIFY(f.t.repo->get(alpha)->secret);
+
+        menu.reset(f.popup->createContextMenu(*f.t.repo->get(alpha), f.popup.get()));
+        QVERIFY(!actionNamed(menu.get(), QStringLiteral("Mark as password")));
+        QVERIFY(actionNamed(menu.get(), QStringLiteral("Show password")));
+        actionNamed(menu.get(), QStringLiteral("Not a password (keep as text)"))->trigger();
+        QTRY_VERIFY(!f.t.repo->get(alpha)->secret);
+        QCOMPARE(f.t.repo->get(alpha)->content, QStringLiteral("alpha"));
+
+        // Without a master password the action is there but disabled.
+        Fixture plain;
+        std::unique_ptr<QMenu> other(plain.popup->createContextMenu(*plain.t.repo->get(alpha), plain.popup.get()));
+        QAction* disabled = actionNamed(other.get(), QStringLiteral("Mark as password"));
+        QVERIFY(disabled && !disabled->isEnabled());
+    }
+
+    void keywordStartsAMaskedPasswordSearch()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        QTest::keyClicks(search, QStringLiteral("p[] "));
+        QVERIFY(search->isPasswordMode());
+        QTRY_COMPARE(f.model()->rowCount(), 1); // only password copies, all of them while empty
+        QVERIFY(f.model()->entryAt(f.model()->index(0, 0))->secret);
+
+        QTest::keyClicks(search, QStringLiteral("hunt"));
+        QCOMPARE(search->text(), QStringLiteral("p[] ****")); // never the typed text
+        QCOMPARE(search->passwordQuery(), QStringLiteral("hunt"));
+        // Locked: part of a password doesn't match; Enter offers the unlock, then it does.
+        QTRY_VERIFY(!f.popup->controller()->isPending());
+        QCOMPARE(f.model()->rowCount(), 0);
+        QVERIFY(f.popup->controller()->passwordSearchNeedsUnlock());
+        QTest::keyClick(search, Qt::Key_Return);
+        QTRY_COMPARE(f.model()->rowCount(), 1);
+        QCOMPARE(f.prompts.size(), 1);
+
+        // Backspace edits the hidden text, then leaves the password search.
+        for (int i = 0; i < 4; ++i) {
+            QTest::keyClick(search, Qt::Key_Backspace);
+        }
+        QCOMPARE(search->text(), QStringLiteral("p[] "));
+        QTest::keyClick(search, Qt::Key_Backspace);
+        QVERIFY(!search->isPasswordMode());
+        QCOMPARE(search->text(), QStringLiteral("p[]"));
+
+        // Pasted in one go (Ctrl+V): it never enters the line edit.
+        search->clear();
+        QGuiApplication::clipboard()->setText(QStringLiteral("p[] hunter2"));
+        QSignalSpy edits(search, &QLineEdit::textChanged);
+        QTest::keyClick(search, Qt::Key_V, Qt::ControlModifier);
+        QVERIFY(search->isPasswordMode());
+        QCOMPARE(search->passwordQuery(), QStringLiteral("hunter2"));
+        for (const auto& args : edits) {
+            QVERIFY(!args.at(0).toString().contains(QLatin1String("hunter2")));
+        }
+        search->clear();
+        QVERIFY(!search->isPasswordMode());
+
+        // Set programmatically in one go: masked right away. Closing wipes it.
+        search->setText(QStringLiteral("p[] hunter2"));
+        QVERIFY(search->isPasswordMode());
+        QCOMPARE(search->text(), QStringLiteral("p[] *******"));
+        f.popup->hidePopup();
+        QVERIFY(!search->isPasswordMode());
+        QVERIFY(search->passwordQuery().isEmpty());
     }
 };
 

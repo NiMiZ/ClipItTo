@@ -26,6 +26,37 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void passwordSettings()
+    {
+        const Config defaults;
+        QVERIFY(defaults.keepPasswords);
+        QVERIFY(!defaults.passwordsInGroup);
+        QCOMPARE(defaults.passwordUnlockMinutes, 5);
+        QCOMPARE(defaults.passwordClearSeconds, 30);
+        QVERIFY(!defaults.windowsHello);
+        QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
+
+        const Config c = Config::fromToml("keep_passwords = false\npasswords_in_group = true\n"
+                                          "password_unlock_minutes = 15\nwindows_hello = true\n"
+                                          "password_search_keyword = \"pw:\"\n");
+        QVERIFY(!c.keepPasswords);
+        QVERIFY(c.passwordsInGroup);
+        QCOMPARE(c.passwordUnlockMinutes, 15);
+        QVERIFY(c.windowsHello);
+        QCOMPARE(c.passwordSearchKeyword, QStringLiteral("pw:"));
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+
+        QStringList warnings;
+        const Config bad = Config::fromToml("password_search_keyword = \"p w\"\npassword_unlock_minutes = 0\n",
+                                            &warnings);
+        QCOMPARE(bad.passwordSearchKeyword, QStringLiteral("p[]"));
+        QCOMPARE(bad.passwordUnlockMinutes, 5);
+        QCOMPARE(warnings.size(), 2);
+        QStringList more;
+        QCOMPARE(Config::fromToml("password_search_keyword = \"\"", &more).passwordSearchKeyword, QStringLiteral("p[]"));
+        QCOMPARE(more.size(), 1);
+    }
+
     void defaultsMatchSpec()
     {
         const Config c;

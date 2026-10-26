@@ -166,10 +166,16 @@ void WlPasteBackend::fetch()
         const QStringList mimeTypes = status == QProcess::NormalExit && exitCode == 0
             ? QString::fromUtf8(types->readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts)
             : QStringList();
-        // Never read the content of secrets. Plain text first, then a picture, then any
-        // other text (e.g. only text/html).
+        // Never read the content of secrets unless password copies are kept (it is sealed
+        // right away then; the source app is unknown here). Plain text first, then a
+        // picture, then any other text (e.g. only text/html).
         if (ClipFilter::isSensitive(mimeTypes)) {
-            fetchDone();
+            if (readMarkedText() && (hasPlainText(mimeTypes) || hasText(mimeTypes))) {
+                fetchText(mimeTypes);
+            } else {
+                emit captured(QString(), mimeTypes); // only the markers: the pipeline drops it
+                fetchDone();
+            }
         } else if (hasPlainText(mimeTypes)) {
             fetchText(mimeTypes);
         } else if (!imageType(mimeTypes).isEmpty()) {

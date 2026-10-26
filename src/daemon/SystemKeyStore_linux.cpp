@@ -4,9 +4,9 @@
 
 namespace clipitto {
 
-std::shared_ptr<KeyStore> createSystemKeyStore()
+std::shared_ptr<KeyStore> createSystemKeyStore(const QString& entry)
 {
-    return std::make_shared<KeychainKeyStore>();
+    return std::make_shared<KeychainKeyStore>(entry);
 }
 
 } // namespace clipitto

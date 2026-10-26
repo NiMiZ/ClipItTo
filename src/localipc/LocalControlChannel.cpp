@@ -1,5 +1,7 @@
 #include "LocalControlChannel.h"
 
+#include "ClipFilter.h"
+
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -88,9 +90,16 @@ Reply LocalControlChannel::dispatch(const Request& request)
         for (const QJsonValue& v : request.args.at(1).toArray()) {
             mimeTypes << v.toString();
         }
+        // Copies marked by a password manager become password copies: the Windows daemon
+        // captures them itself, so none is accepted from a socket client.
+        if (ClipFilter::isSensitive(mimeTypes)) {
+            return {false, {}, QStringLiteral("marked copies are not accepted")};
+        }
         emit ingestRequested(firstArg, mimeTypes);
     } else if (m == QLatin1String("ReloadConfig")) {
         emit reloadRequested();
+    } else if (m == QLatin1String("LockPasswords")) {
+        emit lockPasswordsRequested();
     } else if (m == QLatin1String("Quit")) {
         // Reply first; quitting tears down this socket.
         QTimer::singleShot(0, this, &ControlChannel::quitRequested);

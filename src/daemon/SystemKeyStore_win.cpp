@@ -1,15 +1,15 @@
-// The history key in the Windows Credential Manager (generic credential, per user, this
+// A ClipItTo key in the Windows Credential Manager (generic credential, per user, this
 // machine). Wide (W) APIs only; UTF-16 <-> UTF-8 conversion stays inside this file.
 #include "SystemKeyStore.h"
 
 #include <windows.h>
 #include <wincred.h>
 
+#include <string>
+
 namespace clipitto {
 
 namespace {
-
-const wchar_t* const kTarget = L"io.github.nimiz.ClipItTo/history-key";
 
 QString lastErrorText(const char* what)
 {
@@ -38,12 +38,18 @@ struct CredentialPtr {
 
 class WindowsKeyStore : public KeyStore {
 public:
+    explicit WindowsKeyStore(const QString& entry)
+        : m_target((QStringLiteral("io.github.nimiz.ClipItTo/") + entry).toStdWString())
+        , m_comment((QStringLiteral("ClipItTo ") + entry).toStdWString())
+    {
+    }
+
     bool available(QString*) override { return true; } // Credential Manager is part of Windows
 
     std::optional<QByteArray> read(QString* error) override
     {
         CredentialPtr cred;
-        if (!CredReadW(kTarget, CRED_TYPE_GENERIC, 0, &cred.p)) {
+        if (!CredReadW(m_target.c_str(), CRED_TYPE_GENERIC, 0, &cred.p)) {
             if (GetLastError() == ERROR_NOT_FOUND) {
                 if (error) {
                     error->clear();
@@ -61,8 +67,8 @@ public:
     {
         CREDENTIALW cred = {};
         cred.Type = CRED_TYPE_GENERIC;
-        cred.TargetName = const_cast<wchar_t*>(kTarget);
-        cred.Comment = const_cast<wchar_t*>(L"ClipItTo history encryption key");
+        cred.TargetName = const_cast<wchar_t*>(m_target.c_str());
+        cred.Comment = const_cast<wchar_t*>(m_comment.c_str());
         cred.CredentialBlobSize = DWORD(key.size());
         cred.CredentialBlob = reinterpret_cast<LPBYTE>(const_cast<char*>(key.constData()));
         cred.Persist = CRED_PERSIST_LOCAL_MACHINE; // survives logoff; stays on this machine
@@ -78,7 +84,7 @@ public:
 
     bool remove(QString* error) override
     {
-        if (!CredDeleteW(kTarget, CRED_TYPE_GENERIC, 0) && GetLastError() != ERROR_NOT_FOUND) {
+        if (!CredDeleteW(m_target.c_str(), CRED_TYPE_GENERIC, 0) && GetLastError() != ERROR_NOT_FOUND) {
             if (error) {
                 *error = lastErrorText("CredDeleteW");
             }
@@ -86,13 +92,17 @@ public:
         }
         return true;
     }
+
+private:
+    std::wstring m_target; // io.github.nimiz.ClipItTo/<entry>; history-key as before
+    std::wstring m_comment;
 };
 
 } // namespace
 
-std::shared_ptr<KeyStore> createSystemKeyStore()
+std::shared_ptr<KeyStore> createSystemKeyStore(const QString& entry)
 {
-    return std::make_shared<WindowsKeyStore>();
+    return std::make_shared<WindowsKeyStore>(entry);
 }
 
 } // namespace clipitto

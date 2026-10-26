@@ -15,7 +15,7 @@ namespace clipitto::capture {
 struct NativeClipboardRead {
     enum class Status {
         Ok, // text, or a picture (image, imageType), and formats are filled in; both stay
-            // empty when a privacy marker is set
+            // empty when a privacy marker is set (the text is read if asked to)
         NoText, // the clipboard holds neither text nor a picture (formats may be filled in)
         Busy, // another program holds the clipboard, or the text isn't ready yet: retry
         Unsupported, // no native reader on this platform: use QClipboard
@@ -31,6 +31,8 @@ struct NativeClipboardRead {
     QStringList formats;
 };
 
-NativeClipboardRead readNativeClipboard();
+// `readMarkedText`: also read the text of a copy marked by a password manager (password
+// copies are kept). Pictures with a marker are never read.
+NativeClipboardRead readNativeClipboard(bool readMarkedText = false);
 
 } // namespace clipitto::capture

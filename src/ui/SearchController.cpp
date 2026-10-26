@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "HistoryModel.h"
+#include "PasswordKeeper.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -41,6 +42,19 @@ void SearchController::setQuery(const QString& query)
     }
 }
 
+void SearchController::setPasswordQuery(const QString& query, bool active)
+{
+    PasswordVault::wipe(m_passwordQuery);
+    m_passwordSearch = active;
+    m_passwordQuery = active ? query : QString();
+    if (active && !query.isEmpty()) {
+        m_debounce.start();
+    } else {
+        m_debounce.stop();
+        run();
+    }
+}
+
 void SearchController::refresh()
 {
     m_debounce.stop();
@@ -65,8 +79,29 @@ void SearchController::run()
     std::vector<HistoryModel::GroupData> groups;
     std::vector<Entry> grouped;
     std::vector<Entry> favorites;
+    m_needsUnlock = false;
     try {
-        if (m_query.trimmed().isEmpty()) {
+        if (m_passwordSearch) {
+            std::vector<qint64> ids;
+            if (m_passwords && !m_passwordQuery.isEmpty()) {
+                ids = m_passwords->search(m_passwordQuery);
+                m_needsUnlock = ids.empty() && !m_passwords->isUnlocked();
+            } else if (m_passwords) {
+                for (const auto& [id, sealed] : m_repo.allSealedSecrets()) {
+                    ids.push_back(id);
+                }
+            }
+            std::vector<Entry> found;
+            for (const qint64 id : ids) {
+                if (found.size() >= std::size_t(searchLimit)) {
+                    break;
+                }
+                if (auto e = m_repo.get(id)) {
+                    found.push_back(std::move(*e));
+                }
+            }
+            sections.push_back({QString(), std::move(found)});
+        } else if (m_query.trimmed().isEmpty()) {
             for (const auto& g : m_repo.groupTree()) {
                 groups.push_back({g.path, g.clipCount});
             }

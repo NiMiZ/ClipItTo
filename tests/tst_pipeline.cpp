@@ -1,4 +1,5 @@
 #include "CapturePipeline.h"
+#include "PasswordVault.h"
 #include "TestDb.h"
 
 #include <QSignalSpy>
@@ -90,6 +91,98 @@ private slots:
         p.process(QStringLiteral("way too long"), {});
         p.process(QStringLiteral("pw"), {QStringLiteral("x-kde-passwordManagerHint")});
         QCOMPARE(rejected.size(), 3);
+        QCOMPARE(t.repo->count(), 0);
+    }
+
+    void markedCopiesBecomeSealedPasswords()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("master", {64, 1}));
+        vault.setMatchKey(QByteArray(32, 'm'));
+        p.setPasswords(&vault, true, QString());
+        QVERIFY(p.keepsPasswords());
+        QSignalSpy stored(&p, &CapturePipeline::stored);
+        const QStringList marked = {QStringLiteral("text/plain"), QStringLiteral("x-kde-passwordManagerHint"),
+                                    ClipFilter::sourceMimeType(QStringLiteral("KeePassXC"))};
+
+        p.process(QStringLiteral("hunter2"), marked);
+        QCOMPARE(stored.size(), 1);
+        const auto e = t.repo->get(stored.at(0).at(0).toLongLong());
+        QVERIFY(e && e->secret);
+        QCOMPARE(e->note, QStringLiteral("KeePassXC")); // where it was copied from
+        QCOMPARE(e->content, clipitto::db::Repository::secretLabel());
+        QVERIFY(!t.repo->sealedSecret(e->id).contains("hunter2"));
+        QVERIFY(t.repo->search(QStringLiteral("hunter2")).empty());
+
+        // Copied again: the same entry. Unlocked, it opens to the password.
+        p.process(QStringLiteral("hunter2"), marked);
+        QCOMPARE(stored.at(1).at(1).toBool(), false);
+        QCOMPARE(t.repo->countSecrets(), 1);
+        QVERIFY(vault.unlockWithKey(clipitto::PasswordVault::deriveKey("master", *vault.stored())));
+        QCOMPARE(vault.open(t.repo->sealedSecret(e->id)).value_or(QByteArray()), QByteArrayLiteral("hunter2"));
+
+        // Into the Passwords group when asked; no source: no note.
+        p.setPasswords(&vault, true, QStringLiteral("Passwords"));
+        p.process(QStringLiteral("other"), {QStringLiteral("ExcludeClipboardContentFromMonitorProcessing")});
+        const auto grouped = t.repo->get(stored.last().at(0).toLongLong());
+        QCOMPARE(grouped->group, QStringLiteral("Passwords"));
+        QVERIFY(grouped->note.isEmpty());
+
+        // Our own pasted password coming back is not stored again.
+        p.filter().noteOwnWrite(QStringLiteral("hunter2"));
+        const auto before = stored.size();
+        p.process(QStringLiteral("hunter2"), marked);
+        QCOMPARE(stored.size(), before);
+
+        // Paused (history being converted): sealed now, stored on resume.
+        p.setPaused(true);
+        p.process(QStringLiteral("while paused"), marked);
+        QCOMPARE(t.repo->countSecrets(), 2);
+        p.setPaused(false);
+        QCOMPARE(t.repo->countSecrets(), 3);
+    }
+
+    void markedCopiesKeepTheSizeLimit()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 16);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("m", {64, 1}));
+        p.setPasswords(&vault, true, QString());
+        QSignalSpy rejected(&p, &CapturePipeline::rejected);
+        p.process(QString(17, QLatin1Char('x')), {QStringLiteral("x-kde-passwordManagerHint")});
+        QCOMPARE(rejected.size(), 1);
+        QCOMPARE(rejected.at(0).at(0).value<ClipFilter::Verdict>(), ClipFilter::Verdict::TooLarge);
+        QCOMPARE(t.repo->countSecrets(), 0);
+    }
+
+    void markedCopiesWithoutAMasterPasswordAreDropped()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        QSignalSpy rejected(&p, &CapturePipeline::rejected);
+        QSignalSpy skipped(&p, &CapturePipeline::passwordSkipped);
+        const QStringList marked = {QStringLiteral("x-kde-passwordManagerHint")};
+
+        p.process(QStringLiteral("pw"), marked); // passwords not kept: as before, silently
+        QCOMPARE(rejected.size(), 1);
+        QCOMPARE(skipped.size(), 0);
+
+        clipitto::PasswordVault vault; // no master password set
+        p.setPasswords(&vault, true, QString());
+        QVERIFY(!p.keepsPasswords());
+        p.process(QString(), marked); // backends don't read the text then
+        QCOMPARE(rejected.size(), 2);
+        QCOMPARE(skipped.size(), 1);
+        QCOMPARE(t.repo->count(), 0);
+
+        // Turned off in the settings: dropped, no notice.
+        vault.load(clipitto::PasswordVault::create("m", {64, 1}));
+        p.setPasswords(&vault, false, QString());
+        p.process(QStringLiteral("pw"), marked);
+        QCOMPARE(skipped.size(), 1);
         QCOMPARE(t.repo->count(), 0);
     }
 

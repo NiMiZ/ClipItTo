@@ -165,6 +165,15 @@ private slots:
         QCOMPARE(status.value(QStringLiteral("max_history")).toInt(), 1000);
     }
 
+    void passwordMethodsAreExported()
+    {
+        // No master password in this daemon: helpers are told not to read marked copies.
+        const auto wanted = call(QStringLiteral("WantsPasswords"));
+        QCOMPARE(wanted.type(), QDBusMessage::ReplyMessage);
+        QCOMPARE(wanted.arguments().constFirst().toBool(), false);
+        QCOMPARE(call(QStringLiteral("LockPasswords")).type(), QDBusMessage::ReplyMessage);
+    }
+
     void reloadConfigMethodTriggersReload()
     {
         QFile file(m_dir.filePath(QStringLiteral("config.toml")));

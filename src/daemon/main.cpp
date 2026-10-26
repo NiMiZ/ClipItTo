@@ -79,6 +79,7 @@ int main(int argc, char* argv[])
     options.databasePath = clipitto::paths::databaseFile();
     options.session = clipitto::SessionEnv::detect();
     options.keyStore = clipitto::createSystemKeyStore();
+    options.matchKeyStore = clipitto::createSystemKeyStore(QStringLiteral("password-match-key"));
 
 #ifdef CLIPITTO_USE_DBUS
     clipitto::Daemon daemon(options,

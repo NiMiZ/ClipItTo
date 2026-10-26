@@ -1,6 +1,7 @@
 #include "HistoryModel.h"
 
 #include "GroupPath.h"
+#include "PasswordVault.h"
 
 #include <QHash>
 #include <QLocale>
@@ -72,6 +73,7 @@ struct HistoryModel::Node {
     QString title;
     QString preview;
     QByteArray thumbnail; // pictures: PNG, decoded when first painted (see ThumbnailRole)
+    bool revealed = false; // a password copy whose text is in `preview` for now
     int count = 0;
     Node* parent = nullptr;
     int row = 0;
@@ -102,6 +104,13 @@ std::unique_ptr<HistoryModel::Node> HistoryModel::makeEntryNode(const Entry& ent
     node->entry = entry;
     node->path = parent && (parent->kind == Kind::Group || parent->kind == Kind::Favorites) ? parent->path : QString();
     // Precomputed once per refresh instead of on every paint.
+    if (entry.secret) {
+        // Title: the note (by default the app it was copied from), else "Password"; the
+        // password itself only ever as ●●●● here (see setRevealed).
+        node->title = entry.note.isEmpty() ? entry.content : entry.note;
+        node->preview = hiddenPassword();
+        return node;
+    }
     if (entry.image) {
         // Title: the note if there is one, else the label ("Image 1920×1080"); with a note,
         // the label follows as the preview.
@@ -128,6 +137,7 @@ std::unique_ptr<HistoryModel::Node> HistoryModel::makeEntryNode(const Entry& ent
 void HistoryModel::setContent(std::vector<Section> sections, const std::vector<GroupData>& groupList,
                               const std::vector<Entry>& groupedEntries, const std::vector<Entry>& favorites)
 {
+    clearRevealed(); // wipes revealed passwords; a refresh hides them again
     beginResetModel();
     m_root = std::make_unique<Node>();
 
@@ -252,7 +262,10 @@ QVariant HistoryModel::data(const QModelIndex& index, int role) const
     case PreviewRole:
         return n->preview;
     case Qt::ToolTipRole:
-        return e.image ? QVariant() : QVariant(e.content.left(2000)); // pictures: a preview instead
+        // Pictures show a preview instead; passwords never show their text in a tooltip.
+        return e.image || e.secret ? QVariant() : QVariant(e.content.left(2000));
+    case SecretRole:
+        return e.secret;
     case FavoriteRole:
         return e.favorite;
     case HasNoteRole:
@@ -279,6 +292,53 @@ QVariant HistoryModel::data(const QModelIndex& index, int role) const
     default:
         return {};
     }
+}
+
+template <typename F>
+void HistoryModel::forEachEntryNode(Node* node, const F& visit)
+{
+    for (const auto& child : node->children) {
+        if (child->kind == Kind::Entry) {
+            visit(child.get());
+        }
+        forEachEntryNode(child.get(), visit);
+    }
+}
+
+void HistoryModel::setRevealed(qint64 id, const QString& text)
+{
+    forEachEntryNode(m_root.get(), [&](Node* n) {
+        if (n->entry.id != id || !n->entry.secret) {
+            return;
+        }
+        if (n->revealed) {
+            PasswordVault::wipe(n->preview);
+            --m_revealedCount;
+        }
+        n->revealed = !text.isEmpty();
+        // On its one line, exactly as typed (spaces kept); line breaks shown as ⏎.
+        n->preview = n->revealed ? QString(text).replace(QLatin1Char('\n'), QStringLiteral("⏎")) : hiddenPassword();
+        m_revealedCount += n->revealed ? 1 : 0;
+        const QModelIndex index = indexFor(n);
+        emit dataChanged(index, index, {PreviewRole});
+    });
+}
+
+void HistoryModel::clearRevealed()
+{
+    if (m_revealedCount == 0) {
+        return;
+    }
+    forEachEntryNode(m_root.get(), [&](Node* n) {
+        if (n->revealed) {
+            PasswordVault::wipe(n->preview);
+            n->preview = hiddenPassword();
+            n->revealed = false;
+            const QModelIndex index = indexFor(n);
+            emit dataChanged(index, index, {PreviewRole});
+        }
+    });
+    m_revealedCount = 0;
 }
 
 Qt::ItemFlags HistoryModel::flags(const QModelIndex& index) const

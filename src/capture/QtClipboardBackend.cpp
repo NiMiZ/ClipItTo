@@ -2,6 +2,7 @@
 
 #include "ClipFilter.h"
 #include "ImageCodec.h"
+#include "SourceApp.h"
 
 #include <QGuiApplication>
 #include <QLoggingCategory>
@@ -21,7 +22,7 @@ QtClipboardBackend::QtClipboardBackend(QClipboard* clipboard, bool capturePrimar
     , m_nativeReader(std::move(nativeReader))
 {
     if (!m_nativeReader && QGuiApplication::platformName() == QLatin1String("windows")) {
-        m_nativeReader = readNativeClipboard;
+        m_nativeReader = [this] { return readNativeClipboard(readMarkedText()); };
     }
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &QtClipboardBackend::readNative);
@@ -58,7 +59,13 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
         return;
     }
     if (data->hasText()) {
-        emit captured(data->text(), data->formats());
+        const QStringList formats = data->formats();
+        if (ClipFilter::isSensitive(formats) && (!readMarkedText() || mode != QClipboard::Clipboard)) {
+            // Never fetched: only the markers (a marked primary selection isn't a password copy).
+            emit captured(QString(), formats);
+        } else {
+            emitText(data->text(), formats);
+        }
     } else if (mode == QClipboard::Clipboard && data->hasImage()) {
         readImage(data->formats()); // text wins when a copy offers both
     }
@@ -112,6 +119,21 @@ void QtClipboardBackend::encode(PendingImage pending)
     }
 }
 
+void QtClipboardBackend::emitText(const QString& text, QStringList formats)
+{
+    if (!ClipFilter::isSensitive(formats)) {
+        emit captured(text, formats);
+    } else if (!readMarkedText()) {
+        emit captured(QString(), formats); // only the markers: the pipeline drops it
+    } else {
+        formats = ClipFilter::withoutSource(formats); // an app can't name itself
+        if (const QString source = ClipFilter::sourceMimeType(clipboardSourceApp()); !source.isEmpty()) {
+            formats << source;
+        }
+        emit captured(text, formats);
+    }
+}
+
 void QtClipboardBackend::readNative()
 {
     const NativeClipboardRead result = m_nativeReader();
@@ -129,7 +151,7 @@ void QtClipboardBackend::readNative()
             }
             return;
         }
-        emit captured(result.text, result.formats);
+        emitText(result.text, result.formats);
         return;
     case NativeClipboardRead::Status::NoText:
         return;

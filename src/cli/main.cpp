@@ -103,9 +103,10 @@ int main(int argc, char* argv[])
     const QCommandLineOption status(QStringLiteral("status"), QStringLiteral("Print daemon status."));
     const QCommandLineOption reload(QStringLiteral("reload"), QStringLiteral("Reload the configuration file."));
     const QCommandLineOption quit(QStringLiteral("quit"), QStringLiteral("Stop the daemon."));
+    const QCommandLineOption lock(QStringLiteral("lock"), QStringLiteral("Lock the password copies now."));
     const QCommandLineOption ingest(QStringLiteral("ingest"), QStringLiteral("Add <text> to the history."),
                                     QStringLiteral("text"));
-    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, ingest};
+    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, ingest};
     parser.addOptions(actions);
     parser.process(app);
 
@@ -133,6 +134,8 @@ int main(int argc, char* argv[])
         method = QStringLiteral("ReloadConfig");
     } else if (parser.isSet(quit)) {
         method = QStringLiteral("Quit");
+    } else if (parser.isSet(lock)) {
+        method = QStringLiteral("LockPasswords");
     } else {
         method = QStringLiteral("Ingest");
         args << parser.value(ingest) << QStringList{QStringLiteral("text/plain")};

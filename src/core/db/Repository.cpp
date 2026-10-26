@@ -17,7 +17,7 @@ namespace {
 // Column order read by readEntry().
 #define CLIP_COLUMNS                                                                                   \
     "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position, " \
-    "c.kind, c.content_hash"
+    "c.kind, c.content_hash, c.secret"
 
 Entry readEntry(const Stmt& s)
 {
@@ -32,6 +32,7 @@ Entry readEntry(const Stmt& s)
     e.pinPosition = s.colIsNull(7) ? -1 : int(s.colInt(7));
     e.image = s.colText(8) == QLatin1String("image");
     e.contentHash = s.colText(9);
+    e.secret = s.colInt(10) != 0;
     return e;
 }
 
@@ -56,6 +57,10 @@ Repository::Repository(Db& db, Clock clock)
         RETURNING id, created_at = last_used)");
     m_ingestImage = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used, kind) VALUES (?1, ?2, ?3, ?3, 'image')
+        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
+        RETURNING id, created_at = last_used)");
+    m_ingestSecret = std::make_unique<Stmt>(m_db, R"(
+        INSERT INTO clips(content, content_hash, created_at, last_used, secret) VALUES (?1, ?2, ?3, ?3, 1)
         ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
         RETURNING id, created_at = last_used)");
     m_imageDetails = std::make_unique<Stmt>(m_db, "SELECT width, height, thumbnail FROM clip_images WHERE clip_id = ?1");
@@ -148,6 +153,184 @@ Repository::IngestResult Repository::ingestImage(const ImageClip& image)
     }
     tx.commit();
     return result;
+}
+
+Repository::IngestResult Repository::ingestSecret(const QByteArray& sealed, const QString& match,
+                                                  const QString& note, const QString& group)
+{
+    Transaction tx(m_db);
+    Stmt& s = *m_ingestSecret;
+    s.reset();
+    const QString hash = match.isEmpty()
+        ? QStringLiteral("secret:unmatched:") + QString::fromLatin1(PasswordVault::randomBytes(16).toHex())
+        : match;
+    s.bindText(1, secretLabel()).bindText(2, hash).bindText(3, now());
+    s.step();
+    const IngestResult result{s.colInt(0), s.colInt(1) != 0};
+    s.run();
+    if (result.inserted) {
+        Stmt store(m_db, "INSERT INTO clip_secrets(clip_id, sealed) VALUES (?1, ?2)");
+        store.bindInt(1, result.id).bindBlob(2, sealed);
+        store.run();
+        if (!note.trimmed().isEmpty()) {
+            setNote(result.id, note);
+        }
+        if (!group.trimmed().isEmpty()) {
+            setGroup(result.id, group);
+        }
+    }
+    tx.commit();
+    return result;
+}
+
+QByteArray Repository::sealedSecret(qint64 id)
+{
+    Stmt s(m_db, "SELECT sealed FROM clip_secrets WHERE clip_id = ?1");
+    s.bindInt(1, id);
+    return s.step() ? s.colBlob(0) : QByteArray();
+}
+
+std::vector<std::pair<qint64, QByteArray>> Repository::allSealedSecrets()
+{
+    Stmt s(m_db, R"(SELECT c.id, s.sealed FROM clips c JOIN clip_secrets s ON s.clip_id = c.id
+                    ORDER BY c.last_used DESC, c.id DESC)");
+    std::vector<std::pair<qint64, QByteArray>> result;
+    while (s.step()) {
+        result.emplace_back(s.colInt(0), s.colBlob(1));
+    }
+    return result;
+}
+
+std::optional<Entry> Repository::findSecret(const QString& match)
+{
+    if (match.isEmpty()) {
+        return std::nullopt;
+    }
+    Stmt s(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.content_hash = ?1 AND c.secret = 1");
+    s.bindText(1, match);
+    auto rows = collect(s);
+    return rows.empty() ? std::nullopt : std::optional<Entry>(std::move(rows.front()));
+}
+
+qint64 Repository::convertToSecret(qint64 id, const QByteArray& sealed, const QString& match)
+{
+    qint64 holder = id;
+    {
+        Transaction tx(m_db);
+        if (const auto existing = findSecret(match); existing && existing->id != id) {
+            remove(id); // the same password is already kept
+            holder = existing->id;
+        } else {
+            Stmt update(m_db, "UPDATE clips SET content = ?2, content_hash = ?3, secret = 1, kind = 'text' WHERE id = ?1");
+            const QString hash = match.isEmpty()
+                ? QStringLiteral("secret:unmatched:") + QString::fromLatin1(PasswordVault::randomBytes(16).toHex())
+                : match;
+            update.bindInt(1, id).bindText(2, secretLabel()).bindText(3, hash);
+            update.run();
+            Stmt store(m_db, "INSERT OR REPLACE INTO clip_secrets(clip_id, sealed) VALUES (?1, ?2)");
+            store.bindInt(1, id).bindBlob(2, sealed);
+            store.run();
+        }
+        tx.commit();
+    }
+    scrub();
+    return holder;
+}
+
+qint64 Repository::convertToText(qint64 id, const QString& text)
+{
+    qint64 holder = id;
+    Transaction tx(m_db);
+    Stmt find(m_db, "SELECT id FROM clips WHERE content_hash = ?1");
+    find.bindText(1, hashOf(text));
+    if (find.step() && find.colInt(0) != id) {
+        holder = find.colInt(0);
+        find.reset();
+        remove(id); // the same text is already kept as a copy
+    } else {
+        find.reset();
+        Stmt update(m_db, "UPDATE clips SET content = ?2, content_hash = ?3, secret = 0 WHERE id = ?1");
+        update.bindInt(1, id).bindText(2, text).bindText(3, hashOf(text));
+        update.run();
+        Stmt drop(m_db, "DELETE FROM clip_secrets WHERE clip_id = ?1");
+        drop.bindInt(1, id);
+        drop.run();
+    }
+    tx.commit();
+    return holder;
+}
+
+qint64 Repository::countSecrets()
+{
+    Stmt s(m_db, "SELECT count(*) FROM clips WHERE secret = 1");
+    s.step();
+    return s.colInt(0);
+}
+
+std::optional<PasswordVault::Stored> Repository::loadVault()
+{
+    Stmt s(m_db, "SELECT salt, kdf_blocks, kdf_passes, public_key, wrapped_secret, hello_wrapped FROM vault WHERE id = 1");
+    if (!s.step()) {
+        return std::nullopt;
+    }
+    PasswordVault::Stored stored;
+    stored.salt = s.colBlob(0);
+    stored.kdfBlocks = quint32(s.colInt(1));
+    stored.kdfPasses = quint32(s.colInt(2));
+    stored.publicKey = s.colBlob(3);
+    stored.wrappedSecret = s.colBlob(4);
+    stored.helloWrapped = s.colBlob(5);
+    return stored.isValid() ? std::optional(stored) : std::nullopt;
+}
+
+void Repository::saveVault(const PasswordVault::Stored& stored)
+{
+    Stmt s(m_db, R"(INSERT OR REPLACE INTO vault(id, salt, kdf_blocks, kdf_passes, public_key, wrapped_secret, hello_wrapped)
+                    VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6))");
+    s.bindBlob(1, stored.salt).bindInt(2, stored.kdfBlocks).bindInt(3, stored.kdfPasses);
+    s.bindBlob(4, stored.publicKey).bindBlob(5, stored.wrappedSecret);
+    if (stored.helloWrapped.isEmpty()) {
+        s.bindNull(6);
+    } else {
+        s.bindBlob(6, stored.helloWrapped);
+    }
+    s.run();
+}
+
+void Repository::rekeyVault(const std::vector<std::pair<qint64, QByteArray>>& resealed,
+                            const PasswordVault::Stored& stored)
+{
+    {
+        Transaction tx(m_db);
+        Stmt update(m_db, "UPDATE clip_secrets SET sealed = ?2 WHERE clip_id = ?1");
+        for (const auto& [id, sealed] : resealed) {
+            update.reset();
+            update.bindInt(1, id).bindBlob(2, sealed);
+            update.run();
+        }
+        saveVault(stored);
+        tx.commit();
+    }
+    scrub();
+}
+
+void Repository::resetVault()
+{
+    {
+        Transaction tx(m_db);
+        m_db.exec("DELETE FROM clips WHERE secret = 1;");
+        m_db.exec("DELETE FROM vault;");
+        tx.commit();
+    }
+    scrub();
+}
+
+void Repository::scrub()
+{
+    m_db.exec("INSERT INTO clips_fts(clips_fts) VALUES ('optimize');");
+    if (!checkpoint()) {
+        qWarning() << "the write-ahead log is still in use; it is folded in later";
+    }
 }
 
 QByteArray Repository::imageData(qint64 id)

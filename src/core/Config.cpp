@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QSaveFile>
 
 #include <toml++/toml.hpp>
@@ -126,6 +127,22 @@ public:
         }
     }
 
+    // A short word without spaces (the password search keyword).
+    void keyword(const char* key, QString& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const auto value = node->value_exact<std::string>();
+        const QString word = value ? QString::fromStdString(*value) : QString();
+        if (word.isEmpty() || word.size() > 16 || word.contains(QRegularExpression(QStringLiteral("\\s")))) {
+            warn(QStringLiteral("%1: expected a short word without spaces, like \"p[]\"").arg(QLatin1String(key)));
+        } else {
+            out = word;
+        }
+    }
+
     void warnUnknownKeys()
     {
         for (const auto& [key, node] : m_table) {
@@ -194,6 +211,12 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.choice("popup_position", config.popupPosition, kPopupPositions);
     r.choice("start_focus", config.startFocus, kStartFocus);
     r.boolean("encrypt_history", config.encryptHistory);
+    r.boolean("keep_passwords", config.keepPasswords);
+    r.boolean("passwords_in_group", config.passwordsInGroup);
+    r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
+    r.integer("password_clear_seconds", config.passwordClearSeconds, 0, 3600);
+    r.boolean("windows_hello", config.windowsHello);
+    r.keyword("password_search_keyword", config.passwordSearchKeyword);
     r.warnUnknownKeys();
     return config;
 }
@@ -267,6 +290,13 @@ std::vector<Line> lines(const Config& c)
         {"start_focus", tomlString(nameOf(kStartFocus, c.startFocus)),
          "where the selection starts: pinned | grouped | unsaved"},
         {"encrypt_history", tomlBool(c.encryptHistory), "encrypt history.db; key kept in the system keyring"},
+        {"keep_passwords", tomlBool(c.keepPasswords), "keep copies marked by a password manager, encrypted"},
+        {"passwords_in_group", tomlBool(c.passwordsInGroup), "put new password copies in the Passwords group"},
+        {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},
+        {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard; 0 = never"},
+        {"windows_hello", tomlBool(c.windowsHello), "Windows: unlock passwords with Windows Hello too"},
+        {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
+         "typed with a space first, searches passwords"},
     };
 }
 

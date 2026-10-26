@@ -50,7 +50,11 @@ public:
         HasNoteRole, // the title is the user's note (drawn bold), not the content
         PinnedRole,
         ThumbnailRole, // QPixmap for a picture copy, null otherwise
+        SecretRole, // a password copy: shown hidden (●●●●) unless revealed
     };
+
+    // What a hidden password shows instead of its text.
+    static QString hiddenPassword() { return QStringLiteral("●●●●●●●●"); }
 
     enum class Kind { Header, Entry, GroupsRoot, Group, Favorites };
 
@@ -96,6 +100,12 @@ public:
     // The first copy of that kind in the sections (pinned / in a group / unsaved), else the
     // first copy: where the selection starts (start_focus).
     QModelIndex firstEntry(StartFocus focus) const;
+    // Shows a password copy's text in place of ●●●● (wherever it is listed); an empty text
+    // hides it again. clearRevealed() hides every one and wipes the texts.
+    void setRevealed(qint64 id, const QString& text);
+    void clearRevealed();
+    bool hasRevealed() const { return m_revealedCount > 0; }
+
     // A copy by id: in the sections first, else in the group tree (inside `path` if given).
     QModelIndex findEntry(qint64 id, const QString& groupPath = {}) const;
 
@@ -105,8 +115,12 @@ private:
     QModelIndex indexFor(const Node* node) const;
     std::unique_ptr<Node> makeEntryNode(const Entry& entry, Node* parent) const;
 
+    template <typename F>
+    void forEachEntryNode(Node* node, const F& visit);
+
     std::unique_ptr<Node> m_root;
     int m_previewLines = 1;
+    int m_revealedCount = 0;
 };
 
 } // namespace clipitto::ui

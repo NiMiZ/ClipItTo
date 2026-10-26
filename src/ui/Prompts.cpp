@@ -2,8 +2,15 @@
 
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QInputDialog>
+#include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
+#include <QPushButton>
+#include <QVBoxLayout>
 
 namespace clipitto::ui {
 
@@ -46,6 +53,81 @@ ConfirmPrompt defaultConfirmPrompt()
 {
     return [](QWidget* parent, const QString& question) {
         return QMessageBox::question(parent, QStringLiteral("ClipItTo"), question) == QMessageBox::Yes;
+    };
+}
+
+PasswordPrompt defaultPasswordPrompt()
+{
+    return [](QWidget* parent, const QString& label) -> std::optional<QString> {
+        QInputDialog dialog(parent);
+        dialog.setWindowTitle(QCoreApplication::translate("clipitto::ui::PopupWindow", "Unlock passwords"));
+        dialog.setLabelText(label);
+        dialog.setTextEchoMode(QLineEdit::Password);
+        dialog.setInputMethodHints(Qt::ImhSensitiveData | Qt::ImhNoPredictiveText | Qt::ImhHiddenText);
+        if (dialog.exec() != QDialog::Accepted) {
+            dialog.setTextValue(QString());
+            return std::nullopt;
+        }
+        std::optional<QString> password = dialog.textValue();
+        dialog.setTextValue(QString()); // the dialog's own copy
+        return password;
+    };
+}
+
+MasterPasswordPrompt defaultMasterPasswordPrompt()
+{
+    return [](QWidget* parent, bool change) -> std::optional<MasterPasswordAnswer> {
+        const auto tr = [](const char* text) { return QCoreApplication::translate("clipitto::ui::SettingsDialog", text); };
+        QDialog dialog(parent);
+        dialog.setWindowTitle(change ? tr("Change the master password") : tr("Set a master password"));
+        auto* form = new QFormLayout;
+        const auto field = [&dialog] {
+            auto* edit = new QLineEdit(&dialog);
+            edit->setEchoMode(QLineEdit::Password);
+            edit->setInputMethodHints(Qt::ImhSensitiveData | Qt::ImhNoPredictiveText | Qt::ImhHiddenText);
+            return edit;
+        };
+        QLineEdit* current = change ? field() : nullptr;
+        QLineEdit* chosen = field();
+        QLineEdit* repeat = field();
+        if (current) {
+            form->addRow(tr("Current master password:"), current);
+        }
+        form->addRow(tr("New master password:"), chosen);
+        form->addRow(tr("Repeat it:"), repeat);
+        auto* note = new QLabel(tr("It is never stored or shown. If you forget it, your password copies can't "
+                                   "be recovered. A few unrelated words make a strong one."),
+                                &dialog);
+        note->setWordWrap(true);
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        auto* layout = new QVBoxLayout(&dialog);
+        layout->addLayout(form);
+        layout->addWidget(note);
+        layout->addWidget(buttons);
+        QPushButton* ok = buttons->button(QDialogButtonBox::Ok);
+        const auto update = [=] {
+            const bool longEnough = chosen->text().size() >= kMinMasterPasswordLength;
+            ok->setEnabled(longEnough && chosen->text() == repeat->text() && (!current || !current->text().isEmpty()));
+            ok->setToolTip(longEnough ? QString() : tr("At least 8 characters"));
+        };
+        for (QLineEdit* edit : {current, chosen, repeat}) {
+            if (edit) {
+                QObject::connect(edit, &QLineEdit::textChanged, &dialog, update);
+            }
+        }
+        update();
+        QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        std::optional<MasterPasswordAnswer> answer;
+        if (dialog.exec() == QDialog::Accepted) {
+            answer = MasterPasswordAnswer{current ? current->text() : QString(), chosen->text()};
+        }
+        for (QLineEdit* edit : {current, chosen, repeat}) {
+            if (edit) {
+                edit->clear(); // the fields' own copies
+            }
+        }
+        return answer;
     };
 }
 

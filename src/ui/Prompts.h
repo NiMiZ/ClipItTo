@@ -23,4 +23,17 @@ TextPrompt defaultTextPrompt();
 std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices);
 ConfirmPrompt defaultConfirmPrompt();
 
+// A masked password (the master password). nullopt = cancelled. The caller wipes the text.
+using PasswordPrompt = std::function<std::optional<QString>(QWidget* parent, const QString& label)>;
+PasswordPrompt defaultPasswordPrompt();
+
+// Setting or changing the master password: masked fields only, the new one typed twice.
+struct MasterPasswordAnswer {
+    QString current; // empty when setting a first one
+    QString chosen;
+};
+using MasterPasswordPrompt = std::function<std::optional<MasterPasswordAnswer>(QWidget* parent, bool change)>;
+MasterPasswordPrompt defaultMasterPasswordPrompt();
+constexpr int kMinMasterPasswordLength = 8;
+
 } // namespace clipitto::ui

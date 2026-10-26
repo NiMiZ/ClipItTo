@@ -32,6 +32,7 @@ using clipitto::PasteKeys;
 using clipitto::SessionEnv;
 using clipitto::Daemon;
 using clipitto::DaemonOptions;
+using clipitto::Entry;
 using clipitto::ui::HistoryModel;
 
 namespace {
@@ -138,6 +139,63 @@ private slots:
         emit d.control()->ingestRequested(QStringLiteral("secret"), {QStringLiteral("x-kde-passwordManagerHint")});
         QCOMPARE(d.repository()->count(), 1);
         QCOMPARE(d.repository()->recent(1, false).front().content, QStringLiteral("from helper"));
+    }
+
+    void markedCopiesAreKeptOnceAMasterPasswordIsSet()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        const QStringList marked = {QStringLiteral("text/plain"), QStringLiteral("x-kde-passwordManagerHint"),
+                                    QStringLiteral("x-clipitto-source:KeePassXC")};
+        QVERIFY(!d.control()->passwordsWanted());
+        emit d.control()->ingestRequested(QStringLiteral("hunter2"), marked);
+        QCOMPARE(d.repository()->count(), 0);
+        QVERIFY(d.status().value(QStringLiteral("passwords")).toString().startsWith(QLatin1String("off")));
+
+        d.passwords()->setKdfCost({64, 1});
+        bool set = false;
+        d.passwords()->setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        QVERIFY(d.control()->passwordsWanted());
+        emit d.control()->ingestRequested(QStringLiteral("hunter2"), marked);
+        QCOMPARE(d.repository()->countSecrets(), 1);
+        const Entry e = d.repository()->recent(1, false).front();
+        QVERIFY(e.secret);
+        QCOMPARE(e.note, QStringLiteral("KeePassXC"));
+        QCOMPARE(d.status().value(QStringLiteral("passwords")).toString(), QStringLiteral("locked"));
+
+        // Pasting it: on the clipboard with the marker, taken off again after password_clear_seconds.
+        Config fast = d.config();
+        fast.passwordClearSeconds = 1;
+        QVERIFY(d.applySettings(fast));
+        bool unlocked = false;
+        d.passwords()->unlock("master", [&unlocked](bool ok) { unlocked = ok; });
+        QTRY_VERIFY(unlocked);
+        emit d.popup()->entryActivated(e);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("hunter2"));
+        // Marked the platform's way (x-kde-passwordManagerHint; Windows' exclude formats).
+        QVERIFY2(clipitto::ClipFilter::isSensitive(QGuiApplication::clipboard()->mimeData()->formats()),
+                 qPrintable(QGuiApplication::clipboard()->mimeData()->formats().join(QLatin1Char(' '))));
+        QTRY_VERIFY_WITH_TIMEOUT(QGuiApplication::clipboard()->text().isEmpty(), 3000);
+        QCOMPARE(d.repository()->countSecrets(), 1); // our own paste wasn't stored again
+        QCOMPARE(d.repository()->count(), 1);
+
+        // Copied something else meanwhile: that stays.
+        emit d.popup()->entryActivated(e);
+        QGuiApplication::clipboard()->setText(QStringLiteral("copied after"));
+        QTest::qWait(1500);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("copied after"));
+
+        // Turned off in the settings: dropped again, and helpers are told not to read them.
+        Config c = d.config();
+        c.keepPasswords = false;
+        QVERIFY(d.applySettings(c));
+        QVERIFY(!d.control()->passwordsWanted());
+        const qint64 before = d.repository()->countSecrets();
+        emit d.control()->ingestRequested(QStringLiteral("other"), marked);
+        QCOMPARE(d.repository()->countSecrets(), before);
     }
 
     void clipboardChangesAreCaptured()

@@ -1,9 +1,11 @@
 #include "DbusControlChannel.h"
 
 #include "ControlAdaptor.h"
+#include "ClipFilter.h"
 #include "DbusNames.h"
 
 #include <QDBusConnectionInterface>
+#include <QDBusError>
 #include <QDebug>
 
 namespace clipitto::ipc {
@@ -72,27 +74,51 @@ void DbusControlChannel::Hide()
     emit hideRequested();
 }
 
+bool DbusControlChannel::calledFromShell(const char* method)
+{
+    if (!calledFromDBus()) {
+        return true; // in-process (tests)
+    }
+    const QString sender = message().service();
+    const QString shell = m_bus.interface()->serviceOwner(QStringLiteral("org.gnome.Shell")).value();
+    if (shell.isEmpty() || sender != shell) {
+        qWarning().noquote() << method << "refused: the caller" << sender << "is not GNOME Shell";
+        return false;
+    }
+    return true;
+}
+
 void DbusControlChannel::IngestImage(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes)
 {
-    if (calledFromDBus()) {
-        const QString sender = message().service();
-        const QString shell = m_bus.interface()->serviceOwner(QStringLiteral("org.gnome.Shell")).value();
-        if (shell.isEmpty() || sender != shell) {
-            qWarning().noquote() << "IngestImage refused: the caller" << sender << "is not GNOME Shell";
-            return;
-        }
+    if (calledFromShell("IngestImage")) {
+        emit ingestImageRequested(data, mimeType, mimeTypes);
     }
-    emit ingestImageRequested(data, mimeType, mimeTypes);
 }
 
 void DbusControlChannel::Ingest(const QString& text, const QStringList& mimeTypes)
 {
+    // A marked copy becomes a password copy, named after its source app: only the shell
+    // extension may hand those in, so other programs can't plant "passwords".
+    if (ClipFilter::isSensitive(mimeTypes) && !calledFromShell("Ingest of a marked copy")) {
+        sendErrorReply(QDBusError::AccessDenied, QStringLiteral("marked copies are accepted from GNOME Shell only"));
+        return;
+    }
     emit ingestRequested(text, mimeTypes);
+}
+
+bool DbusControlChannel::WantsPasswords()
+{
+    return passwordsWanted();
 }
 
 void DbusControlChannel::ReloadConfig()
 {
     emit reloadRequested();
+}
+
+void DbusControlChannel::LockPasswords()
+{
+    emit lockPasswordsRequested();
 }
 
 void DbusControlChannel::Quit()

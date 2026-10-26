@@ -10,6 +10,7 @@
 #include "WlPasteBackend.h"
 #include "ImageCodec.h"
 #include "SyntheticPaste.h"
+#include "WindowsHello.h"
 #include "Paths.h"
 #include "db/Migrator.h"
 #include "db/Repository.h"
@@ -65,6 +66,16 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     , m_integration(integration.release())
 {
     m_shortcutPool.setMaxThreadCount(1);
+    m_clearPassword = new QTimer(this);
+    m_clearPassword->setSingleShot(true);
+    connect(m_clearPassword, &QTimer::timeout, this, [this] {
+        // Only if nothing was copied since: never wipe what the user copied afterwards.
+        if (m_writer && m_pipeline && m_pipeline->filter().ownPasswordPending()) {
+            m_writer->clear();
+            m_pipeline->filter().forgetOwnPassword();
+        }
+    });
+    m_helloPool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
@@ -81,6 +92,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
 
 Daemon::~Daemon()
 {
+    hello::cancelPending(); // a Windows Hello prompt left open must not hold up quitting
     // Picture decodes still running use Qt's image plugins: let them finish while Qt is up.
     QThreadPool::globalInstance()->waitForDone();
     if (m_worker.joinable()) {
@@ -133,8 +145,13 @@ Daemon::StartResult Daemon::start(QString* error)
         return StartResult::Failed;
     }
 
+    m_passwords = std::make_unique<PasswordKeeper>(*m_repo, m_options.matchKeyStore);
+    m_passwords->reload();
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
+    m_control->setPasswordsWantedProvider([this] { return m_pipeline && m_pipeline->keepsPasswords(); });
+    connect(m_passwords.get(), &PasswordKeeper::vaultChanged, this, &Daemon::applyPasswordSettings);
+    connect(m_control, &ControlChannel::lockPasswordsRequested, m_passwords.get(), &PasswordKeeper::lock);
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
     // A picture from a capture helper (the GNOME extension), decoded off the GUI thread.
     connect(m_control, &ControlChannel::ingestImageRequested, this,
@@ -163,6 +180,8 @@ Daemon::StartResult Daemon::start(QString* error)
     m_writer = std::make_unique<ClipboardWriter>(QGuiApplication::clipboard(), m_pipeline->filter(), m_integration);
     ui::applyTheme(m_config.theme);
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
+    m_popup->setPasswords(m_passwords.get());
+    setUpWindowsHello();
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
         if (!ok) {
@@ -195,6 +214,24 @@ Daemon::StartResult Daemon::start(QString* error)
         }
     });
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
+    connect(m_pipeline.get(), &CapturePipeline::passwordSkipped, this, [this] {
+        if (m_passwordNoticeShown) {
+            return;
+        }
+        m_passwordNoticeShown = true;
+        // Shown the next time the popup opens (a copy is usually made with the popup closed).
+        auto* once = new QObject(this);
+        connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, once, [this, once](bool visible) {
+            if (visible) {
+                once->deleteLater();
+                QTimer::singleShot(0, m_popup.get(), [this] {
+                    m_popup->showMessage(tr("A password was copied but not kept: set a master password in "
+                                            "Settings › Passwords to keep password copies, encrypted."));
+                });
+            }
+        });
+    });
+    applyPasswordSettings();
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
         QString removeError;
@@ -230,6 +267,7 @@ void Daemon::startCapture()
     connect(m_capture.backend.get(), &capture::CaptureBackend::capturedImage, m_pipeline.get(),
             &CapturePipeline::processImage);
     m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
+    m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
     m_capture.backend->start();
 
     if (m_capture.degraded) {
@@ -278,6 +316,19 @@ void Daemon::onEntryActivated(const Entry& entry)
             return;
         }
         m_writer->setImage(png, entry.contentHash.mid(int(qstrlen("image:"))));
+    } else if (entry.secret) {
+        // The popup asked for the unlock already; it may have expired just now.
+        std::optional<QByteArray> plain = m_passwords ? m_passwords->reveal(entry.id) : std::nullopt;
+        if (!plain) {
+            return;
+        }
+        QString text = QString::fromUtf8(*plain);
+        PasswordVault::wipe(*plain);
+        m_writer->setPassword(text);
+        PasswordVault::wipe(text);
+        if (m_config.passwordClearSeconds > 0) {
+            m_clearPassword->start(m_config.passwordClearSeconds * 1000);
+        }
     } else {
         m_writer->setText(entry.content);
     }
@@ -522,7 +573,12 @@ void Daemon::openSettings()
     encryption.available = encryptionAvailable(&encryption.reason);
     encryption.active = m_encrypted;
     encryption.problem = m_encryptionError;
-    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get());
+    ui::PasswordSupport passwords;
+    passwords.keeper = m_passwords.get();
+    passwords.helloAvailable = m_helloAvailable;
+    passwords.helloReason = m_helloReason;
+    passwords.setHello = [this](bool on, std::function<void(QString)> done) { setWindowsHello(on, std::move(done)); };
+    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords);
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
@@ -598,6 +654,92 @@ void Daemon::applyDesktopShortcut()
     }));
 }
 
+namespace {
+
+// Runs `work` on `pool` and hands its result to `then` on `context`'s thread (dropped if
+// `context` is gone by then).
+template <typename Result>
+void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, std::function<void(Result)> then)
+{
+    auto* watcher = new QFutureWatcher<Result>(context);
+    QObject::connect(watcher, &QFutureWatcherBase::finished, context, [watcher, then = std::move(then)] {
+        QFuture<Result> future = watcher->future();
+        then(future.takeResult()); // taken, not copied: it may be a key
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run(pool, std::move(work)));
+}
+
+} // namespace
+
+void Daemon::setUpWindowsHello()
+{
+    runOn<std::pair<bool, QString>>(
+        &m_helloPool, this,
+        [] {
+            QString why;
+            const bool ok = hello::available(&why);
+            return std::pair<bool, QString>(ok, why);
+        },
+        [this](std::pair<bool, QString> result) {
+            m_helloAvailable = result.first;
+            m_helloReason = result.second;
+        });
+    m_popup->setHelloUnlock([this](std::function<void(bool)> done) {
+        runOn<QByteArray>(
+            &m_helloPool, this, [] { return hello::unlockKey(/*create=*/false); },
+            [this, done = std::move(done)](QByteArray key) {
+                const bool ok = !key.isEmpty() && m_passwords && m_passwords->unlockWithHelloKey(key);
+                PasswordVault::wipe(key);
+                done(ok);
+            });
+    });
+}
+
+void Daemon::setWindowsHello(bool on, std::function<void(QString error)> done)
+{
+    if (!on) {
+        if (m_passwords) {
+            m_passwords->setHelloWrapped({});
+        }
+        runOn<bool>(&m_helloPool, this, [] { hello::removeKey(); return true; }, [done = std::move(done)](bool) {
+            done(QString());
+        });
+        return;
+    }
+    runOn<std::pair<QByteArray, QString>>(
+        &m_helloPool, this,
+        [] {
+            QString error;
+            QByteArray key = hello::unlockKey(/*create=*/true, &error);
+            return std::pair<QByteArray, QString>(key, error);
+        },
+        [this, done = std::move(done)](std::pair<QByteArray, QString> result) {
+            QByteArray key = std::move(result.first);
+            const QByteArray wrapped = !key.isEmpty() && m_passwords ? m_passwords->wrapForHello(key) : QByteArray();
+            PasswordVault::wipe(key);
+            if (wrapped.isEmpty()) {
+                done(result.second.isEmpty() ? tr("unlock the passwords first") : result.second);
+                return;
+            }
+            m_passwords->setHelloWrapped(wrapped);
+            done(QString());
+        });
+}
+
+void Daemon::applyPasswordSettings()
+{
+    if (!m_pipeline || !m_passwords) {
+        return;
+    }
+    m_passwords->setUnlockMinutes(m_config.passwordUnlockMinutes);
+    m_pipeline->setPasswords(&m_passwords->vault(), m_config.keepPasswords,
+                             m_config.passwordsInGroup ? QStringLiteral("Passwords") : QString());
+    if (m_capture.backend) {
+        m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
+    }
+}
+
 void Daemon::reload(bool forceShortcut)
 {
     const Config previous = m_config;
@@ -612,6 +754,7 @@ void Daemon::reload(bool forceShortcut)
         m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
     }
     m_repo->setLimits(repositoryLimits(m_config));
+    applyPasswordSettings();
     if (m_config.theme != previous.theme) {
         ui::applyTheme(m_config.theme);
     }
@@ -661,6 +804,22 @@ QVariantMap Daemon::status() const
         encryption += QStringLiteral(" (problem: %1)").arg(m_encryptionError);
     }
     s[QStringLiteral("encryption")] = encryption;
+    if (m_passwords) {
+        QString passwords;
+        if (!m_passwords->isSetUp()) {
+            passwords = QStringLiteral("off (no master password)");
+        } else if (!m_config.keepPasswords) {
+            passwords = QStringLiteral("not kept (turned off in the settings)");
+        } else if (m_passwords->isUnlocked()) {
+            passwords = QStringLiteral("unlocked (%1 min left)").arg((m_passwords->secondsLeft() + 59) / 60);
+        } else {
+            passwords = QStringLiteral("locked");
+        }
+        if (m_passwords->isSetUp() && !m_passwords->canMatch()) {
+            passwords += QStringLiteral("; whole-password search while locked is off (%1)").arg(m_passwords->matchProblem());
+        }
+        s[QStringLiteral("passwords")] = passwords;
+    }
     if (m_repo && !m_converting) { // during a conversion the database belongs to the worker
         try {
             s[QStringLiteral("items")] = m_repo->count();

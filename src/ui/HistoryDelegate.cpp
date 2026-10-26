@@ -62,6 +62,26 @@ int previewLineCount(const QModelIndex& index)
     return preview.isEmpty() ? 0 : int(preview.count(QLatin1Char('\n'))) + 1;
 }
 
+// A small padlock (a password copy), drawn rather than taken from a font that may lack it.
+void drawPadlock(QPainter* painter, const QRectF& box, const QColor& color)
+{
+    const qreal h = qMin(box.height(), box.width()) * 0.8;
+    const qreal w = h * 0.75;
+    const QRectF body(box.center().x() - w / 2, box.center().y() - h / 2 + h * 0.4, w, h * 0.6);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(color, qMax(1.2, h / 9)));
+    painter->setBrush(Qt::NoBrush);
+    const QRectF shackle(body.left() + w * 0.2, body.top() - h * 0.4, w * 0.6, h * 0.8);
+    painter->drawArc(shackle, 0, 180 * 16);
+    painter->drawLine(QPointF(shackle.left(), shackle.center().y()), QPointF(shackle.left(), body.top()));
+    painter->drawLine(QPointF(shackle.right(), shackle.center().y()), QPointF(shackle.right(), body.top()));
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(color);
+    painter->drawRoundedRect(body, h / 10, h / 10);
+    painter->restore();
+}
+
 // A chevron pointing right (collapsed) or down (expanded), centered in `box`.
 void drawChevron(QPainter* painter, const QRectF& box, bool expanded, const QColor& color)
 {
@@ -242,6 +262,11 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         painter->drawRect(QRectF(box).adjusted(0.5, 0.5, -0.5, -0.5));
         content.setLeft(content.left() + fitted.width() + kGap);
         right = qMax(right, content.left());
+    }
+
+    if (index.data(HistoryModel::SecretRole).toBool()) {
+        drawPadlock(painter, QRectF(content.left(), content.top(), fm.height(), fm.height()), text);
+        content.setLeft(content.left() + fm.height() + kGap / 2);
     }
 
     const QString title = index.data(HistoryModel::TitleRole).toString();

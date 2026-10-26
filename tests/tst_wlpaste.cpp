@@ -122,9 +122,24 @@ private slots:
         WlPasteBackend backend(m_program);
         QSignalSpy captured(&backend, &WlPasteBackend::captured);
         backend.start();
-        QTest::qWait(300);
-        QCOMPARE(captured.size(), 0);
+        // Only the markers are reported (so the daemon can say why nothing was kept).
+        QTRY_COMPARE(captured.size(), 1);
+        QVERIFY(captured.at(0).at(0).toString().isEmpty());
+        QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("x-kde-passwordManagerHint")));
+        QTest::qWait(200);
         QVERIFY(!QFile::exists(m_dir.filePath(QStringLiteral("reads"))));
+    }
+
+    void readsSecretsWhenPasswordsAreKept()
+    {
+        clipboard("hunter2", "text/plain\nx-kde-passwordManagerHint\n");
+        WlPasteBackend backend(m_program);
+        backend.setReadMarkedText(true);
+        QSignalSpy captured(&backend, &WlPasteBackend::captured);
+        backend.start();
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(lastText(captured), QStringLiteral("hunter2"));
+        QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("x-kde-passwordManagerHint")));
     }
 
     void skipsNonText()

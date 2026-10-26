@@ -6,10 +6,12 @@
 #include "DesktopIntegration.h"
 #include "Entry.h"
 #include "KeyStore.h"
+#include "PasswordKeeper.h"
 #include "SessionEnv.h"
 
 #include <QObject>
 #include <QThreadPool>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <array>
@@ -39,6 +41,7 @@ struct DaemonOptions {
     QString wlPasteProgram = QStringLiteral("wl-paste");
     QString gsettingsProgram = QStringLiteral("gsettings"); // GNOME shortcut updates
     std::shared_ptr<KeyStore> keyStore; // holds the history key; null: encryption unavailable
+    std::shared_ptr<KeyStore> matchKeyStore; // password copies' match key; null: no keyring
     // Pastes with synthetic keys where there is no desktop integration (tests replace it, so
     // they never type real keys); returns false where that isn't possible.
     std::function<bool(PasteKeys)> syntheticPaste;
@@ -77,6 +80,7 @@ public:
     db::Repository* repository() const { return m_repo.get(); }
     ControlChannel* control() const { return m_control; }
     ui::PopupWindow* popup() const { return m_popup.get(); } // null until start() succeeded
+    PasswordKeeper* passwords() const { return m_passwords.get(); } // null until start() succeeded
 
 signals:
     void configReloaded();
@@ -93,6 +97,10 @@ private:
     void finishConversion(bool encrypted, const QString& error);
     void revertEncryptionSetting(); // after a failed runtime switch: config follows the file
     void applyDesktopShortcut();
+    // Password copies follow the settings and the vault: kept or not, which group, unlock time.
+    void applyPasswordSettings();
+    void setUpWindowsHello(); // availability, and the popup's Hello unlock
+    void setWindowsHello(bool on, std::function<void(QString error)> done);
     QString cliCommand() const;
     void onEntryActivated(const Entry& entry);
     void onPopupVisibilityChanged(bool visible);
@@ -103,6 +111,7 @@ private:
     Config m_config;
     std::unique_ptr<db::Db> m_db;
     std::unique_ptr<db::Repository> m_repo;
+    std::unique_ptr<PasswordKeeper> m_passwords;
     std::unique_ptr<CapturePipeline> m_pipeline;
     capture::Selection m_capture;
     std::unique_ptr<ClipboardWriter> m_writer;
@@ -117,8 +126,13 @@ private:
     QString m_encryptionError;
     QString m_startupWarning; // shown once, the first time the popup opens
     bool m_removeKeyAfterStart = false;
+    bool m_passwordNoticeShown = false; // "set a master password", once per session
+    QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
+    QThreadPool m_helloPool; // one thread: Windows Hello calls (blocking WinRT, never on the GUI thread)
+    bool m_helloAvailable = false;
+    QString m_helloReason;
     quint64 m_shortcutRequest = 0; // results of older requests don't overwrite the status
 };
 

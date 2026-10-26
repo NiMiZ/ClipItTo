@@ -1,4 +1,6 @@
 #include "Config.h"
+#include "FakeKeyStore.h"
+#include "PasswordKeeper.h"
 #include "SettingsDialog.h"
 #include "TestDb.h"
 #include "Theme.h"
@@ -10,6 +12,7 @@
 #include <QDialogButtonBox>
 #include <QKeySequenceEdit>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTest>
@@ -304,6 +307,98 @@ private slots:
         d.renameSelectedGroup();
         QVERIFY(reported.contains(QLatin1String("already exists")));
         QVERIFY(!d.groupsChanged());
+    }
+
+    void passwordsTabSetsChangesAndRemovesTheMasterPassword()
+    {
+        TestDb t;
+        auto keys = std::make_shared<FakeKeyStore>();
+        clipitto::PasswordKeeper keeper(*t.repo, keys);
+        keeper.setKdfCost({64, 1});
+        clipitto::ui::PasswordSupport support;
+        support.keeper = &keeper;
+        support.helloReason = QStringLiteral("not here");
+        SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+        QStringList messages;
+        d.setNotify([&](QWidget*, const QString& m) { messages << m; });
+        d.setInform([&](QWidget*, const QString& m) { messages << m; });
+        std::optional<clipitto::ui::MasterPasswordAnswer> answer;
+        bool askedForCurrent = false;
+        d.setMasterPasswordPrompt([&](QWidget*, bool change) {
+            askedForCurrent = change;
+            return answer;
+        });
+
+        QCOMPARE(d.tabs()->count(), 3);
+        QCOMPARE(d.setMasterButton()->text(), QStringLiteral("Set…"));
+        QVERIFY(!d.removeMasterButton()->isEnabled());
+        QVERIFY(!d.keepPasswordsBox()->isEnabled()); // nothing to keep them with yet
+        QVERIFY(!d.helloBox()->isEnabled()); // not on this platform
+        QCOMPARE(d.keywordEdit()->text(), QStringLiteral("p[]"));
+
+        answer = std::nullopt;
+        d.setMasterButton()->click(); // cancelled
+        QVERIFY(!keeper.isSetUp());
+
+        answer = clipitto::ui::MasterPasswordAnswer{QString(), QStringLiteral("first master")};
+        d.setMasterButton()->click();
+        QVERIFY(!askedForCurrent);
+        QTRY_VERIFY(keeper.isSetUp());
+        QTRY_COMPARE(d.setMasterButton()->text(), QStringLiteral("Change…"));
+        QVERIFY(d.removeMasterButton()->isEnabled());
+        QVERIFY(d.keepPasswordsBox()->isEnabled());
+        QCOMPARE(messages.size(), 1);
+
+        answer = clipitto::ui::MasterPasswordAnswer{QStringLiteral("not it"), QStringLiteral("second master")};
+        d.setMasterButton()->click();
+        QVERIFY(askedForCurrent);
+        QTRY_COMPARE(messages.size(), 2);
+        QVERIFY(messages.last().contains(QLatin1String("not right")));
+        answer = clipitto::ui::MasterPasswordAnswer{QStringLiteral("first master"), QStringLiteral("second master")};
+        d.setMasterButton()->click();
+        QTRY_COMPARE(messages.size(), 3);
+        bool unlocked = false;
+        keeper.unlock("second master", [&unlocked](bool ok) { unlocked = ok; });
+        QTRY_VERIFY(unlocked);
+
+        bool confirm = false;
+        d.setConfirmPrompt([&](QWidget*, const QString&) { return confirm; });
+        d.removeMasterButton()->click();
+        QVERIFY(keeper.isSetUp());
+        confirm = true;
+        d.removeMasterButton()->click();
+        QVERIFY(!keeper.isSetUp());
+        QCOMPARE(d.setMasterButton()->text(), QStringLiteral("Set…"));
+    }
+
+    void passwordSettingsAreReturned()
+    {
+        TestDb t;
+        clipitto::PasswordKeeper keeper(*t.repo, std::make_shared<FakeKeyStore>());
+        keeper.setKdfCost({64, 1});
+        bool set = false;
+        keeper.setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        clipitto::ui::PasswordSupport support;
+        support.keeper = &keeper;
+        SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+        QVERIFY(d.keepPasswordsBox()->isChecked());
+        QVERIFY(!d.passwordsInGroupBox()->isChecked()); // off by default
+        d.keepPasswordsBox()->setChecked(false);
+        d.passwordsInGroupBox()->setChecked(true);
+        d.unlockMinutesBox()->setValue(30);
+        QCOMPARE(d.clearSecondsBox()->value(), 30);
+        d.clearSecondsBox()->setValue(0);
+        d.keywordEdit()->setText(QStringLiteral("pw:"));
+        Config c = d.config();
+        QVERIFY(!c.keepPasswords);
+        QVERIFY(c.passwordsInGroup);
+        QCOMPARE(c.passwordUnlockMinutes, 30);
+        QCOMPARE(c.passwordClearSeconds, 0);
+        QCOMPARE(c.passwordSearchKeyword, QStringLiteral("pw:"));
+        QVERIFY(!c.windowsHello);
+        d.keywordEdit()->setText(QString()); // not acceptable: the keyword stays
+        QCOMPARE(d.config().passwordSearchKeyword, QStringLiteral("p[]"));
     }
 };
 
