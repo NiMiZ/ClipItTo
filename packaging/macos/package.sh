@@ -28,13 +28,21 @@ cmake --install "$build" --prefix "$stage"
 command -v macdeployqt >/dev/null || { echo "package.sh: macdeployqt not found (Qt's bin folder on PATH)" >&2; exit 1; }
 macdeployqt "$app" -executable="$app/Contents/MacOS/clipitto"
 
+# ClipItTo makes no network connections (QtNetwork is only for its local control socket):
+# the TLS and reachability plugins macdeployqt adds for it have no use here.
+for plugins in tls networkinformation; do
+    [ -d "$app/Contents/PlugIns/$plugins" ] && rm -r "$app/Contents/PlugIns/$plugins"
+done
+
 codesign --force --deep --sign - "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
 # Nothing may point at the build machine: every library comes from inside the bundle or the system.
 bad=0
 for binary in "$app/Contents/MacOS/clipitto-daemon" "$app/Contents/MacOS/clipitto"; do
-    if otool -L "$binary" | tail -n +2 | awk '{print $1}' | grep -v -e '^@' -e '^/usr/lib/' -e '^/System/'; then
+    # Library lines are indented; a universal binary also gets one unindented header per
+    # architecture ("path (architecture arm64):"), which is not a library.
+    if otool -L "$binary" | grep '^[[:space:]]' | awk '{print $1}' | grep -v -e '^@' -e '^/usr/lib/' -e '^/System/'; then
         echo "package.sh: $binary links outside the bundle (listed above)" >&2
         bad=1
     fi
