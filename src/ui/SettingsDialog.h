@@ -12,6 +12,7 @@ class QComboBox;
 class QDialogButtonBox;
 class QKeySequenceEdit;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QSpinBox;
 class QTabWidget;
@@ -19,6 +20,7 @@ class QTreeWidget;
 class QToolButton;
 
 namespace clipitto {
+class PasswordKeeper;
 namespace db {
 class Repository;
 }
@@ -40,6 +42,17 @@ struct EncryptionSupport {
     QString problem; // last failure, if any
 };
 
+// Password copies: the master password is set, changed and removed right away (like
+// groups); Windows Hello is turned on or off right away too.
+struct PasswordSupport {
+    PasswordKeeper* keeper = nullptr; // null: no password copies here
+    bool helloAvailable = false; // Windows with Windows Hello set up
+    QString helloReason; // why not, when unavailable
+    // Turns Windows Hello on (passwords are unlocked by then) or off; `done` gets an error
+    // text, empty when it worked.
+    std::function<void(bool on, std::function<void(QString error)> done)> setHello;
+};
+
 // General settings (theme, list size, preview lines, popup position, shortcut, encryption)
 // are returned by config() when the dialog is accepted; group changes are applied to the
 // repository right away (the Groups tab says so and only offers Close).
@@ -50,7 +63,7 @@ public:
     using Notify = std::function<void(QWidget* parent, const QString& message)>;
 
     SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
-                   EncryptionSupport encryption = {}, QWidget* parent = nullptr);
+                   EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {});
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -58,6 +71,13 @@ public:
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
+    void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
+    void setMasterPasswordPrompt(MasterPasswordPrompt prompt) { m_masterPrompt = std::move(prompt); }
+
+    // Master password actions (the buttons on the Passwords tab).
+    void setMasterPassword();
+    void changeMasterPassword();
+    void removeMasterPassword();
 
     // Group actions (the buttons on the Groups tab).
     void newGroup();
@@ -88,11 +108,21 @@ public:
     QLabel* shortcutStatus() const { return m_shortcutStatus; }
     QLabel* versionLabel() const { return m_version; }
     QTreeWidget* groupTree() const { return m_groups; }
+    QCheckBox* keepPasswordsBox() const { return m_keepPasswords; }
+    QCheckBox* passwordsInGroupBox() const { return m_passwordsInGroup; }
+    QSpinBox* unlockMinutesBox() const { return m_unlockMinutes; }
+    QCheckBox* helloBox() const { return m_hello; }
+    QLineEdit* keywordEdit() const { return m_keyword; }
+    QLabel* masterStatus() const { return m_masterStatus; }
+    QPushButton* setMasterButton() const { return m_setMaster; }
+    QPushButton* removeMasterButton() const { return m_removeMaster; }
 
 private:
     void onShortcutEdited();
     void reloadGroups(const QString& select = {});
     void createGroup(const QString& parentPath);
+    void updatePasswordPage(); // master password state, buttons
+    void onHelloToggled(bool on);
 
     Config m_config;
     db::Repository& m_repo;
@@ -124,10 +154,22 @@ private:
     QPushButton* m_deleteButton;
     QPushButton* m_upButton;
     QPushButton* m_downButton;
+    PasswordSupport m_passwordSupport;
+    QCheckBox* m_keepPasswords;
+    QCheckBox* m_passwordsInGroup;
+    QSpinBox* m_unlockMinutes;
+    QCheckBox* m_hello;
+    QLineEdit* m_keyword;
+    QLabel* m_masterStatus;
+    QPushButton* m_setMaster; // "Set…" or "Change…"
+    QPushButton* m_removeMaster;
+    bool m_busy = false; // a master password is being derived
 
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
     Notify m_notify;
+    PasswordPrompt m_passwordPrompt;
+    MasterPasswordPrompt m_masterPrompt;
 };
 
 } // namespace clipitto::ui

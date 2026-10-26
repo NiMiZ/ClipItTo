@@ -39,6 +39,7 @@ signals:
     // An encoded picture (`mimeType`, e.g. image/png) from a capture helper.
     void ingestImageRequested(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void reloadRequested();
+    void lockPasswordsRequested(); // clipitto --lock
     void quitRequested();
 
     // Emitted by the daemon when the popup is shown or hidden; implementations forward it to clients.

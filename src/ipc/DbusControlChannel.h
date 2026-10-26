@@ -28,6 +28,7 @@ public slots: // D-Bus methods
     // other session client should be able to slip one into the history.
     void IngestImage(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void ReloadConfig();
+    void LockPasswords();
     void Quit();
     QVariantMap Status();
     bool WantsPasswords();

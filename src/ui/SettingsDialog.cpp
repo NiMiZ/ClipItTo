@@ -2,6 +2,7 @@
 
 #include "GroupPath.h"
 #include "Hotkey.h"
+#include "PasswordKeeper.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -15,7 +16,10 @@
 #include <QHeaderView>
 #include <QKeySequenceEdit>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
+#include <QRegularExpressionValidator>
+#include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
@@ -80,7 +84,7 @@ void setNote(QLabel* label, const QString& text)
 } // namespace
 
 SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
-                               EncryptionSupport encryption, QWidget* parent)
+                               EncryptionSupport encryption, QWidget* parent, PasswordSupport passwords)
     : QDialog(parent)
     , m_config(config)
     , m_repo(repo)
@@ -110,9 +114,20 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_deleteButton(new QPushButton(tr("Delete"), this))
     , m_upButton(new QPushButton(tr("Move up"), this))
     , m_downButton(new QPushButton(tr("Move down"), this))
+    , m_passwordSupport(std::move(passwords))
+    , m_keepPasswords(new QCheckBox(tr("Keep copies marked by password managers, encrypted"), this))
+    , m_passwordsInGroup(new QCheckBox(tr("Put new password copies in the \"Passwords\" group"), this))
+    , m_unlockMinutes(new QSpinBox(this))
+    , m_hello(new QCheckBox(tr("Unlock with Windows Hello too"), this))
+    , m_keyword(new QLineEdit(this))
+    , m_masterStatus(new QLabel(this))
+    , m_setMaster(new QPushButton(this))
+    , m_removeMaster(new QPushButton(tr("Remove…"), this))
     , m_textPrompt(defaultTextPrompt())
     , m_confirm(defaultConfirmPrompt())
     , m_notify([](QWidget* p, const QString& message) { QMessageBox::warning(p, QStringLiteral("ClipItTo"), message); })
+    , m_passwordPrompt(defaultPasswordPrompt())
+    , m_masterPrompt(defaultMasterPasswordPrompt())
 {
     setWindowTitle(tr("ClipItTo Settings"));
     setMinimumWidth(480); // the height follows the contents (see the end)
@@ -290,9 +305,70 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     });
     reloadGroups();
 
+    // --- Passwords ---------------------------------------------------------------------
+    auto* passwordsPage = new QWidget(this);
+    auto* passwordsForm = new QFormLayout(passwordsPage);
+    auto* masterRow = new QHBoxLayout;
+    masterRow->addWidget(m_masterStatus, 1);
+    masterRow->addWidget(m_setMaster);
+    masterRow->addWidget(m_removeMaster);
+    for (QPushButton* b : {m_setMaster, m_removeMaster}) {
+        b->setAutoDefault(false);
+    }
+    auto* masterInfo = makeInfoButton(this);
+    setInfo(masterInfo, tr("Copies that password managers (KeePassXC, Bitwarden, KeePass, 1Password, ...) mark as "
+                           "secret are kept encrypted once a master password is set, and shown as ●●●●. "
+                           "Showing or pasting one asks for the master password. The master password "
+                           "is never stored: if you forget it, the password copies can't be recovered "
+                           "(remove it to start over). It protects them in the history file and from "
+                           "others using your computer while they are locked; programs you run can still "
+                           "read the clipboard when a password is copied.")
+                            .toHtmlEscaped());
+    masterRow->addWidget(masterInfo);
+    passwordsForm->addRow(tr("Master password:"), masterRow);
+    m_keepPasswords->setChecked(config.keepPasswords);
+    passwordsForm->addRow(tr("Password copies:"), m_keepPasswords);
+    m_passwordsInGroup->setChecked(config.passwordsInGroup);
+    passwordsForm->addRow(QString(), m_passwordsInGroup);
+    m_unlockMinutes->setRange(1, 240);
+    m_unlockMinutes->setSuffix(tr(" min"));
+    m_unlockMinutes->setValue(config.passwordUnlockMinutes);
+    passwordsForm->addRow(tr("An unlock lasts:"), m_unlockMinutes);
+    auto* helloRow = new QHBoxLayout;
+    helloRow->addWidget(m_hello);
+    auto* helloInfo = makeInfoButton(this);
+    helloRow->addWidget(helloInfo);
+    helloRow->addStretch(1);
+    passwordsForm->addRow(QString(), helloRow);
+    QString helloText = tr("Your face, fingerprint or Windows Hello PIN unlocks the password copies; the "
+                           "master password keeps working too. Turning it on asks for the master password once.")
+                            .toHtmlEscaped();
+    if (!m_passwordSupport.helloAvailable) {
+        helloText = tr("<b>Not available:</b> %1").arg(m_passwordSupport.helloReason.toHtmlEscaped())
+            + QStringLiteral("<br><br>") + helloText;
+    }
+    setInfo(helloInfo, helloText);
+    m_keyword->setText(config.passwordSearchKeyword);
+    m_keyword->setMaxLength(16);
+    m_keyword->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\S{1,16}")), m_keyword));
+    m_keyword->setToolTip(tr("Type it in the search box with a space after it to search inside your password "
+                             "copies; what you type next is shown as asterisks."));
+    passwordsForm->addRow(tr("Password search keyword:"), m_keyword);
+    connect(m_setMaster, &QPushButton::clicked, this, [this] {
+        if (m_passwordSupport.keeper && m_passwordSupport.keeper->isSetUp()) {
+            changeMasterPassword();
+        } else {
+            setMasterPassword();
+        }
+    });
+    connect(m_removeMaster, &QPushButton::clicked, this, &SettingsDialog::removeMasterPassword);
+    connect(m_hello, &QCheckBox::toggled, this, &SettingsDialog::onHelloToggled);
+    updatePasswordPage();
+
     // --- Dialog ------------------------------------------------------------------------
     m_tabs->addTab(general, tr("General"));
     m_tabs->addTab(groupsPage, tr("Groups"));
+    m_tabs->addTab(passwordsPage, tr("Passwords"));
     // Group edits are already saved, so Cancel would promise an undo it can't give: the
     // Groups tab only offers Close (which also keeps any General changes, like OK).
     QPushButton* close = m_buttons->addButton(QDialogButtonBox::Close);
@@ -340,7 +416,171 @@ Config SettingsDialog::config() const
     c.encryptHistory = m_encrypt->isChecked();
     c.pasteOnEnter = m_paste->isChecked();
     c.latestAfterPaste = m_latest->isChecked();
+    c.keepPasswords = m_keepPasswords->isChecked();
+    c.passwordsInGroup = m_passwordsInGroup->isChecked();
+    c.passwordUnlockMinutes = m_unlockMinutes->value();
+    c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
+    if (m_keyword->hasAcceptableInput()) {
+        c.passwordSearchKeyword = m_keyword->text();
+    }
     return c;
+}
+
+void SettingsDialog::updatePasswordPage()
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    const bool setUp = keeper && keeper->isSetUp();
+    if (!keeper) {
+        m_masterStatus->setText(tr("Not available here."));
+    } else if (!setUp) {
+        m_masterStatus->setText(tr("Not set: password copies are not kept."));
+    } else {
+        qint64 count = 0;
+        try {
+            count = m_repo.countSecrets();
+        } catch (const db::DbError&) {
+        }
+        m_masterStatus->setText(tr("Set. %n password copies kept.", nullptr, int(count)));
+    }
+    m_setMaster->setText(setUp ? tr("Change…") : tr("Set…"));
+    m_setMaster->setEnabled(keeper && !m_busy);
+    m_removeMaster->setEnabled(setUp && !m_busy);
+    for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
+                       static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_keyword)}) {
+        w->setEnabled(setUp);
+    }
+    const QSignalBlocker block(m_hello);
+    m_hello->setChecked(setUp && keeper->helloEnabled());
+    m_hello->setEnabled(setUp && m_passwordSupport.helloAvailable && m_passwordSupport.setHello && !m_busy);
+}
+
+void SettingsDialog::setMasterPassword()
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || keeper->isSetUp() || m_busy) {
+        return;
+    }
+    std::optional<MasterPasswordAnswer> answer = m_masterPrompt(this, /*change=*/false);
+    if (!answer) {
+        return;
+    }
+    QByteArray chosen = answer->chosen.toUtf8();
+    PasswordVault::wipe(answer->chosen);
+    m_busy = true;
+    updatePasswordPage();
+    keeper->setMasterPassword(chosen, [this, self = QPointer<SettingsDialog>(this)](bool ok) {
+        if (!self) {
+            return;
+        }
+        m_busy = false;
+        updatePasswordPage();
+        m_notify(this, ok ? tr("Master password set. Copies marked by password managers are kept, encrypted, "
+                               "from now on.")
+                          : tr("Could not set the master password."));
+    });
+    PasswordVault::wipe(chosen);
+}
+
+void SettingsDialog::changeMasterPassword()
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || !keeper->isSetUp() || m_busy) {
+        return;
+    }
+    std::optional<MasterPasswordAnswer> answer = m_masterPrompt(this, /*change=*/true);
+    if (!answer) {
+        return;
+    }
+    QByteArray current = answer->current.toUtf8();
+    QByteArray chosen = answer->chosen.toUtf8();
+    PasswordVault::wipe(answer->current);
+    PasswordVault::wipe(answer->chosen);
+    m_busy = true;
+    updatePasswordPage();
+    keeper->changeMasterPassword(current, chosen, [this, self = QPointer<SettingsDialog>(this)](bool ok) {
+        if (!self) {
+            return;
+        }
+        m_busy = false;
+        updatePasswordPage();
+        m_notify(this, ok ? tr("Master password changed.") : tr("The current master password is not right."));
+    });
+    PasswordVault::wipe(current);
+    PasswordVault::wipe(chosen);
+}
+
+void SettingsDialog::removeMasterPassword()
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || !keeper->isSetUp() || m_busy) {
+        return;
+    }
+    qint64 count = 0;
+    try {
+        count = m_repo.countSecrets();
+    } catch (const db::DbError&) {
+    }
+    if (!m_confirm(this, tr("Remove the master password and delete all %n password copies? This can't be undone.",
+                            nullptr, int(count)))) {
+        return;
+    }
+    if (keeper->helloEnabled() && m_passwordSupport.setHello) {
+        m_passwordSupport.setHello(false, [](const QString&) {}); // its Windows Hello key goes too
+    }
+    keeper->reset();
+    updatePasswordPage();
+}
+
+void SettingsDialog::onHelloToggled(bool on)
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || !m_passwordSupport.setHello || m_busy) {
+        return;
+    }
+    const auto apply = [this, on, self = QPointer<SettingsDialog>(this)] {
+        if (!self) {
+            return;
+        }
+        m_busy = true;
+        updatePasswordPage();
+        m_passwordSupport.setHello(on, [this, self](const QString& error) {
+            if (!self) {
+                return;
+            }
+            m_busy = false;
+            updatePasswordPage();
+            if (!error.isEmpty()) {
+                m_notify(this, tr("Windows Hello: %1").arg(error));
+            }
+        });
+    };
+    if (!on || keeper->isUnlocked()) {
+        apply();
+        return;
+    }
+    // Turning it on wraps the unlocked key: unlock first.
+    std::optional<QString> password = m_passwordPrompt(this, tr("Master password:"));
+    if (!password) {
+        updatePasswordPage(); // unchecks it again
+        return;
+    }
+    QByteArray bytes = password->toUtf8();
+    PasswordVault::wipe(*password);
+    m_busy = true;
+    updatePasswordPage();
+    keeper->unlock(bytes, [this, apply, self = QPointer<SettingsDialog>(this)](bool ok) {
+        if (!self) {
+            return;
+        }
+        m_busy = false;
+        if (ok) {
+            apply();
+        } else {
+            updatePasswordPage();
+            m_notify(this, tr("Wrong master password."));
+        }
+    });
+    PasswordVault::wipe(bytes);
 }
 
 void SettingsDialog::onShortcutEdited()

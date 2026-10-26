@@ -98,6 +98,8 @@ Reply LocalControlChannel::dispatch(const Request& request)
         emit ingestRequested(firstArg, mimeTypes);
     } else if (m == QLatin1String("ReloadConfig")) {
         emit reloadRequested();
+    } else if (m == QLatin1String("LockPasswords")) {
+        emit lockPasswordsRequested();
     } else if (m == QLatin1String("Quit")) {
         // Reply first; quitting tears down this socket.
         QTimer::singleShot(0, this, &ControlChannel::quitRequested);

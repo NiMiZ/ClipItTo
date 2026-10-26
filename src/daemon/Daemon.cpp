@@ -139,6 +139,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
     m_control->setPasswordsWantedProvider([this] { return m_pipeline && m_pipeline->keepsPasswords(); });
     connect(m_passwords.get(), &PasswordKeeper::vaultChanged, this, &Daemon::applyPasswordSettings);
+    connect(m_control, &ControlChannel::lockPasswordsRequested, m_passwords.get(), &PasswordKeeper::lock);
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
     // A picture from a capture helper (the GNOME extension), decoded off the GUI thread.
     connect(m_control, &ControlChannel::ingestImageRequested, this,
@@ -556,7 +557,10 @@ void Daemon::openSettings()
     encryption.available = encryptionAvailable(&encryption.reason);
     encryption.active = m_encrypted;
     encryption.problem = m_encryptionError;
-    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get());
+    ui::PasswordSupport passwords;
+    passwords.keeper = m_passwords.get();
+    passwords.helloReason = tr("Windows Hello is only on Windows.");
+    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords);
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {

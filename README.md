@@ -167,6 +167,7 @@ configure with `-DCLIPITTO_ENCRYPTION=OFF` to use the system SQLite.
 
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs
+clipitto --lock                         # lock the password copies now
 clipitto --status                       # backend, item counts, extension state
 clipitto --reload                       # after editing ~/.config/clipitto/config.toml
 ```

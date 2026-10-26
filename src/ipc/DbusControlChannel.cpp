@@ -114,6 +114,11 @@ void DbusControlChannel::ReloadConfig()
     emit reloadRequested();
 }
 
+void DbusControlChannel::LockPasswords()
+{
+    emit lockPasswordsRequested();
+}
+
 void DbusControlChannel::Quit()
 {
     emit quitRequested();

@@ -38,6 +38,9 @@
 
     <method name="ReloadConfig"/>
 
+    <!-- Locks the password copies now (the CLI's lock option). -->
+    <method name="LockPasswords"/>
+
     <!-- Exits the daemon. Under systemd, prefer stopping the clipitto.service user unit. -->
     <method name="Quit"/>
 
