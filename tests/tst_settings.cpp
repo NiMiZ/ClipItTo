@@ -27,10 +27,12 @@ using clipitto::ui::ShortcutSupport;
 // The ⌘ key is Qt's "Ctrl" on a Mac but ClipItTo's "Cmd" in the config (see SettingsDialog).
 #ifdef Q_OS_MACOS
 #define CLIPITTO_CMD "Cmd"
+#define CLIPITTO_CMD_ALT "Alt+Cmd" // canonical order: Ctrl, Alt, Shift, then Cmd
 #define CLIPITTO_QT_CMD "Ctrl"
 #define CLIPITTO_QT_CTRL "Meta" // ⌃, which the config calls Ctrl
 #else
 #define CLIPITTO_CMD "Ctrl"
+#define CLIPITTO_CMD_ALT "Ctrl+Alt"
 #define CLIPITTO_QT_CMD "Ctrl"
 #define CLIPITTO_QT_CTRL "Ctrl"
 #endif
@@ -144,15 +146,15 @@ private slots:
 
         // Only the first combination counts.
         d.shortcutEdit()->setKeySequence(QKeySequence(QKeyCombination(Qt::CTRL | Qt::ALT, Qt::Key_X), QKeyCombination(Qt::Key_Y)));
-        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD "+Alt+X"));
+        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD_ALT "+X"));
         QCOMPARE(d.shortcutEdit()->keySequence().count(), 1);
 
         // A key without modifiers is refused; the previous shortcut stays.
         d.shortcutEdit()->setKeySequence(QKeySequence(Qt::Key_A));
-        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD "+Alt+X"));
+        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD_ALT "+X"));
         QVERIFY(d.shortcutStatus()->text().contains(QLatin1String("can't be used")));
 
-        // "Default" restores the platform's default (Ctrl+Alt+V; Cmd+Alt+V on a Mac).
+        // "Default" restores the platform's default (Ctrl+Alt+V; Alt+Cmd+V on a Mac).
         for (QPushButton* b : d.findChildren<QPushButton*>()) {
             if (b->text() == QLatin1String("Default")) {
                 b->click();

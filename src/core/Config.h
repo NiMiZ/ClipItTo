@@ -40,7 +40,7 @@ struct Config {
     int searchDebounceMs = 100;
     BackendChoice backend = BackendChoice::Auto;
 #ifdef Q_OS_MACOS
-    QString hotkey = QStringLiteral("Cmd+Alt+V"); // ⌘⌥V, registered by the daemon (Carbon)
+    QString hotkey = QStringLiteral("Alt+Cmd+V"); // ⌘⌥V in Apple's modifier order, registered by the daemon (Carbon)
 #else
     QString hotkey = QStringLiteral("Ctrl+Alt+V"); // Windows: registered by the daemon; GNOME: custom shortcut
 #endif

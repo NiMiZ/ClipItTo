@@ -513,8 +513,12 @@ private slots:
 
     void syntheticPasteNeedsADisplay()
     {
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN)
         QSKIP("SendInput needs no display connection");
+#elif defined(Q_OS_MACOS)
+        // The real call presses ⌘V into whatever app has focus when the Accessibility
+        // permission is granted (it was, on a CI runner): never from a test.
+        QSKIP("macOS pastes with real key events");
 #endif
         QVERIFY(!clipitto::pasteWithSyntheticKeys(PasteKeys::CtrlV)); // offscreen: no X display
     }

@@ -24,7 +24,8 @@ search_debounce_ms = 100
 backend = "auto"            # auto | gnome-ext | wl-paste | qt-clipboard
 hotkey = "Ctrl+Alt+V"       # shortcut that opens the popup, e.g. "Ctrl+`". Windows: ClipItTo
                             # registers it. GNOME: changing it in Settings updates the GNOME
-                            # custom shortcut. Other desktops: bind `clipitto --toggle` yourself.
+                            # custom shortcut. macOS: ClipItTo registers it; the default there is "Alt+Cmd+V" (⌘⌥V),
+                            # and Cmd is the ⌘ key. Other desktops: bind `clipitto --toggle` yourself.
 theme = "system"            # system | light | dark
 popup_position = "cursor"   # cursor | center | top-left | top-right | bottom-left |
                             # bottom-right | last (where it last closed, e.g. after dragging

@@ -75,7 +75,7 @@ std::optional<NativeHotkey> parseHotkey(const QString& text)
         }
         hotkey.modifiers |= flag;
     }
-    // Canonical order, independent of how it was written.
+    // Canonical order, independent of how it was written (on a Mac that is Apple's own: ⌃⌥⇧⌘).
     for (const auto& [flag, name] : {std::pair{win32::ModControl, "Ctrl"}, std::pair{win32::ModAlt, "Alt"},
                                      std::pair{win32::ModShift, "Shift"}, std::pair{win32::ModWin, kWinKeyName}}) {
         if (hotkey.modifiers & flag) {

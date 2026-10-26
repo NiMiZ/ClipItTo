@@ -13,7 +13,7 @@ public:
     explicit MacHotkey(QObject* parent = nullptr);
     ~MacHotkey() override;
 
-    // Replaces the current shortcut; spelled like the `hotkey` config key ("Cmd+Alt+V").
+    // Replaces the current shortcut; spelled like the `hotkey` config key ("Alt+Cmd+V").
     // Fails if it does not parse, names a key a Mac keyboard doesn't have, or another
     // application already owns it.
     bool setShortcut(const QString& shortcut, QString* error = nullptr);

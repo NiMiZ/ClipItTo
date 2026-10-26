@@ -187,7 +187,7 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1String("; "))));
         Config expected;
 #ifdef Q_OS_MACOS
-        expected.hotkey = c.hotkey; // the example shows Ctrl+Alt+V; a Mac's own default is Cmd+Alt+V
+        expected.hotkey = c.hotkey; // the example shows Ctrl+Alt+V; a Mac's own default is Alt+Cmd+V
         QVERIFY(clipitto::parseHotkey(c.hotkey));
 #endif
         QVERIFY(c == expected);
