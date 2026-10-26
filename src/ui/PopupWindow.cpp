@@ -1013,10 +1013,11 @@ void PopupWindow::refreshSelecting(std::optional<Selection> selection, bool focu
 void PopupWindow::onResultsUpdated()
 {
     if (m_controller->isPasswordSearch()) {
-        m_view->setEmptyText(m_controller->passwordSearchNeedsUnlock()
-                                 ? tr("Locked: only a whole password matches. Press Enter to unlock "
-                                      "and search inside your passwords.")
-                                 : tr("No password copies match."));
+        const bool canMatch = m_passwords && m_passwords->canMatch();
+        m_view->setEmptyText(!m_controller->passwordSearchNeedsUnlock() ? tr("No password copies match.")
+                                 : canMatch ? tr("Locked: only a whole password matches. Press Enter to unlock "
+                                                 "and search inside your passwords.")
+                                            : tr("Locked. Press Enter to unlock and search your passwords."));
     } else {
         m_view->setEmptyText(m_controller->query().trimmed().isEmpty()
                                  ? tr("Nothing copied yet. Copied text will show up here.")

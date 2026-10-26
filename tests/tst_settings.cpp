@@ -321,6 +321,7 @@ private slots:
         SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
         QStringList messages;
         d.setNotify([&](QWidget*, const QString& m) { messages << m; });
+        d.setInform([&](QWidget*, const QString& m) { messages << m; });
         std::optional<clipitto::ui::MasterPasswordAnswer> answer;
         bool askedForCurrent = false;
         d.setMasterPasswordPrompt([&](QWidget*, bool change) {

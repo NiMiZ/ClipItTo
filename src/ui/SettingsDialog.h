@@ -71,6 +71,7 @@ public:
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
+    void setInform(Notify inform) { m_inform = std::move(inform); } // news that isn't a problem
     void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
     void setMasterPasswordPrompt(MasterPasswordPrompt prompt) { m_masterPrompt = std::move(prompt); }
 
@@ -168,6 +169,7 @@ private:
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
     Notify m_notify;
+    Notify m_inform;
     PasswordPrompt m_passwordPrompt;
     MasterPasswordPrompt m_masterPrompt;
 };

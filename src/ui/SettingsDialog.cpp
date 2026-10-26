@@ -126,6 +126,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_textPrompt(defaultTextPrompt())
     , m_confirm(defaultConfirmPrompt())
     , m_notify([](QWidget* p, const QString& message) { QMessageBox::warning(p, QStringLiteral("ClipItTo"), message); })
+    , m_inform([](QWidget* p, const QString& message) { QMessageBox::information(p, QStringLiteral("ClipItTo"), message); })
     , m_passwordPrompt(defaultPasswordPrompt())
     , m_masterPrompt(defaultMasterPasswordPrompt())
 {
@@ -474,9 +475,12 @@ void SettingsDialog::setMasterPassword()
         }
         m_busy = false;
         updatePasswordPage();
-        m_notify(this, ok ? tr("Master password set. Copies marked by password managers are kept, encrypted, "
-                               "from now on.")
-                          : tr("Could not set the master password."));
+        if (ok) {
+            m_inform(this, tr("Master password set. Copies marked by password managers are kept, encrypted, "
+                              "from now on."));
+        } else {
+            m_notify(this, tr("Could not set the master password."));
+        }
     });
     PasswordVault::wipe(chosen);
 }
@@ -503,7 +507,11 @@ void SettingsDialog::changeMasterPassword()
         }
         m_busy = false;
         updatePasswordPage();
-        m_notify(this, ok ? tr("Master password changed.") : tr("The current master password is not right."));
+        if (ok) {
+            m_inform(this, tr("Master password changed."));
+        } else {
+            m_notify(this, tr("The current master password is not right."));
+        }
     });
     PasswordVault::wipe(current);
     PasswordVault::wipe(chosen);
