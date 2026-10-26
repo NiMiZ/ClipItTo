@@ -3,15 +3,18 @@
 ClipItTo is licensed under the GNU General Public License v3.0 (see [LICENSE](LICENSE)).
 It uses the components below, under their own licenses, all compatible with the GPL-3.0.
 
-| Component | License | In the Ubuntu package | In the Windows build |
-|---|---|---|---|
-| SQLite | public domain | built in | built in |
-| SQLite3 Multiple Ciphers (with the parts listed below) | MIT | built in | built in |
-| toml++ | MIT | system package (not shipped) | built in |
-| Monocypher | CC0-1.0 or BSD-2-Clause | built in | built in |
-| Qt 6 | LGPL-3.0 | system packages (not shipped) | DLLs shipped, unmodified |
-| QtKeychain | BSD-3-Clause | system package (not shipped) | not used |
-| Microsoft Visual C++ runtime | Microsoft redistributable | not used | DLLs shipped |
+| Component | License | In the Ubuntu package | In the Windows build | In the macOS app |
+|---|---|---|---|---|
+| SQLite | public domain | built in | built in | built in |
+| SQLite3 Multiple Ciphers (with the parts listed below) | MIT | built in | built in | built in |
+| toml++ | MIT | system package (not shipped) | built in | built in |
+| Monocypher | CC0-1.0 or BSD-2-Clause | built in | built in | built in |
+| Qt 6 | LGPL-3.0 | system packages (not shipped) | DLLs shipped, unmodified | frameworks shipped, unmodified |
+| QtKeychain | BSD-3-Clause | system package (not shipped) | not used | not used (the macOS Keychain, through Apple's Security framework) |
+| Microsoft Visual C++ runtime | Microsoft redistributable | not used | DLLs shipped | not used |
+
+The AppImage and the snap carry the Ubuntu 24.04 libraries they use (Qt 6 under the LGPL-3.0,
+toml++, QtKeychain, and their dependencies), unmodified.
 
 ## SQLite
 

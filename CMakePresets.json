@@ -60,6 +60,15 @@
       }
     },
     {
+      "name": "macos-release",
+      "inherits": "macos",
+      "displayName": "macOS release (universal, 11.0+), for the app bundle",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
       "name": "windows",
       "inherits": "base",
       "displayName": "Windows (MSVC + vcpkg)",
@@ -97,6 +106,10 @@
     {
       "name": "macos",
       "configurePreset": "macos"
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release"
     },
     {
       "name": "windows",

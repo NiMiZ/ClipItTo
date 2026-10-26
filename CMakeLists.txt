@@ -79,6 +79,8 @@ if(CLIPITTO_DBUS)
     include(cmake/Packaging.cmake)
 elseif(WIN32)
     include(cmake/PackagingWindows.cmake)
+elseif(APPLE)
+    include(cmake/PackagingMac.cmake)
 endif()
 
 if(BUILD_TESTING)
