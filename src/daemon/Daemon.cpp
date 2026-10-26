@@ -10,6 +10,7 @@
 #include "WlPasteBackend.h"
 #include "ImageCodec.h"
 #include "SyntheticPaste.h"
+#include "WindowsHello.h"
 #include "Paths.h"
 #include "db/Migrator.h"
 #include "db/Repository.h"
@@ -65,6 +66,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     , m_integration(integration.release())
 {
     m_shortcutPool.setMaxThreadCount(1);
+    m_helloPool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
@@ -169,6 +171,7 @@ Daemon::StartResult Daemon::start(QString* error)
     ui::applyTheme(m_config.theme);
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
     m_popup->setPasswords(m_passwords.get());
+    setUpWindowsHello();
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
         if (!ok) {
@@ -559,7 +562,9 @@ void Daemon::openSettings()
     encryption.problem = m_encryptionError;
     ui::PasswordSupport passwords;
     passwords.keeper = m_passwords.get();
-    passwords.helloReason = tr("Windows Hello is only on Windows.");
+    passwords.helloAvailable = m_helloAvailable;
+    passwords.helloReason = m_helloReason;
+    passwords.setHello = [this](bool on, std::function<void(QString)> done) { setWindowsHello(on, std::move(done)); };
     ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords);
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
@@ -634,6 +639,78 @@ void Daemon::applyDesktopShortcut()
         }
         return error.isEmpty() ? QStringLiteral("gsettings failed") : error;
     }));
+}
+
+namespace {
+
+// Runs `work` on `pool` and hands its result to `then` on `context`'s thread (dropped if
+// `context` is gone by then).
+template <typename Result>
+void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, std::function<void(Result)> then)
+{
+    auto* watcher = new QFutureWatcher<Result>(context);
+    QObject::connect(watcher, &QFutureWatcherBase::finished, context, [watcher, then = std::move(then)] {
+        then(watcher->result());
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run(pool, std::move(work)));
+}
+
+} // namespace
+
+void Daemon::setUpWindowsHello()
+{
+    runOn<std::pair<bool, QString>>(
+        &m_helloPool, this,
+        [] {
+            QString why;
+            const bool ok = hello::available(&why);
+            return std::pair<bool, QString>(ok, why);
+        },
+        [this](std::pair<bool, QString> result) {
+            m_helloAvailable = result.first;
+            m_helloReason = result.second;
+        });
+    m_popup->setHelloUnlock([this](std::function<void(bool)> done) {
+        runOn<QByteArray>(
+            &m_helloPool, this, [] { return hello::unlockKey(/*create=*/false); },
+            [this, done = std::move(done)](QByteArray key) {
+                const bool ok = !key.isEmpty() && m_passwords && m_passwords->unlockWithHelloKey(key);
+                PasswordVault::wipe(key);
+                done(ok);
+            });
+    });
+}
+
+void Daemon::setWindowsHello(bool on, std::function<void(QString error)> done)
+{
+    if (!on) {
+        if (m_passwords) {
+            m_passwords->setHelloWrapped({});
+        }
+        runOn<bool>(&m_helloPool, this, [] { hello::removeKey(); return true; }, [done = std::move(done)](bool) {
+            done(QString());
+        });
+        return;
+    }
+    runOn<std::pair<QByteArray, QString>>(
+        &m_helloPool, this,
+        [] {
+            QString error;
+            QByteArray key = hello::unlockKey(/*create=*/true, &error);
+            return std::pair<QByteArray, QString>(key, error);
+        },
+        [this, done = std::move(done)](std::pair<QByteArray, QString> result) {
+            QByteArray key = std::move(result.first);
+            const QByteArray wrapped = !key.isEmpty() && m_passwords ? m_passwords->wrapForHello(key) : QByteArray();
+            PasswordVault::wipe(key);
+            if (wrapped.isEmpty()) {
+                done(result.second.isEmpty() ? tr("unlock the passwords first") : result.second);
+                return;
+            }
+            m_passwords->setHelloWrapped(wrapped);
+            done(QString());
+        });
 }
 
 void Daemon::applyPasswordSettings()

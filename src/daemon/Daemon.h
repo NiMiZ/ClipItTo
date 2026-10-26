@@ -98,6 +98,8 @@ private:
     void applyDesktopShortcut();
     // Password copies follow the settings and the vault: kept or not, which group, unlock time.
     void applyPasswordSettings();
+    void setUpWindowsHello(); // availability, and the popup's Hello unlock
+    void setWindowsHello(bool on, std::function<void(QString error)> done);
     QString cliCommand() const;
     void onEntryActivated(const Entry& entry);
     void onPopupVisibilityChanged(bool visible);
@@ -126,6 +128,9 @@ private:
     bool m_passwordNoticeShown = false; // "set a master password", once per session
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
+    QThreadPool m_helloPool; // one thread: Windows Hello calls (blocking WinRT, never on the GUI thread)
+    bool m_helloAvailable = false;
+    QString m_helloReason;
     quint64 m_shortcutRequest = 0; // results of older requests don't overwrite the status
 };
 
