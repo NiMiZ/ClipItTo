@@ -15,6 +15,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Ubuntu's mirror for the runners is sometimes very slow (tens of kB/s): keep the
+      # downloaded packages between runs, and retry failed downloads.
+      - name: Cache downloaded Ubuntu packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml', 'cmake/Packaging.cmake') }}
+          restore-keys: apt-${{ github.job }}-
+      - name: Point apt at the cache
+        run: |
+          mkdir -p ~/apt-cache/partial
+          printf 'Dir::Cache::Archives "%s";\nAcquire::Retries "3";\nAcquire::http::Timeout "30";\nAPT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-cache" | sudo tee /etc/apt/apt.conf.d/90clipitto-ci
 
       - name: Install dependencies
         run: |
@@ -36,11 +49,29 @@ jobs:
           cmake --build build/nodbus
           QT_QPA_PLATFORM=offscreen ctest --test-dir build/nodbus --output-on-failure
 
+      # apt wrote the cache as root; the cache action saves it as the runner user.
+      - name: Let the package cache be saved
+        if: always()
+        run: sudo chown -R "$USER" ~/apt-cache
+
   package:
     name: Debian package (Ubuntu 24.04)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Ubuntu's mirror for the runners is sometimes very slow (tens of kB/s): keep the
+      # downloaded packages between runs, and retry failed downloads.
+      - name: Cache downloaded Ubuntu packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml', 'cmake/Packaging.cmake') }}
+          restore-keys: apt-${{ github.job }}-
+      - name: Point apt at the cache
+        run: |
+          mkdir -p ~/apt-cache/partial
+          printf 'Dir::Cache::Archives "%s";\nAcquire::Retries "3";\nAcquire::http::Timeout "30";\nAPT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-cache" | sudo tee /etc/apt/apt.conf.d/90clipitto-ci
 
       - name: Install dependencies
         run: |
@@ -63,9 +94,9 @@ jobs:
       # What a user who downloads the .deb gets: install it with apt (which pulls the
       # runtime libraries from its Depends) and run the installed binaries.
       - name: Install the package and run it
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
-          timeout 300 sudo apt-get install -y ./build/deb/clipitto_*.deb ||
+          timeout 900 sudo apt-get install -y ./build/deb/clipitto_*.deb ||
             { echo "::error title=installed package::apt-get install failed or timed out"; exit 1; }
           clipitto --version
           export QT_QPA_PLATFORM=offscreen
@@ -90,6 +121,11 @@ jobs:
         with:
           name: clipitto-deb
           path: build/deb/clipitto_*.deb
+
+      # apt wrote the cache as root; the cache action saves it as the runner user.
+      - name: Let the package cache be saved
+        if: always()
+        run: sudo chown -R "$USER" ~/apt-cache
 
   windows:
     name: Windows (MSVC)
@@ -270,7 +306,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Ubuntu's mirror for the runners is sometimes very slow (tens of kB/s): keep the
+      # downloaded packages between runs, and retry failed downloads.
+      - name: Cache downloaded Ubuntu packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml', 'cmake/Packaging.cmake') }}
+          restore-keys: apt-${{ github.job }}-
+      - name: Point apt at the cache
+        run: |
+          mkdir -p ~/apt-cache/partial
+          printf 'Dir::Cache::Archives "%s";\nAcquire::Retries "3";\nAcquire::http::Timeout "30";\nAPT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-cache" | sudo tee /etc/apt/apt.conf.d/90clipitto-ci
       - name: Install with install.sh
+        timeout-minutes: 30
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/install.sh" -o install-release.sh
@@ -300,6 +350,11 @@ jobs:
             echo "::error title=installed app::$(cat status.txt daemon.log 2>/dev/null | tail -n 25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             exit 1
           fi
+
+      # apt wrote the cache as root; the cache action saves it as the runner user.
+      - name: Let the package cache be saved
+        if: always()
+        run: sudo chown -R "$USER" ~/apt-cache
 
   release-check-windows:
     name: Install the release (Windows)
