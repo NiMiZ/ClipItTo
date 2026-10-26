@@ -68,6 +68,10 @@ void LocalControlChannel::onReadyRead(QLocalSocket* socket)
         QString error;
         const auto request = decodeRequest(line, &error);
         socket->write(encodeReply(request ? dispatch(*request) : Reply{false, {}, error}));
+        // Out to the operating system now: Quit makes the daemon exit on the next event-loop
+        // turn, and a reply still in our buffer would be lost (a Unix socket, unlike a pipe,
+        // shows the client "remote closed" then).
+        socket->flush();
     }
     if (socket->bytesAvailable() > kMaxLineBytes) {
         socket->write(encodeReply({false, {}, QStringLiteral("request too large")}));

@@ -327,8 +327,9 @@ jobs:
           printf 'second ordinary copy' | pbcopy
           for i in $(seq 20); do [ "$(items)" = 2 ] && break; sleep 0.25; done
           [ "$(items)" = 2 ] || { echo "::error title=pasteboard::a later ordinary copy was not captured"; exit 1; }
-          cleanup
-          wait "$daemon" || true
+          "$bin/cli/clipitto" --quit # not silenced: its reply must arrive before the daemon exits
+          wait "$daemon"
+          trap - EXIT
 
       - name: Run headless (offscreen)
         timeout-minutes: 3

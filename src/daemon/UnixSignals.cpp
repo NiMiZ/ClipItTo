@@ -14,10 +14,13 @@ int UnixSignals::s_fds[2] = {-1, -1};
 UnixSignals::UnixSignals(std::initializer_list<int> signos, QObject* parent) : QObject(parent), m_signos(signos)
 {
     Q_ASSERT(s_fds[0] == -1);
-    if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, s_fds) != 0) {
+    // Not SOCK_CLOEXEC: macOS has no such flag. Close-on-exec is set right after instead.
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, s_fds) != 0) {
         qWarning("UnixSignals: socketpair failed; signals will use default handling");
         return;
     }
+    ::fcntl(s_fds[0], F_SETFD, FD_CLOEXEC);
+    ::fcntl(s_fds[1], F_SETFD, FD_CLOEXEC);
     ::fcntl(s_fds[0], F_SETFL, O_NONBLOCK);
     ::fcntl(s_fds[1], F_SETFL, O_NONBLOCK);
 
