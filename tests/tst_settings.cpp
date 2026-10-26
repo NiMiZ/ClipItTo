@@ -24,6 +24,17 @@ using clipitto::Theme;
 using clipitto::ui::SettingsDialog;
 using clipitto::ui::ShortcutSupport;
 
+// The ⌘ key is Qt's "Ctrl" on a Mac but ClipItTo's "Cmd" in the config (see SettingsDialog).
+#ifdef Q_OS_MACOS
+#define CLIPITTO_CMD "Cmd"
+#define CLIPITTO_QT_CMD "Ctrl"
+#define CLIPITTO_QT_CTRL "Meta" // ⌃, which the config calls Ctrl
+#else
+#define CLIPITTO_CMD "Ctrl"
+#define CLIPITTO_QT_CMD "Ctrl"
+#define CLIPITTO_QT_CTRL "Ctrl"
+#endif
+
 class TestSettings : public QObject {
     Q_OBJECT
 
@@ -83,7 +94,8 @@ private slots:
         QCOMPARE(d.themeBox()->currentData().toInt(), int(Theme::Dark));
         QCOMPARE(d.copiesBox()->value(), 30);
         QCOMPARE(d.linesBox()->value(), 2);
-        QCOMPARE(d.shortcutEdit()->keySequence().toString(QKeySequence::PortableText), QStringLiteral("Ctrl+`"));
+        QCOMPARE(d.shortcutEdit()->keySequence().toString(QKeySequence::PortableText),
+                 QStringLiteral(CLIPITTO_QT_CTRL "+`")); // c.hotkey is "Ctrl+`"
         QVERIFY(d.config() == c);
 
         d.themeBox()->setCurrentIndex(d.themeBox()->findData(int(Theme::Light)));
@@ -127,26 +139,26 @@ private slots:
         TestDb t;
         SettingsDialog d(Config{}, *t.repo, {});
         d.shortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::Key_QuoteLeft));
-        QCOMPARE(d.config().hotkey, QStringLiteral("Ctrl+`"));
-        QVERIFY(d.shortcutStatus()->text().contains(QLatin1String("Ctrl+`")));
+        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD "+`"));
+        QVERIFY(d.shortcutStatus()->text().contains(QStringLiteral(CLIPITTO_CMD "+`")));
 
         // Only the first combination counts.
         d.shortcutEdit()->setKeySequence(QKeySequence(QKeyCombination(Qt::CTRL | Qt::ALT, Qt::Key_X), QKeyCombination(Qt::Key_Y)));
-        QCOMPARE(d.config().hotkey, QStringLiteral("Ctrl+Alt+X"));
+        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD "+Alt+X"));
         QCOMPARE(d.shortcutEdit()->keySequence().count(), 1);
 
         // A key without modifiers is refused; the previous shortcut stays.
         d.shortcutEdit()->setKeySequence(QKeySequence(Qt::Key_A));
-        QCOMPARE(d.config().hotkey, QStringLiteral("Ctrl+Alt+X"));
+        QCOMPARE(d.config().hotkey, QStringLiteral(CLIPITTO_CMD "+Alt+X"));
         QVERIFY(d.shortcutStatus()->text().contains(QLatin1String("can't be used")));
 
-        // "Default" restores Ctrl+Alt+V.
+        // "Default" restores the platform's default (Ctrl+Alt+V; Cmd+Alt+V on a Mac).
         for (QPushButton* b : d.findChildren<QPushButton*>()) {
             if (b->text() == QLatin1String("Default")) {
                 b->click();
             }
         }
-        QCOMPARE(d.config().hotkey, QStringLiteral("Ctrl+Alt+V"));
+        QCOMPARE(d.config().hotkey, Config{}.hotkey);
     }
 
     void shortcutCanBeReadOnly()
@@ -369,6 +381,50 @@ private slots:
         d.removeMasterButton()->click();
         QVERIFY(!keeper.isSetUp());
         QCOMPARE(d.setMasterButton()->text(), QStringLiteral("Set…"));
+    }
+
+    void startupCheckboxAppliesAtOnceAndRevertsOnFailure()
+    {
+        TestDb t;
+        {
+            SettingsDialog d(Config{}, *t.repo, {}); // not offered here (not macOS): no checkbox
+            QVERIFY(!d.startupBox()->isVisibleTo(&d) || d.startupBox()->isHidden());
+        }
+        bool on = false;
+        bool fail = false;
+        clipitto::ui::StartupSupport support;
+        support.available = true;
+        support.enabled = false;
+        support.set = [&](bool want, QString* error) {
+            if (fail) {
+                *error = QStringLiteral("disk full");
+                return false;
+            }
+            on = want;
+            return true;
+        };
+        SettingsDialog d(Config{}, *t.repo, {}, {}, nullptr, {}, support);
+        QStringList messages;
+        d.setNotify([&](QWidget*, const QString& m) { messages << m; });
+        QVERIFY(!d.startupBox()->isChecked());
+
+        d.startupBox()->setChecked(true);
+        QVERIFY(on); // applied at once, not on OK
+        QVERIFY(d.startupBox()->isChecked());
+        d.startupBox()->setChecked(false);
+        QVERIFY(!on);
+
+        fail = true;
+        d.startupBox()->setChecked(true);
+        QVERIFY(!d.startupBox()->isChecked()); // shows what is true again
+        QCOMPARE(messages.size(), 1);
+        QVERIFY(messages.at(0).contains(QLatin1String("disk full")));
+        QVERIFY(d.config() == Config{}); // nothing of it is in the config
+
+        // Already on when the dialog opens.
+        support.enabled = true;
+        SettingsDialog again(Config{}, *t.repo, {}, {}, nullptr, {}, support);
+        QVERIFY(again.startupBox()->isChecked());
     }
 
     void passwordSettingsAreReturned()

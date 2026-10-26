@@ -5,8 +5,9 @@
 namespace clipitto {
 
 // Types the paste shortcut into the focused window with synthetic key events:
-// SendInput on Windows, the XTest extension on X11. Returns false where neither is
-// available (Wayland, offscreen, builds without XTest).
+// SendInput on Windows, the XTest extension on X11, ⌘V through Quartz events on macOS (which
+// needs the Accessibility permission). Returns false where none is available (Wayland,
+// offscreen, builds without XTest, no permission).
 bool pasteWithSyntheticKeys(PasteKeys keys);
 
 // Remembers the window that has focus now, so that pasteWithSyntheticKeys() first brings it

@@ -2,10 +2,14 @@
 add_library(clipitto_daemon_lib STATIC
     Daemon.cpp Daemon.h
     GnomeShortcut.cpp GnomeShortcut.h
+    LoginItem.cpp LoginItem.h
 )
 target_include_directories(clipitto_daemon_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_output clipitto_ui Qt6::Concurrent)
 clipitto_set_warnings(clipitto_daemon_lib)
+if(APPLE)
+    target_compile_options(clipitto_daemon_lib PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+endif()
 
 # WIN32: a GUI-subsystem program on Windows (no console window); ignored elsewhere.
 qt_add_executable(clipitto-daemon WIN32 main.cpp)
@@ -24,6 +28,10 @@ target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore.h)
 if(WIN32)
     target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_win.cpp)
     target_link_libraries(clipitto_daemon_lib PRIVATE Advapi32) # Cred*W
+elseif(APPLE)
+    # The macOS Keychain (Security.framework): no extra library.
+    target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_mac.mm)
+    target_link_libraries(clipitto_daemon_lib PRIVATE "-framework Security" "-framework Foundation")
 elseif(Qt6Keychain_FOUND)
     target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_linux.cpp KeychainKeyStore.cpp KeychainKeyStore.h)
     target_link_libraries(clipitto_daemon_lib PRIVATE Qt6Keychain::Qt6Keychain)
@@ -43,5 +51,9 @@ if(UNIX)
 endif()
 if(WIN32)
     target_sources(clipitto-daemon PRIVATE WindowsHotkey.cpp WindowsHotkey.h)
+elseif(APPLE)
+    target_sources(clipitto-daemon PRIVATE MacHotkey.mm MacHotkey.h)
+    target_link_libraries(clipitto-daemon PRIVATE "-framework Carbon")
 endif()
+target_sources(clipitto-daemon PRIVATE GlobalHotkey.h)
 clipitto_set_warnings(clipitto-daemon)

@@ -13,9 +13,13 @@ if(CLIPITTO_X11_PASTE)
     target_link_libraries(clipitto_output PRIVATE X11::X11 X11::Xtst)
 endif()
 
-# macOS: a pasted password carries nspasteboard.org's ConcealedType, which Qt can't write.
+# macOS: a pasted password carries nspasteboard.org's ConcealedType, which Qt can't write;
+# auto-paste presses ⌘V with Quartz events.
+if(NOT APPLE)
+    target_sources(clipitto_output PRIVATE MacPaste_none.cpp MacPaste.h) # stubs: the daemon's status asks
+endif()
 if(APPLE)
-    target_sources(clipitto_output PRIVATE MacPasteboard.mm MacPasteboard.h)
-    target_link_libraries(clipitto_output PRIVATE "-framework AppKit")
+    target_sources(clipitto_output PRIVATE MacPasteboard.mm MacPasteboard.h MacPaste.mm MacPaste.h)
+    target_link_libraries(clipitto_output PRIVATE "-framework AppKit" "-framework ApplicationServices")
     target_compile_options(clipitto_output PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
 endif()

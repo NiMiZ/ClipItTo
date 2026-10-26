@@ -669,6 +669,33 @@ private slots:
         QVERIFY(shortcut.contains(QLatin1String("clipitto --toggle")));
     }
 
+    void macSessionsReportTheirPermissionAndLoginItem()
+    {
+        QTemporaryDir agents;
+        DaemonOptions o = options();
+        o.session.display = SessionEnv::Display::MacOS;
+        o.loginItemPath = agents.filePath(QStringLiteral("agent.plist"));
+        o.gsettingsProgram = QStringLiteral("/nonexistent/gsettings");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QCOMPARE(d.status().value(QStringLiteral("session")).toString(), QStringLiteral("macos"));
+        // The hotkey is registered by main.cpp, not announced as "bind it yourself".
+        QVERIFY(!d.status().contains(QStringLiteral("shortcut")));
+        // Auto-paste needs the Accessibility permission: say whether it is there.
+        QVERIFY(d.status().contains(QStringLiteral("accessibility")));
+        QCOMPARE(d.status().value(QStringLiteral("login_item")).toString(), QStringLiteral("off"));
+        QVERIFY(QFile(o.loginItemPath).open(QIODevice::WriteOnly)); // what Settings' checkbox writes
+        QCOMPARE(d.status().value(QStringLiteral("login_item")).toString(), QStringLiteral("on"));
+    }
+
+    void otherSessionsDoNotMentionMacThings()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(!d.status().contains(QStringLiteral("accessibility")));
+        QVERIFY(!d.status().contains(QStringLiteral("login_item")));
+    }
+
     void windowsSessionsLeaveTheShortcutToTheHotkey()
     {
         // main.cpp registers the hotkey and reports "hotkey"; the daemon adds nothing.

@@ -1,6 +1,7 @@
 #include "AppIcon.h"
 #include "Theme.h"
 #include "Daemon.h"
+#include "MacApp.h"
 #include "Paths.h"
 #include "PopupWindow.h"
 #include "SystemKeyStore.h"
@@ -24,12 +25,11 @@
 #include <sys/stat.h>
 #endif
 
-#ifdef Q_OS_WIN
-#include "WindowsHotkey.h"
-#endif
-
-// A tray (menu bar) icon, and a dialog for errors: no console to print to there.
+// The global shortcut and a tray (menu bar) icon, and a dialog for errors: no console to
+// print to there.
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+#include "GlobalHotkey.h"
+
 #include <QMenu>
 #include <QMessageBox>
 #include <QSystemTrayIcon>
@@ -57,6 +57,7 @@ int main(int argc, char* argv[])
     umask(077);
 #endif
     QApplication app(argc, argv);
+    clipitto::ui::makeBackgroundApp(); // macOS: a menu-bar app, no Dock icon (no-op elsewhere)
     QApplication::setApplicationName(QStringLiteral("clipitto"));
     QApplication::setApplicationDisplayName(QStringLiteral("ClipItTo"));
     QApplication::setApplicationVersion(QStringLiteral(CLIPITTO_VERSION));
@@ -123,9 +124,9 @@ int main(int argc, char* argv[])
     });
 #endif
 
-#ifdef Q_OS_WIN
-    // Global shortcut, owned by the daemon itself on Windows.
-    clipitto::WindowsHotkey hotkey;
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // Global shortcut, owned by the daemon itself on Windows and macOS.
+    clipitto::GlobalHotkey hotkey;
     const auto registerHotkey = [&] {
         QString hotkeyError;
         if (hotkey.setShortcut(daemon.config().hotkey, &hotkeyError)) {
@@ -137,7 +138,7 @@ int main(int argc, char* argv[])
     };
     registerHotkey();
     QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &hotkey, registerHotkey);
-    QObject::connect(&hotkey, &clipitto::WindowsHotkey::activated, daemon.popup(),
+    QObject::connect(&hotkey, &clipitto::GlobalHotkey::activated, daemon.popup(),
                      [&daemon] { daemon.popup()->togglePopup(); });
 #endif
 
@@ -153,12 +154,8 @@ int main(int argc, char* argv[])
     trayMenu.addAction(QObject::tr("Quit ClipItTo"), &app, &QCoreApplication::quit);
     tray.setContextMenu(&trayMenu);
     const auto updateTooltip = [&] {
-#ifdef Q_OS_WIN
         tray.setToolTip(hotkey.isRegistered() ? QStringLiteral("ClipItTo (%1)").arg(hotkey.shortcut())
                                               : QStringLiteral("ClipItTo"));
-#else
-        tray.setToolTip(QStringLiteral("ClipItTo"));
-#endif
     };
     updateTooltip();
     QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &tray, updateTooltip);

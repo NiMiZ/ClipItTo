@@ -53,6 +53,14 @@ struct PasswordSupport {
     std::function<void(bool on, std::function<void(QString error)> done)> setHello;
 };
 
+// Start with the user's session (the checkbox is shown where it is offered: macOS). Applied
+// right away, like groups: there is no config key, the state is the launch agent itself.
+struct StartupSupport {
+    bool available = false;
+    bool enabled = false;
+    std::function<bool(bool on, QString* error)> set;
+};
+
 // General settings (theme, list size, preview lines, popup position, shortcut, encryption)
 // are returned by config() when the dialog is accepted; group changes are applied to the
 // repository right away (the Groups tab says so and only offers Close).
@@ -63,7 +71,8 @@ public:
     using Notify = std::function<void(QWidget* parent, const QString& message)>;
 
     SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
-                   EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {});
+                   EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {},
+                   StartupSupport startup = {});
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -101,6 +110,7 @@ public:
     QComboBox* positionBox() const { return m_position; }
     QComboBox* startFocusBox() const { return m_startFocus; }
     QCheckBox* encryptBox() const { return m_encrypt; }
+    QCheckBox* startupBox() const { return m_startup; }
     QCheckBox* pasteBox() const { return m_paste; }
     QCheckBox* latestBox() const { return m_latest; }
     QDialogButtonBox* buttons() const { return m_buttons; }
@@ -140,6 +150,8 @@ private:
     QComboBox* m_position;
     QComboBox* m_startFocus;
     QCheckBox* m_encrypt;
+    StartupSupport m_startupSupport;
+    QCheckBox* m_startup;
     QCheckBox* m_paste;
     QCheckBox* m_latest;
     QTabWidget* m_tabs;
