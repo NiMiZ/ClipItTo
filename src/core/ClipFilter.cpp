@@ -2,6 +2,8 @@
 
 #include <QCryptographicHash>
 #include <QElapsedTimer>
+#include <QMessageAuthenticationCode>
+#include <QRandomGenerator>
 
 #include <algorithm>
 #include <memory>
@@ -12,11 +14,6 @@ namespace {
 
 const QString kSourcePrefix = QStringLiteral("x-clipitto-source:");
 constexpr int kMaxSourceLength = 64;
-
-QByteArray textHash(const QString& text)
-{
-    return QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256);
-}
 
 ClipFilter::MsClock monotonicClock()
 {
@@ -31,6 +28,14 @@ ClipFilter::ClipFilter(qint64 maxBytes, MsClock clock)
     : m_maxBytes(maxBytes)
     , m_clock(clock ? std::move(clock) : monotonicClock())
 {
+    m_hashKey.resize(32);
+    QRandomGenerator::system()->generate(reinterpret_cast<quint32*>(m_hashKey.data()),
+                                         reinterpret_cast<quint32*>(m_hashKey.data() + m_hashKey.size()));
+}
+
+QByteArray ClipFilter::ownHash(const QString& text) const
+{
+    return QMessageAuthenticationCode::hash(text.toUtf8(), m_hashKey, QCryptographicHash::Sha256);
 }
 
 bool ClipFilter::isSensitive(const QStringList& mimeTypes)
@@ -70,19 +75,31 @@ QString ClipFilter::sourceMimeType(const QString& app)
 
 QString ClipFilter::sourceApp(const QStringList& mimeTypes)
 {
-    for (const QString& type : mimeTypes) {
-        if (type.startsWith(kSourcePrefix)) {
-            return sourceMimeType(type.mid(kSourcePrefix.size())).mid(kSourcePrefix.size());
+    for (auto it = mimeTypes.crbegin(); it != mimeTypes.crend(); ++it) { // ours is appended last
+        if (it->startsWith(kSourcePrefix)) {
+            return sourceMimeType(it->mid(kSourcePrefix.size())).mid(kSourcePrefix.size());
         }
     }
     return {};
 }
 
-ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mimeTypes) const
+QStringList ClipFilter::withoutSource(QStringList mimeTypes)
+{
+    mimeTypes.removeIf([](const QString& type) { return type.startsWith(kSourcePrefix); });
+    return mimeTypes;
+}
+
+ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mimeTypes)
 {
     // First: pasting a password back from the history must not store it a second time.
-    if (m_hasOwn && isOwnEcho(m_hasOwn, m_ownAtMs) && textHash(text) == m_ownTextHash) {
-        return Verdict::OwnWrite;
+    if (!m_ownPasswordHash.isEmpty() || (m_hasOwn && isOwnEcho(m_hasOwn, m_ownAtMs))) {
+        const QByteArray hash = ownHash(text);
+        if (hash == m_ownPasswordHash || (isOwnEcho(m_hasOwn, m_ownAtMs) && hash == m_ownTextHash)) {
+            return Verdict::OwnWrite;
+        }
+        if (!text.isEmpty()) {
+            m_ownPasswordHash.clear(); // the clipboard moved on
+        }
     }
     if (isSensitive(mimeTypes)) {
         return Verdict::Sensitive;
@@ -121,9 +138,15 @@ bool ClipFilter::isOwnEcho(bool has, qint64 atMs) const
 
 void ClipFilter::noteOwnWrite(const QString& text)
 {
-    m_ownTextHash = textHash(text);
+    m_ownTextHash = ownHash(text);
     m_ownAtMs = m_clock();
     m_hasOwn = true;
+}
+
+void ClipFilter::noteOwnPassword(const QString& text)
+{
+    noteOwnWrite(text);
+    m_ownPasswordHash = m_ownTextHash;
 }
 
 void ClipFilter::noteOwnImage(const QString& pixelHash)

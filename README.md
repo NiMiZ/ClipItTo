@@ -17,7 +17,7 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it yourself:
-`sudo apt install ./clipitto_0.4.2_amd64.deb`. [install.sh](install.sh) also takes
+`sudo apt install ./clipitto_0.5.0_amd64.deb`. [install.sh](install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
@@ -64,7 +64,7 @@ Build the package (see [Building](#building) for the dependencies) and install i
 ```bash
 cmake --preset deb && cmake --build --preset deb
 (cd build/deb && cpack)
-sudo apt install ./build/deb/clipitto_0.4.2_amd64.deb
+sudo apt install ./build/deb/clipitto_0.5.0_amd64.deb
 ```
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run:
@@ -181,20 +181,27 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   and *Not a password* ask for it first. An unlock lasts 5 minutes (`password_unlock_minutes`);
   `clipitto --lock` or *Lock passwords* ends it. Unlocking takes about 0.1 s (Argon2id, 64 MiB).
   On Windows, *Unlock with Windows Hello too* lets your face, fingerprint or PIN do it.
-- **Pasted marked.** A password pasted back carries the password-manager markers, so other
-  clipboard managers and Windows' clipboard history skip it too (not through the GNOME
-  extension, which can put only one format on the clipboard).
+- **Pasted marked, then cleared.** A password pasted back carries the password-manager markers,
+  so other clipboard managers and Windows' clipboard history skip it too (not through the GNOME
+  extension, which can put only one format on the clipboard). It leaves the clipboard after
+  30 s (`password_clear_seconds`; 0 = never) unless you copied something else meanwhile.
 - **Searched with a keyword.** Type `p[] ` (the keyword and a space; Settings can change it):
   what follows shows as asterisks and searches inside your passwords while unlocked, or for a
   whole password while locked. Locked searching needs the system keyring, which keeps the key
-  for it; the history file alone can't be used to test guesses.
+  for it; the history file alone can't be used to test guesses, and with the keyring each guess
+  still costs a memory-hard hash (Argon2id, 16 MiB).
 - Right-click *Mark as password* turns any copy into one (its text is wiped from the file);
   *Put new password copies in the "Passwords" group* files them there (off by default).
 
-The master password is never stored or shown; only a key derived from it unlocks. **If you
-forget it, the password copies can't be recovered**: *Remove…* deletes them and starts over.
+The master password is never stored or shown; only a key derived from it unlocks. Changing it
+also changes the key every password copy is sealed with. **If you forget it, the password
+copies can't be recovered**: *Remove…* deletes them and starts over.
+
 This protects them in the history file and from people using your computer while they are
-locked; programs running as you can still read the clipboard when a password is copied.
+locked. It doesn't protect them from programs running as you: those can read the clipboard
+when a password is copied, and on GNOME a copied password travels from the shell extension to
+the daemon over your session's D-Bus. Passwords don't lock by themselves when the screen locks
+yet; use `clipitto --lock` (e.g. from your screen-lock hook) or a short unlock time.
 
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs

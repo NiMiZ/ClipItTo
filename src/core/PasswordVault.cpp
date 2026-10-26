@@ -1,6 +1,7 @@
 #include "PasswordVault.h"
 
 #include <QRandomGenerator>
+#include <QString>
 
 #include <monocypher.h>
 
@@ -31,9 +32,15 @@ uint8_t* bytes(QByteArray& data)
     return reinterpret_cast<uint8_t*>(data.data());
 }
 
-QByteArray argon2id(const QByteArray& password, const QByteArray& salt, quint32 blocks, quint32 passes)
+// Bounds for costs read back from the file: a tampered vault can't make us allocate
+// gigabytes or spin for minutes.
+constexpr quint32 kMaxBlocks = 1024 * 1024; // 1 GiB
+constexpr quint32 kMaxPasses = 16;
+
+QByteArray argon2id(const QByteArray& password, const QByteArray& salt, quint32 blocks, quint32 passes,
+                    const QByteArray& key = {})
 {
-    if (blocks < 8 || passes < 1) {
+    if (blocks < 8 || passes < 1 || blocks > kMaxBlocks || passes > kMaxPasses) {
         return {};
     }
     // The work area is as large as the memory cost (64 MiB by default).
@@ -41,12 +48,17 @@ QByteArray argon2id(const QByteArray& password, const QByteArray& salt, quint32 
     if (!work) {
         return {};
     }
-    QByteArray key(kKeySize, Qt::Uninitialized);
     crypto_argon2_config config{CRYPTO_ARGON2_ID, blocks, passes, 1};
     crypto_argon2_inputs inputs{bytes(password), bytes(salt), quint32(password.size()), quint32(salt.size())};
-    crypto_argon2(bytes(key), kKeySize, work.get(), config, inputs, crypto_argon2_no_extras);
+    crypto_argon2_extras extras = crypto_argon2_no_extras;
+    if (!key.isEmpty()) {
+        extras.key = bytes(key);
+        extras.key_size = quint32(key.size());
+    }
+    QByteArray out(kKeySize, Qt::Uninitialized);
+    crypto_argon2(bytes(out), kKeySize, work.get(), config, inputs, extras);
     crypto_wipe(work.get(), size_t(blocks) * 1024);
-    return key;
+    return out;
 }
 
 // nonce | MAC | ciphertext of `plain` under `key`.
@@ -74,6 +86,19 @@ std::optional<QByteArray> unlockWith(const QByteArray& key, const QByteArray& lo
     }
     return plain;
 }
+
+// A shared secret of all zeros means the other key was a degenerate (low-order) point.
+bool isZero(const uint8_t shared[32])
+{
+    uint8_t any = 0;
+    for (int i = 0; i < 32; ++i) {
+        any |= shared[i];
+    }
+    return any == 0;
+}
+
+QByteArray sealTo(const QByteArray& publicKey, const QByteArray& plain);
+std::optional<QByteArray> openWith(const QByteArray& secret, const QByteArray& publicKey, const QByteArray& sealed);
 
 // The symmetric key for one sealed box: BLAKE2b(shared secret | ephemeral pk | recipient pk).
 QByteArray boxKey(const uint8_t shared[32], const uint8_t ephemeral[32], const uint8_t recipient[32])
@@ -138,8 +163,8 @@ QByteArray PasswordVault::deriveKey(const QByteArray& masterPassword, const Stor
     return argon2id(masterPassword, stored.salt, stored.kdfBlocks, stored.kdfPasses);
 }
 
-std::optional<PasswordVault::Stored> PasswordVault::changePassword(const Stored& stored, const QByteArray& oldPassword,
-                                                                   const QByteArray& newPassword, KdfCost cost)
+std::optional<PasswordVault::Rekeyed> PasswordVault::changePassword(const Stored& stored, const QByteArray& oldPassword,
+                                                                    const QByteArray& newPassword, KdfCost cost)
 {
     QByteArray oldKey = deriveKey(oldPassword, stored);
     std::optional<QByteArray> secret = unlockWith(oldKey, stored.wrappedSecret, kWrapContext);
@@ -147,15 +172,30 @@ std::optional<PasswordVault::Stored> PasswordVault::changePassword(const Stored&
     if (!secret) {
         return std::nullopt;
     }
-    Stored changed = stored;
-    changed.salt = randomBytes(16);
-    changed.kdfBlocks = cost.blocks;
-    changed.kdfPasses = cost.passes;
-    QByteArray newKey = deriveKey(newPassword, changed);
-    changed.wrappedSecret = lockWith(newKey, *secret, kWrapContext);
-    wipe(newKey);
+    Rekeyed rekeyed{create(newPassword, cost), *secret};
     wipe(*secret);
-    return changed;
+    return rekeyed;
+}
+
+std::optional<QByteArray> PasswordVault::reseal(const QByteArray& sealed, const QByteArray& oldSecret,
+                                                const QByteArray& oldPublicKey, const QByteArray& newPublicKey)
+{
+    std::optional<QByteArray> plain = openWith(oldSecret, oldPublicKey, sealed);
+    if (!plain) {
+        return std::nullopt;
+    }
+    QByteArray resealed = sealTo(newPublicKey, *plain);
+    wipe(*plain);
+    return resealed.isEmpty() ? std::nullopt : std::optional<QByteArray>(resealed);
+}
+
+QByteArray PasswordVault::passwordBytes(QString& typed)
+{
+    QString normalized = typed.normalized(QString::NormalizationForm_C);
+    QByteArray bytes = normalized.toUtf8();
+    wipe(normalized);
+    wipe(typed);
+    return bytes;
 }
 
 QByteArray PasswordVault::wrapSecret(const QByteArray& key) const
@@ -210,39 +250,60 @@ void PasswordVault::lock()
 
 QByteArray PasswordVault::seal(const QByteArray& plain) const
 {
-    if (!m_stored) {
-        return {};
-    }
-    QByteArray ephemeralSecret = randomBytes(kKeySize);
-    uint8_t ephemeral[32];
-    crypto_x25519_public_key(ephemeral, bytes(ephemeralSecret));
-    uint8_t shared[32];
-    crypto_x25519(shared, bytes(ephemeralSecret), bytes(m_stored->publicKey));
-    QByteArray key = boxKey(shared, ephemeral, bytes(m_stored->publicKey));
-    crypto_wipe(shared, sizeof shared);
-    wipe(ephemeralSecret);
-
-    QByteArray out(1, kSealVersion);
-    out.append(reinterpret_cast<const char*>(ephemeral), 32);
-    out.append(lockWith(key, plain, kSealContext));
-    wipe(key);
-    return out;
+    return m_stored ? sealTo(m_stored->publicKey, plain) : QByteArray();
 }
 
 std::optional<QByteArray> PasswordVault::open(const QByteArray& sealed) const
 {
-    if (!isUnlocked() || sealed.size() < 1 + 32 || sealed.at(0) != kSealVersion) {
+    return isUnlocked() ? openWith(m_secret, m_stored->publicKey, sealed) : std::nullopt;
+}
+
+namespace {
+
+QByteArray sealTo(const QByteArray& publicKey, const QByteArray& plain)
+{
+    if (publicKey.size() != kKeySize) {
+        return {};
+    }
+    QByteArray ephemeralSecret = PasswordVault::randomBytes(kKeySize);
+    uint8_t ephemeral[32];
+    crypto_x25519_public_key(ephemeral, bytes(ephemeralSecret));
+    uint8_t shared[32];
+    crypto_x25519(shared, bytes(ephemeralSecret), bytes(publicKey));
+    PasswordVault::wipe(ephemeralSecret);
+    if (isZero(shared)) {
+        return {}; // not a usable public key
+    }
+    QByteArray key = boxKey(shared, ephemeral, bytes(publicKey));
+    crypto_wipe(shared, sizeof shared);
+
+    QByteArray out(1, kSealVersion);
+    out.append(reinterpret_cast<const char*>(ephemeral), 32);
+    out.append(lockWith(key, plain, kSealContext));
+    PasswordVault::wipe(key);
+    return out;
+}
+
+std::optional<QByteArray> openWith(const QByteArray& secret, const QByteArray& publicKey, const QByteArray& sealed)
+{
+    if (secret.size() != kKeySize || publicKey.size() != kKeySize || sealed.size() < 1 + 32
+        || sealed.at(0) != kSealVersion) {
         return std::nullopt;
     }
     const uint8_t* ephemeral = bytes(sealed) + 1;
     uint8_t shared[32];
-    crypto_x25519(shared, bytes(m_secret), ephemeral);
-    QByteArray key = boxKey(shared, ephemeral, bytes(m_stored->publicKey));
+    crypto_x25519(shared, bytes(secret), ephemeral);
+    if (isZero(shared)) {
+        return std::nullopt;
+    }
+    QByteArray key = boxKey(shared, ephemeral, bytes(publicKey));
     crypto_wipe(shared, sizeof shared);
     std::optional<QByteArray> plain = unlockWith(key, sealed.mid(1 + 32), kSealContext);
-    wipe(key);
+    PasswordVault::wipe(key);
     return plain;
 }
+
+} // namespace
 
 void PasswordVault::setMatchKey(const QByteArray& key)
 {
@@ -257,13 +318,10 @@ QString PasswordVault::match(const QByteArray& plain) const
     if (m_matchKey.isEmpty()) {
         return {};
     }
-    QByteArray hash(kKeySize, Qt::Uninitialized);
-    crypto_blake2b_ctx ctx;
-    crypto_blake2b_keyed_init(&ctx, kKeySize, bytes(m_matchKey), size_t(m_matchKey.size()));
-    crypto_blake2b_update(&ctx, bytes(kMatchContext), size_t(kMatchContext.size()));
-    crypto_blake2b_update(&ctx, bytes(plain), size_t(plain.size()));
-    crypto_blake2b_final(&ctx, bytes(hash));
-    return QStringLiteral("secret:") + QString::fromLatin1(hash.toHex());
+    // The salt is fixed (the key is the secret part), so the same password always matches.
+    const QByteArray hash = argon2id(plain, QByteArray("clipitto-match-v1").leftJustified(16, '\0'),
+                                     m_matchCost.blocks, m_matchCost.passes, m_matchKey);
+    return hash.isEmpty() ? QString() : QStringLiteral("secret:") + QString::fromLatin1(hash.toHex());
 }
 
 } // namespace clipitto

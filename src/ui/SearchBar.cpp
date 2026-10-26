@@ -109,6 +109,27 @@ void SearchBar::contextMenuEvent(QContextMenuEvent* event)
 
 void SearchBar::keyPressEvent(QKeyEvent* event)
 {
+    if (!m_passwordMode && event->matches(QKeySequence::Paste)) {
+        // Pasting "p[] hunter2" (or "hunter2" after a typed "p[] "): straight into the hidden
+        // text, so the password never enters the line edit.
+        const int start = hasSelectedText() ? selectionStart() : cursorPosition();
+        const QString pasted = QGuiApplication::clipboard()->text();
+        if ((text().left(start) + pasted).startsWith(prefix())) {
+            QString combined = text().left(start) + pasted;
+            m_passwordMode = true;
+            m_secret.clear();
+            setAcceptDrops(false);
+            m_updating = true;
+            setText(prefix());
+            m_updating = false;
+            appendSecret(combined.mid(prefix().size()));
+            clipitto::PasswordVault::wipe(combined);
+            if (m_secret.isEmpty()) {
+                emit passwordQueryChanged(m_secret, true);
+            }
+            return;
+        }
+    }
     if (m_passwordMode) {
         // Only typing, Backspace and paste edit the hidden text; the cursor stays at the end.
         if (event->matches(QKeySequence::Paste)) {

@@ -77,6 +77,9 @@ public:
     // The master password's vault; nullopt until one is set.
     std::optional<PasswordVault::Stored> loadVault();
     void saveVault(const PasswordVault::Stored& stored);
+    // A new key pair: every sealed password replaced and the new vault saved, in one
+    // transaction; the old blobs are scrubbed from the file afterwards.
+    void rekeyVault(const std::vector<std::pair<qint64, QByteArray>>& resealed, const PasswordVault::Stored& stored);
     // Removes the vault and every password copy (a forgotten or removed master password).
     void resetVault();
 

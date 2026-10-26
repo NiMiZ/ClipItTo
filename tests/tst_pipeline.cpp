@@ -144,6 +144,20 @@ private slots:
         QCOMPARE(t.repo->countSecrets(), 3);
     }
 
+    void markedCopiesKeepTheSizeLimit()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 16);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("m", {64, 1}));
+        p.setPasswords(&vault, true, QString());
+        QSignalSpy rejected(&p, &CapturePipeline::rejected);
+        p.process(QString(17, QLatin1Char('x')), {QStringLiteral("x-kde-passwordManagerHint")});
+        QCOMPARE(rejected.size(), 1);
+        QCOMPARE(rejected.at(0).at(0).value<ClipFilter::Verdict>(), ClipFilter::Verdict::TooLarge);
+        QCOMPARE(t.repo->countSecrets(), 0);
+    }
+
     void markedCopiesWithoutAMasterPasswordAreDropped()
     {
         TestDb t;

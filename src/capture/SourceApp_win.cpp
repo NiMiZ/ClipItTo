@@ -1,6 +1,7 @@
 #include "SourceApp.h"
 
 #include <QFileInfo>
+#include <QHash>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -10,6 +11,8 @@
 #endif
 #include <windows.h>
 
+#include <cwchar>
+#include <string>
 #include <vector>
 
 namespace clipitto::capture {
@@ -80,14 +83,24 @@ QString fileDescription(const QString& path)
         || length < sizeof(Translation)) {
         return {};
     }
-    wchar_t key[64];
-    swprintf(key, 64, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[0].language,
-             translations[0].codePage);
-    wchar_t* value = nullptr;
-    if (!VerQueryValueW(data.data(), key, reinterpret_cast<void**>(&value), &length) || length == 0) {
-        return {};
+    // Some executables list a translation without a matching string block: try each, then
+    // the usual US English ones.
+    std::vector<Translation> candidates(translations, translations + length / sizeof(Translation));
+    candidates.push_back({0x0409, 0x04B0});
+    candidates.push_back({0x0409, 0x04E4});
+    for (const Translation& t : candidates) {
+        wchar_t key[64];
+        swprintf(key, 64, L"\\StringFileInfo\\%04x%04x\\FileDescription", t.language, t.codePage);
+        wchar_t* value = nullptr;
+        UINT valueLength = 0;
+        if (VerQueryValueW(data.data(), key, reinterpret_cast<void**>(&value), &valueLength) && valueLength > 0) {
+            const QString description = QString::fromWCharArray(value).trimmed();
+            if (!description.isEmpty()) {
+                return description;
+            }
+        }
     }
-    return QString::fromWCharArray(value).trimmed();
+    return {};
 }
 
 } // namespace
@@ -103,8 +116,15 @@ QString clipboardSourceApp()
     if (path.isEmpty()) {
         return {};
     }
-    const QString description = fileDescription(path);
-    return description.isEmpty() ? QFileInfo(path).completeBaseName() : description;
+    // The version resource is read from the executable on disk: once per app (this runs on
+    // the GUI thread, for each password copy).
+    static QHash<QString, QString> names;
+    auto it = names.constFind(path);
+    if (it == names.constEnd()) {
+        const QString description = fileDescription(path);
+        it = names.insert(path, description.isEmpty() ? QFileInfo(path).completeBaseName() : description);
+    }
+    return *it;
 }
 
 } // namespace clipitto::capture

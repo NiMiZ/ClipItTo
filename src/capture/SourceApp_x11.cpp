@@ -2,6 +2,8 @@
 
 #include <QGuiApplication>
 
+#if QT_CONFIG(xcb) // QX11Application exists only in Qt builds with X11 support
+
 // Xlib defines macros (None, Bool, Status, ...) that clash with Qt: include last.
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -79,3 +81,16 @@ QString clipboardSourceApp()
 }
 
 } // namespace clipitto::capture
+
+#else
+
+namespace clipitto::capture {
+
+QString clipboardSourceApp()
+{
+    return {}; // this Qt has no X11 support: unknown
+}
+
+} // namespace clipitto::capture
+
+#endif

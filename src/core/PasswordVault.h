@@ -45,9 +45,22 @@ public:
     static Stored create(const QByteArray& masterPassword, KdfCost cost = {});
     // The key that unwraps the secret key. Slow (Argon2id): keep it off the GUI thread.
     static QByteArray deriveKey(const QByteArray& masterPassword, const Stored& stored);
-    // A new wrapping for another master password; nullopt when `oldPassword` is wrong.
-    static std::optional<Stored> changePassword(const Stored& stored, const QByteArray& oldPassword,
-                                                const QByteArray& newPassword, KdfCost cost = {});
+    // A new master password with a NEW key pair: whoever had the old one (and an old copy of
+    // the file) can't open what is sealed from now on. The caller re-seals every password
+    // from the old secret key to the new public key (reseal()) and saves `stored` with them.
+    // nullopt when `oldPassword` is wrong. The Hello wrapping is dropped (set it up again).
+    struct Rekeyed {
+        Stored stored;
+        QByteArray oldSecret; // wipe after re-sealing
+    };
+    static std::optional<Rekeyed> changePassword(const Stored& stored, const QByteArray& oldPassword,
+                                                 const QByteArray& newPassword, KdfCost cost = {});
+    // Opens `sealed` with `oldSecret` (and its public key) and seals it to `newPublicKey`.
+    static std::optional<QByteArray> reseal(const QByteArray& sealed, const QByteArray& oldSecret,
+                                            const QByteArray& oldPublicKey, const QByteArray& newPublicKey);
+    // What a typed master password is turned into: Unicode NFC (so input methods that compose
+    // characters differently unlock alike), UTF-8. Wipes `typed`.
+    static QByteArray passwordBytes(QString& typed);
     // Wraps the secret key held by an unlocked vault under `key` (e.g. derived from a Windows
     // Hello signature). Empty when locked.
     QByteArray wrapSecret(const QByteArray& key) const;
@@ -77,8 +90,11 @@ public:
 
     void setMatchKey(const QByteArray& key); // 32 bytes; empty: no keyring, no matching
     bool canMatch() const { return !m_matchKey.isEmpty(); }
-    // "secret:<hex>": keyed hash of `plain`; empty without a match key.
+    // "secret:<hex>": a memory-hard keyed hash of `plain` (Argon2id keyed with the match key),
+    // so even with the keyring at hand every guess costs real memory and time. Empty without
+    // a match key.
     QString match(const QByteArray& plain) const;
+    void setMatchCost(VaultKdfCost cost) { m_matchCost = cost; } // tests use a tiny one
 
     static QByteArray randomBytes(int size);
     static void wipe(QByteArray& secret);
@@ -88,6 +104,7 @@ private:
     std::optional<Stored> m_stored;
     QByteArray m_secret; // the X25519 secret key while unlocked
     QByteArray m_matchKey;
+    VaultKdfCost m_matchCost{16 * 1024, 2}; // 16 MiB: ~20 ms per capture or search in a release build
 };
 
 } // namespace clipitto

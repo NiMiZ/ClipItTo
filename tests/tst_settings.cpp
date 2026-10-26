@@ -387,11 +387,14 @@ private slots:
         d.keepPasswordsBox()->setChecked(false);
         d.passwordsInGroupBox()->setChecked(true);
         d.unlockMinutesBox()->setValue(30);
+        QCOMPARE(d.clearSecondsBox()->value(), 30);
+        d.clearSecondsBox()->setValue(0);
         d.keywordEdit()->setText(QStringLiteral("pw:"));
         Config c = d.config();
         QVERIFY(!c.keepPasswords);
         QVERIFY(c.passwordsInGroup);
         QCOMPARE(c.passwordUnlockMinutes, 30);
+        QCOMPARE(c.passwordClearSeconds, 0);
         QCOMPARE(c.passwordSearchKeyword, QStringLiteral("pw:"));
         QVERIFY(!c.windowsHello);
         d.keywordEdit()->setText(QString()); // not acceptable: the keyword stays

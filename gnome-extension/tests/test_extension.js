@@ -113,10 +113,15 @@ test('secrets are read only when the daemon keeps passwords', () => {
     assertEq(ingest.method, 'Ingest');
     assertEq(ingest.params.deepUnpack(), ['hunter2', [...marked, 'x-clipitto-source:KeePassXC']]);
 
+    // A source the copying app offers itself is dropped.
+    state.selection.setOwner(CLIPBOARD, [...marked, 'x-clipitto-source:Bank'], 'hunter2');
+    answer(state.dbusCalls[4], new GLib.Variant('(b)', [true]));
+    assertEq(state.dbusCalls[5].params.deepUnpack()[1], [...marked, 'x-clipitto-source:KeePassXC']);
+
     // Marked copies from the primary selection are never sent.
     state.settings.values['capture-primary'] = true;
     state.selection.setOwner(PRIMARY, marked, 'hunter2');
-    assertEq(state.dbusCalls.length, 4, 'calls at the end');
+    assertEq(state.dbusCalls.length, 6, 'calls at the end');
     ext.disable();
 });
 

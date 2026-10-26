@@ -194,7 +194,9 @@ export default class ClipItToExtension extends Extension {
                 St.Clipboard.get_default().get_text(stType, (_clipboard, text) => {
                     if (!text || text.length > MAX_TEXT_LENGTH)
                         return;
-                    const types = source ? [...mimeTypes, SOURCE_PREFIX + source] : mimeTypes;
+                    // An app can't name itself: only the window tracker's name counts.
+                    const own = mimeTypes.filter(type => !type.startsWith(SOURCE_PREFIX));
+                    const types = source ? [...own, SOURCE_PREFIX + source] : own;
                     this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, types]),
                         Gio.DBusCallFlags.NO_AUTO_START);
                 });

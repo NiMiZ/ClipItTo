@@ -191,11 +191,20 @@ private slots:
         QVERIFY(f.keeper.unlockWithHelloKey(QByteArray(32, 'h')));
         QCOMPARE(f.keeper.reveal(id).value_or(QByteArray()), QByteArrayLiteral("via hello"));
 
-        QVERIFY(wait([&](auto done) { f.keeper.changeMasterPassword("master", "new", done); }));
-        QVERIFY(f.keeper.unlockWithHelloKey(QByteArray(32, 'h'))); // same secret key underneath
-
         f.keeper.setHelloWrapped({});
         QVERIFY(!f.keeper.helloEnabled());
+        QVERIFY(!f.keeper.unlockWithHelloKey(QByteArray(32, 'h')));
+    }
+
+    void changingTheMasterPasswordDropsHello()
+    {
+        Fixture f;
+        QVERIFY(wait([&](auto done) { f.keeper.setMasterPassword("master", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("master", done); }));
+        f.keeper.setHelloWrapped(f.keeper.wrapForHello(QByteArray(32, 'h')));
+        QVERIFY(wait([&](auto done) { f.keeper.changeMasterPassword("master", "new", done); }));
+        QVERIFY(!f.keeper.helloEnabled()); // a new key pair: Windows Hello is set up again
+        QVERIFY(!f.keeper.unlockWithHelloKey(QByteArray(32, 'h')));
     }
 };
 

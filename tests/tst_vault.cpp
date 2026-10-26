@@ -82,22 +82,57 @@ private slots:
         QVERIFY(!vault.open(other.seal("secret")));
     }
 
-    void changingThePasswordKeepsThePasswords()
+    void changingThePasswordMakesANewKeyPair()
     {
         PasswordVault vault;
         vault.load(created());
+        const PasswordVault::Stored old = *vault.stored();
         const QByteArray sealed = vault.seal("kept");
 
-        QVERIFY(!PasswordVault::changePassword(*vault.stored(), "wrong", "new", kFast));
-        const auto changed = PasswordVault::changePassword(*vault.stored(), m_master, "new master", kFast);
+        QVERIFY(!PasswordVault::changePassword(old, "wrong", "new", kFast));
+        auto changed = PasswordVault::changePassword(old, m_master, "new master", kFast);
         QVERIFY(changed);
-        QCOMPARE(changed->publicKey, vault.stored()->publicKey); // same key pair, new wrapping
-        QVERIFY(changed->salt != vault.stored()->salt);
+        QVERIFY(changed->stored.publicKey != old.publicKey); // a new key pair ...
+        QVERIFY(changed->stored.helloWrapped.isEmpty()); // ... so Hello must be set up again
+        const auto moved = PasswordVault::reseal(sealed, changed->oldSecret, old.publicKey, changed->stored.publicKey);
+        QVERIFY(moved);
+        QVERIFY(!PasswordVault::reseal(sealed, QByteArray(32, 'x'), old.publicKey, changed->stored.publicKey));
 
-        vault.load(*changed);
+        vault.load(changed->stored);
         QVERIFY(!vault.unlockWithKey(PasswordVault::deriveKey(m_master, *vault.stored())));
         unlock(vault, "new master");
-        QCOMPARE(vault.open(sealed).value_or(QByteArray()), QByteArrayLiteral("kept"));
+        QCOMPARE(vault.open(*moved).value_or(QByteArray()), QByteArrayLiteral("kept"));
+        QVERIFY(!vault.open(sealed)); // the old seal belongs to the old key pair
+
+        // The old master password and an old copy of the vault can't open what comes later.
+        PasswordVault stale;
+        stale.load(old);
+        unlock(stale, m_master);
+        QVERIFY(!stale.open(vault.seal("later")));
+    }
+
+    void tamperedCostsAreRefused()
+    {
+        PasswordVault::Stored stored = created();
+        stored.kdfBlocks = 0xFFFFFFFF; // would allocate terabytes
+        QVERIFY(PasswordVault::deriveKey(m_master, stored).isEmpty());
+        stored.kdfBlocks = 64;
+        stored.kdfPasses = 1000000;
+        QVERIFY(PasswordVault::deriveKey(m_master, stored).isEmpty());
+
+        PasswordVault vault;
+        stored = created();
+        stored.publicKey = QByteArray(32, '\0'); // a degenerate point: nothing is sealed to it
+        vault.load(stored);
+        QVERIFY(vault.seal("x").isEmpty());
+    }
+
+    void typedPasswordsAreNormalized()
+    {
+        QString composed = QString::fromUtf8("caf\xc3\xa9"); // é as one character
+        QString decomposed = QString::fromUtf8("cafe\xcc\x81"); // e + combining accent
+        QCOMPARE(PasswordVault::passwordBytes(composed), PasswordVault::passwordBytes(decomposed));
+        QVERIFY(composed.isEmpty() && decomposed.isEmpty()); // wiped
     }
 
     void aSecondWrappingUnlocksToo()
@@ -121,6 +156,7 @@ private slots:
     void matchNeedsTheKeyAndIsStable()
     {
         PasswordVault vault;
+        vault.setMatchCost(kFast);
         QVERIFY(!vault.canMatch());
         QVERIFY(vault.match("pw").isEmpty());
         vault.setMatchKey(QByteArray(32, 'm'));
@@ -132,6 +168,7 @@ private slots:
         QVERIFY(vault.match("pw ") != m);
 
         PasswordVault other;
+        other.setMatchCost(kFast);
         other.setMatchKey(QByteArray(32, 'n'));
         QVERIFY(other.match("pw") != m); // keyed: useless without the keyring's key
         other.setMatchKey(QByteArray(5, 'n')); // wrong size: no matching

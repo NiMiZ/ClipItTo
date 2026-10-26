@@ -23,6 +23,8 @@ public:
     // managers (and Windows' clipboard history) skip it too. Through the GNOME extension the
     // markers can't be added (the shell takes one format per write); the text goes alone.
     void setPassword(const QString& text);
+    // Empties the clipboard (a pasted password's time is up).
+    void clear();
     // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo.
     void setImage(const QByteArray& png, const QString& pixelHash);
 

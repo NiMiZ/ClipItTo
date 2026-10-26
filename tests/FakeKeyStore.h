@@ -19,6 +19,10 @@ public:
     }
     std::optional<QByteArray> read(QString* error) override
     {
+        if (!isAvailable) {
+            available(error);
+            return std::nullopt;
+        }
         if (error) {
             error->clear();
         }
@@ -26,6 +30,9 @@ public:
     }
     bool write(const QByteArray& key, QString* error) override
     {
+        if (!isAvailable) {
+            return available(error);
+        }
         if (failWrites) {
             if (error) {
                 *error = QStringLiteral("keyring refused");

@@ -48,6 +48,7 @@ struct Config {
     bool keepPasswords = true;
     bool passwordsInGroup = false; // new ones go to the "Passwords" group
     int passwordUnlockMinutes = 5; // an unlock lasts this long
+    int passwordClearSeconds = 30; // a pasted password leaves the clipboard after this; 0 = stays
     bool windowsHello = false; // Windows: unlock with Windows Hello too
     QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
 

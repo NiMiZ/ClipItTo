@@ -17,5 +17,8 @@ bool available(QString* why = nullptr);
 QByteArray unlockKey(bool create, QString* error = nullptr);
 // Deletes ClipItTo's Windows Hello key (turning it off, or a removed master password).
 void removeKey();
+// Cancels a Windows Hello prompt that is waiting for the user (quitting), so the blocked
+// unlockKey() call returns right away. Any thread.
+void cancelPending();
 
 } // namespace clipitto::hello

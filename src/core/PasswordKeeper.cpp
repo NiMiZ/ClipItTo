@@ -71,10 +71,11 @@ QByteArray PasswordKeeper::matchKey(bool create)
 {
     m_matchProblem.clear();
     QString error;
-    if (!m_matchKeys || !m_matchKeys->available(&error)) {
-        m_matchProblem = error.isEmpty() ? QStringLiteral("no system keyring") : error;
+    if (!m_matchKeys) {
+        m_matchProblem = QStringLiteral("no system keyring");
         return {};
     }
+    // No separate availability probe: each keyring job may wait (Linux), so one read says it.
     std::optional<QByteArray> key = m_matchKeys->read(&error);
     if (key && key->size() == kKeySize) {
         return *key;
@@ -110,16 +111,22 @@ void PasswordKeeper::startLockTimer()
     m_lockTimer.start(m_unlockMinutes * 60 * 1000);
 }
 
-void PasswordKeeper::unlock(const QByteArray& masterPassword, Done done)
+void PasswordKeeper::unlock(QByteArray masterPassword, Done done)
 {
     if (!m_vault.stored()) {
+        PasswordVault::wipe(masterPassword);
         done(false);
         return;
     }
     const PasswordVault::Stored stored = *m_vault.stored();
     const quint64 generation = m_generation;
     runOffThread<QByteArray>(
-        this, [masterPassword, stored] { return PasswordVault::deriveKey(masterPassword, stored); },
+        this,
+        [password = std::move(masterPassword), stored]() mutable {
+            QByteArray key = PasswordVault::deriveKey(password, stored);
+            PasswordVault::wipe(password);
+            return key;
+        },
         [this, generation, done = std::move(done)](QByteArray key) {
             const bool ok = generation == m_generation && m_vault.unlockWithKey(key);
             PasswordVault::wipe(key);
@@ -141,14 +148,20 @@ void PasswordKeeper::lock()
     }
 }
 
-void PasswordKeeper::setMasterPassword(const QByteArray& masterPassword, Done done)
+void PasswordKeeper::setMasterPassword(QByteArray masterPassword, Done done)
 {
     if (isSetUp()) {
+        PasswordVault::wipe(masterPassword);
         done(false); // change it instead
         return;
     }
     runOffThread<PasswordVault::Stored>(
-        this, [masterPassword, cost = m_cost] { return PasswordVault::create(masterPassword, cost); },
+        this,
+        [password = std::move(masterPassword), cost = m_cost]() mutable {
+            PasswordVault::Stored stored = PasswordVault::create(password, cost);
+            PasswordVault::wipe(password);
+            return stored;
+        },
         [this, done = std::move(done)](PasswordVault::Stored stored) {
             try {
                 m_repo.saveVault(stored);
@@ -164,37 +177,56 @@ void PasswordKeeper::setMasterPassword(const QByteArray& masterPassword, Done do
         });
 }
 
-void PasswordKeeper::changeMasterPassword(const QByteArray& oldPassword, const QByteArray& newPassword, Done done)
+void PasswordKeeper::changeMasterPassword(QByteArray oldPassword, QByteArray newPassword, Done done)
 {
     if (!m_vault.stored()) {
+        PasswordVault::wipe(oldPassword);
+        PasswordVault::wipe(newPassword);
         done(false);
         return;
     }
     const PasswordVault::Stored current = *m_vault.stored();
-    runOffThread<std::optional<PasswordVault::Stored>>(
+    runOffThread<std::optional<PasswordVault::Rekeyed>>(
         this,
-        [current, oldPassword, newPassword, cost = m_cost] {
-            return PasswordVault::changePassword(current, oldPassword, newPassword, cost);
+        [current, oldPassword = std::move(oldPassword), newPassword = std::move(newPassword), cost = m_cost]() mutable {
+            auto rekeyed = PasswordVault::changePassword(current, oldPassword, newPassword, cost);
+            PasswordVault::wipe(oldPassword);
+            PasswordVault::wipe(newPassword);
+            return rekeyed;
         },
-        [this, done = std::move(done)](std::optional<PasswordVault::Stored> changed) {
-            if (!changed) {
+        [this, current, done = std::move(done)](std::optional<PasswordVault::Rekeyed> rekeyed) {
+            if (!rekeyed) {
                 done(false);
                 return;
             }
-            // The Hello copy wraps the same secret key, so it stays valid.
-            if (m_vault.stored()) {
-                changed->helloWrapped = m_vault.stored()->helloWrapped;
-            }
+            bool ok = true;
             try {
-                m_repo.saveVault(*changed);
+                // Every password moves to the new key pair, or none does.
+                std::vector<std::pair<qint64, QByteArray>> resealed;
+                for (const auto& [id, sealed] : m_repo.allSealedSecrets()) {
+                    std::optional<QByteArray> moved = PasswordVault::reseal(
+                        sealed, rekeyed->oldSecret, current.publicKey, rekeyed->stored.publicKey);
+                    if (!moved) {
+                        ok = false;
+                        break;
+                    }
+                    resealed.emplace_back(id, *moved);
+                }
+                if (ok) {
+                    m_repo.rekeyVault(resealed, rekeyed->stored);
+                }
             } catch (const db::DbError& e) {
-                qCWarning(lcPasswords) << "could not save the password vault:" << e.what();
+                qCWarning(lcPasswords) << "could not re-seal the password copies:" << e.what();
+                ok = false;
+            }
+            PasswordVault::wipe(rekeyed->oldSecret);
+            if (!ok) {
                 done(false);
                 return;
             }
             const QByteArray match = m_vault.canMatch() ? matchKey(false) : QByteArray();
             lock();
-            m_vault.load(*changed);
+            m_vault.load(rekeyed->stored);
             m_vault.setMatchKey(match);
             emit vaultChanged();
             done(true);

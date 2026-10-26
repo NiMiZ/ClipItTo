@@ -40,17 +40,24 @@ public:
     int secondsLeft() const; // until it locks again; 0 when locked
 
     void setUnlockMinutes(int minutes);
-    void setKdfCost(VaultKdfCost cost) { m_cost = cost; } // tests use a tiny one
+    // Tests use tiny costs (also for the match hash).
+    void setKdfCost(VaultKdfCost cost)
+    {
+        m_cost = cost;
+        m_vault.setMatchCost(cost);
+    }
 
     using Done = std::function<void(bool ok)>;
-    // Derives the key off the GUI thread; `done` runs on this object's thread.
-    void unlock(const QByteArray& masterPassword, Done done);
+    // Derives the key off the GUI thread; `done` runs on this object's thread. Passwords are
+    // taken by value: pass them with std::move, they are wiped in the worker once used.
+    void unlock(QByteArray masterPassword, Done done);
     void lock();
 
     // Creates the vault for a first master password (and the keyring's match key).
-    void setMasterPassword(const QByteArray& masterPassword, Done done);
-    // A new master password; `done(false)` when `oldPassword` is wrong. Passwords are kept.
-    void changeMasterPassword(const QByteArray& oldPassword, const QByteArray& newPassword, Done done);
+    void setMasterPassword(QByteArray masterPassword, Done done);
+    // A new master password, and a new key pair: every password copy is re-sealed. `done(false)`
+    // when `oldPassword` is wrong. Windows Hello has to be turned on again afterwards.
+    void changeMasterPassword(QByteArray oldPassword, QByteArray newPassword, Done done);
     // Deletes every password copy and the vault (a removed or forgotten master password).
     void reset();
 

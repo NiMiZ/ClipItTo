@@ -31,4 +31,6 @@ QByteArray unlockKey(bool, QString* error)
 
 void removeKey() {}
 
+void cancelPending() {}
+
 } // namespace clipitto::hello

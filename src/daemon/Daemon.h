@@ -11,6 +11,7 @@
 
 #include <QObject>
 #include <QThreadPool>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <array>
@@ -126,6 +127,7 @@ private:
     QString m_startupWarning; // shown once, the first time the popup opens
     bool m_removeKeyAfterStart = false;
     bool m_passwordNoticeShown = false; // "set a master password", once per session
+    QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
     QThreadPool m_helloPool; // one thread: Windows Hello calls (blocking WinRT, never on the GUI thread)

@@ -111,6 +111,11 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
         emit passwordSkipped();
         return;
     }
+    if (verdict == ClipFilter::Verdict::Sensitive && keepsPasswords() && !text.trimmed().isEmpty()
+        && text.toUtf8().size() > m_filter.maxBytes()) {
+        emit rejected(ClipFilter::Verdict::TooLarge); // the same cap as any copy (max_item_bytes)
+        return;
+    }
     if (verdict == ClipFilter::Verdict::Sensitive && keepsPasswords() && !text.trimmed().isEmpty()) {
         // Sealed right away: the password is never stored, queued or logged in clear.
         QByteArray plain = text.toUtf8();

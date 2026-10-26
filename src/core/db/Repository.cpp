@@ -297,6 +297,23 @@ void Repository::saveVault(const PasswordVault::Stored& stored)
     s.run();
 }
 
+void Repository::rekeyVault(const std::vector<std::pair<qint64, QByteArray>>& resealed,
+                            const PasswordVault::Stored& stored)
+{
+    {
+        Transaction tx(m_db);
+        Stmt update(m_db, "UPDATE clip_secrets SET sealed = ?2 WHERE clip_id = ?1");
+        for (const auto& [id, sealed] : resealed) {
+            update.reset();
+            update.bindInt(1, id).bindBlob(2, sealed);
+            update.run();
+        }
+        saveVault(stored);
+        tx.commit();
+    }
+    scrub();
+}
+
 void Repository::resetVault()
 {
     {

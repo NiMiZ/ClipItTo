@@ -66,6 +66,15 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     , m_integration(integration.release())
 {
     m_shortcutPool.setMaxThreadCount(1);
+    m_clearPassword = new QTimer(this);
+    m_clearPassword->setSingleShot(true);
+    connect(m_clearPassword, &QTimer::timeout, this, [this] {
+        // Only if nothing was copied since: never wipe what the user copied afterwards.
+        if (m_writer && m_pipeline && m_pipeline->filter().ownPasswordPending()) {
+            m_writer->clear();
+            m_pipeline->filter().forgetOwnPassword();
+        }
+    });
     m_helloPool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
@@ -83,6 +92,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
 
 Daemon::~Daemon()
 {
+    hello::cancelPending(); // a Windows Hello prompt left open must not hold up quitting
     // Picture decodes still running use Qt's image plugins: let them finish while Qt is up.
     QThreadPool::globalInstance()->waitForDone();
     if (m_worker.joinable()) {
@@ -316,6 +326,9 @@ void Daemon::onEntryActivated(const Entry& entry)
         PasswordVault::wipe(*plain);
         m_writer->setPassword(text);
         PasswordVault::wipe(text);
+        if (m_config.passwordClearSeconds > 0) {
+            m_clearPassword->start(m_config.passwordClearSeconds * 1000);
+        }
     } else {
         m_writer->setText(entry.content);
     }
@@ -650,7 +663,8 @@ void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, st
 {
     auto* watcher = new QFutureWatcher<Result>(context);
     QObject::connect(watcher, &QFutureWatcherBase::finished, context, [watcher, then = std::move(then)] {
-        then(watcher->result());
+        QFuture<Result> future = watcher->future();
+        then(future.takeResult()); // taken, not copied: it may be a key
         watcher->deleteLater();
     });
     watcher->setFuture(QtConcurrent::run(pool, std::move(work)));

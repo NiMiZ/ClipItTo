@@ -19,10 +19,19 @@ public:
 
     explicit ClipFilter(qint64 maxBytes, MsClock clock = {});
 
-    Verdict check(const QString& text, const QStringList& mimeTypes) const;
+    // Not const: a copy of something else ends the wait for a pasted password's echo.
+    Verdict check(const QString& text, const QStringList& mimeTypes);
     // A picture: password-manager markers, its encoded size (maxImageBytes), and our own
     // pasted picture coming back (matched by its pixels).
     Verdict checkImage(const ImageClip& image, const QStringList& mimeTypes) const;
+
+    // Call right before ClipItTo puts a password on the clipboard: its echo is ignored until the
+    // clipboard holds something else, however late it comes (the GNOME extension can't mark it,
+    // so a late echo would otherwise pass as plain text). Also counts as noteOwnWrite().
+    void noteOwnPassword(const QString& text);
+    // Our pasted password is still the last thing on the clipboard (nothing else was copied).
+    bool ownPasswordPending() const { return !m_ownPasswordHash.isEmpty(); }
+    void forgetOwnPassword() { m_ownPasswordHash.clear(); }
 
     // Call right before ClipItTo itself puts text on the clipboard: every echo of it that the
     // capture backend reports within ownWriteWindowMs is then ignored (Windows may report one
@@ -32,6 +41,7 @@ public:
     void noteOwnImage(const QString& pixelHash); // the same, for a picture
 
     void setMaxBytes(qint64 maxBytes) { m_maxBytes = maxBytes; }
+    qint64 maxBytes() const { return m_maxBytes; }
     void setMaxImageBytes(qint64 maxBytes) { m_maxImageBytes = maxBytes; }
     qint64 maxImageBytes() const { return m_maxImageBytes; }
 
@@ -41,7 +51,8 @@ public:
     // Capture backends name the app a marked copy came from with this pseudo MIME type
     // ("x-clipitto-source:KeePassXC"); it becomes the password's default note.
     static QString sourceMimeType(const QString& app); // empty when `app` is
-    static QString sourceApp(const QStringList& mimeTypes); // empty when not given
+    static QString sourceApp(const QStringList& mimeTypes); // the last one; empty when not given
+    static QStringList withoutSource(QStringList mimeTypes); // drops any the copying app offered
 
     static constexpr qint64 ownWriteWindowMs = 1000;
 
@@ -51,7 +62,10 @@ private:
     qint64 m_maxBytes;
     qint64 m_maxImageBytes = 50LL * 1024 * 1024;
     MsClock m_clock;
-    QByteArray m_ownTextHash; // a hash, not the text: it may be a password
+    QByteArray ownHash(const QString& text) const; // keyed per process: it may be a password
+    QByteArray m_hashKey; // random, this process only
+    QByteArray m_ownTextHash;
+    QByteArray m_ownPasswordHash; // until the clipboard holds something else
     qint64 m_ownAtMs = 0;
     bool m_hasOwn = false;
     QString m_ownImageHash;

@@ -48,9 +48,18 @@ void ClipboardWriter::setText(const QString& text)
     }
 }
 
+void ClipboardWriter::clear()
+{
+    if (m_integration && m_integration->isAvailable()) {
+        m_integration->setClipboard(QString());
+    } else {
+        m_clipboard->clear(QClipboard::Clipboard);
+    }
+}
+
 void ClipboardWriter::setPassword(const QString& text)
 {
-    m_filter.noteOwnWrite(text);
+    m_filter.noteOwnPassword(text);
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboard(text);
         return;

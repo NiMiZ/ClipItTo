@@ -118,6 +118,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_keepPasswords(new QCheckBox(tr("Keep copies marked by password managers, encrypted"), this))
     , m_passwordsInGroup(new QCheckBox(tr("Put new password copies in the \"Passwords\" group"), this))
     , m_unlockMinutes(new QSpinBox(this))
+    , m_clearSeconds(new QSpinBox(this))
     , m_hello(new QCheckBox(tr("Unlock with Windows Hello too"), this))
     , m_keyword(new QLineEdit(this))
     , m_masterStatus(new QLabel(this))
@@ -335,6 +336,13 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_unlockMinutes->setSuffix(tr(" min"));
     m_unlockMinutes->setValue(config.passwordUnlockMinutes);
     passwordsForm->addRow(tr("An unlock lasts:"), m_unlockMinutes);
+    m_clearSeconds->setRange(0, 3600);
+    m_clearSeconds->setSuffix(tr(" s"));
+    m_clearSeconds->setSpecialValueText(tr("Never"));
+    m_clearSeconds->setValue(config.passwordClearSeconds);
+    m_clearSeconds->setToolTip(tr("A password you paste from ClipItTo is taken off the clipboard after this, "
+                                  "unless you copied something else meanwhile."));
+    passwordsForm->addRow(tr("Clear a pasted password after:"), m_clearSeconds);
     auto* helloRow = new QHBoxLayout;
     helloRow->addWidget(m_hello);
     auto* helloInfo = makeInfoButton(this);
@@ -420,6 +428,7 @@ Config SettingsDialog::config() const
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
     c.passwordUnlockMinutes = m_unlockMinutes->value();
+    c.passwordClearSeconds = m_clearSeconds->value();
     c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
     if (m_keyword->hasAcceptableInput()) {
         c.passwordSearchKeyword = m_keyword->text();
@@ -447,7 +456,8 @@ void SettingsDialog::updatePasswordPage()
     m_setMaster->setEnabled(keeper && !m_busy);
     m_removeMaster->setEnabled(setUp && !m_busy);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
-                       static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_keyword)}) {
+                       static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),
+                       static_cast<QWidget*>(m_keyword)}) {
         w->setEnabled(setUp);
     }
     const QSignalBlocker block(m_hello);
@@ -465,11 +475,10 @@ void SettingsDialog::setMasterPassword()
     if (!answer) {
         return;
     }
-    QByteArray chosen = answer->chosen.toUtf8();
-    PasswordVault::wipe(answer->chosen);
+    QByteArray chosen = PasswordVault::passwordBytes(answer->chosen);
     m_busy = true;
     updatePasswordPage();
-    keeper->setMasterPassword(chosen, [this, self = QPointer<SettingsDialog>(this)](bool ok) {
+    keeper->setMasterPassword(std::move(chosen), [this, self = QPointer<SettingsDialog>(this)](bool ok) {
         if (!self) {
             return;
         }
@@ -482,7 +491,6 @@ void SettingsDialog::setMasterPassword()
             m_notify(this, tr("Could not set the master password."));
         }
     });
-    PasswordVault::wipe(chosen);
 }
 
 void SettingsDialog::changeMasterPassword()
@@ -495,26 +503,24 @@ void SettingsDialog::changeMasterPassword()
     if (!answer) {
         return;
     }
-    QByteArray current = answer->current.toUtf8();
-    QByteArray chosen = answer->chosen.toUtf8();
-    PasswordVault::wipe(answer->current);
-    PasswordVault::wipe(answer->chosen);
+    QByteArray current = PasswordVault::passwordBytes(answer->current);
+    QByteArray chosen = PasswordVault::passwordBytes(answer->chosen);
     m_busy = true;
     updatePasswordPage();
-    keeper->changeMasterPassword(current, chosen, [this, self = QPointer<SettingsDialog>(this)](bool ok) {
+    keeper->changeMasterPassword(std::move(current), std::move(chosen), [this, self = QPointer<SettingsDialog>(this)](bool ok) {
         if (!self) {
             return;
         }
         m_busy = false;
         updatePasswordPage();
         if (ok) {
-            m_inform(this, tr("Master password changed."));
+            m_inform(this, tr("Master password changed. Every password copy now uses a new key%1.")
+                               .arg(m_passwordSupport.helloAvailable ? tr("; turn Windows Hello on again to use it")
+                                                                     : QString()));
         } else {
             m_notify(this, tr("The current master password is not right."));
         }
     });
-    PasswordVault::wipe(current);
-    PasswordVault::wipe(chosen);
 }
 
 void SettingsDialog::removeMasterPassword()
@@ -572,11 +578,10 @@ void SettingsDialog::onHelloToggled(bool on)
         updatePasswordPage(); // unchecks it again
         return;
     }
-    QByteArray bytes = password->toUtf8();
-    PasswordVault::wipe(*password);
+    QByteArray bytes = PasswordVault::passwordBytes(*password);
     m_busy = true;
     updatePasswordPage();
-    keeper->unlock(bytes, [this, apply, self = QPointer<SettingsDialog>(this)](bool ok) {
+    keeper->unlock(std::move(bytes), [this, apply, self = QPointer<SettingsDialog>(this)](bool ok) {
         if (!self) {
             return;
         }
@@ -588,7 +593,6 @@ void SettingsDialog::onHelloToggled(bool on)
             m_notify(this, tr("Wrong master password."));
         }
     });
-    PasswordVault::wipe(bytes);
 }
 
 void SettingsDialog::onShortcutEdited()

@@ -214,6 +214,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("keep_passwords", config.keepPasswords);
     r.boolean("passwords_in_group", config.passwordsInGroup);
     r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
+    r.integer("password_clear_seconds", config.passwordClearSeconds, 0, 3600);
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
     r.warnUnknownKeys();
@@ -292,6 +293,7 @@ std::vector<Line> lines(const Config& c)
         {"keep_passwords", tomlBool(c.keepPasswords), "keep copies marked by a password manager, encrypted"},
         {"passwords_in_group", tomlBool(c.passwordsInGroup), "put new password copies in the Passwords group"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},
+        {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard; 0 = never"},
         {"windows_hello", tomlBool(c.windowsHello), "Windows: unlock passwords with Windows Hello too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},

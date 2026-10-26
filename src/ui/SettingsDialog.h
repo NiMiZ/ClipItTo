@@ -112,6 +112,7 @@ public:
     QCheckBox* keepPasswordsBox() const { return m_keepPasswords; }
     QCheckBox* passwordsInGroupBox() const { return m_passwordsInGroup; }
     QSpinBox* unlockMinutesBox() const { return m_unlockMinutes; }
+    QSpinBox* clearSecondsBox() const { return m_clearSeconds; }
     QCheckBox* helloBox() const { return m_hello; }
     QLineEdit* keywordEdit() const { return m_keyword; }
     QLabel* masterStatus() const { return m_masterStatus; }
@@ -159,6 +160,7 @@ private:
     QCheckBox* m_keepPasswords;
     QCheckBox* m_passwordsInGroup;
     QSpinBox* m_unlockMinutes;
+    QSpinBox* m_clearSeconds;
     QCheckBox* m_hello;
     QLineEdit* m_keyword;
     QLabel* m_masterStatus;

@@ -16,6 +16,8 @@
 #include <windows.h>
 
 #include <atomic>
+#include <mutex>
+#include <optional>
 #include <thread>
 
 namespace clipitto::hello {
@@ -27,6 +29,29 @@ using winrt::Windows::Security::Credentials::KeyCredentialManager;
 using winrt::Windows::Security::Credentials::KeyCredentialStatus;
 using winrt::Windows::Security::Cryptography::BinaryStringEncoding;
 using winrt::Windows::Security::Cryptography::CryptographicBuffer;
+using winrt::Windows::Foundation::IAsyncInfo;
+
+// The operation waiting for the user, so quitting can cancel it (see cancelPending()).
+std::mutex g_pendingMutex;
+std::optional<IAsyncInfo> g_pending;
+
+// Waits for `operation` while it can be cancelled from another thread.
+template <typename Operation>
+auto waitFor(Operation operation)
+{
+    {
+        const std::lock_guard lock(g_pendingMutex);
+        g_pending = operation.template as<IAsyncInfo>();
+    }
+    struct Clear {
+        ~Clear()
+        {
+            const std::lock_guard lock(g_pendingMutex);
+            g_pending.reset();
+        }
+    } clear;
+    return operation.get();
+}
 
 const wchar_t* const kKeyName = L"io.github.nimiz.ClipItTo";
 const wchar_t* const kChallenge = L"ClipItTo password vault v1";
@@ -52,10 +77,15 @@ QString statusText(KeyCredentialStatus status)
     }
 }
 
-// A thread-local COM apartment for the WinRT calls (never the GUI thread's).
+// A COM apartment for the WinRT calls on this (pool) thread, never the GUI thread's. The
+// factory cache is cleared before leaving it: cached factories belong to the apartment.
 struct Apartment {
     Apartment() { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
-    ~Apartment() { winrt::uninit_apartment(); }
+    ~Apartment()
+    {
+        winrt::clear_factory_cache();
+        winrt::uninit_apartment();
+    }
 };
 
 // The Windows Security prompt can open behind other windows when a background app asks:
@@ -64,10 +94,14 @@ class PromptRaiser {
 public:
     PromptRaiser()
         : m_thread([this] {
+            // Windows may refuse the first tries (foreground lock): keep at it for a while.
             for (int i = 0; i < 50 && !m_done; ++i) {
-                if (HWND prompt = FindWindowW(L"Credential Dialog Xaml Host", nullptr)) {
-                    SetForegroundWindow(prompt);
+                HWND prompt = FindWindowW(L"Credential Dialog Xaml Host", nullptr);
+                if (prompt && GetForegroundWindow() == prompt) {
                     return;
+                }
+                if (prompt) {
+                    SetForegroundWindow(prompt);
                 }
                 Sleep(100);
             }
@@ -103,6 +137,10 @@ bool available(QString* why)
         if (why) {
             *why = QString::fromWCharArray(e.message().c_str());
         }
+    } catch (...) {
+        if (why) {
+            *why = tr("Windows Hello could not be checked");
+        }
     }
     return false;
 }
@@ -112,10 +150,9 @@ QByteArray unlockKey(bool create, QString* error)
     try {
         const Apartment apartment;
         const PromptRaiser raiser;
-        const auto retrieved = create ? KeyCredentialManager::RequestCreateAsync(
-                                            kKeyName, KeyCredentialCreationOption::ReplaceExisting)
-                                            .get()
-                                      : KeyCredentialManager::OpenAsync(kKeyName).get();
+        const auto retrieved = create ? waitFor(KeyCredentialManager::RequestCreateAsync(
+                                            kKeyName, KeyCredentialCreationOption::ReplaceExisting))
+                                      : waitFor(KeyCredentialManager::OpenAsync(kKeyName));
         if (retrieved.Status() != KeyCredentialStatus::Success) {
             if (error) {
                 *error = statusText(retrieved.Status());
@@ -123,7 +160,7 @@ QByteArray unlockKey(bool create, QString* error)
             return {};
         }
         const auto challenge = CryptographicBuffer::ConvertStringToBinary(kChallenge, BinaryStringEncoding::Utf8);
-        const auto signed_ = retrieved.Credential().RequestSignAsync(challenge).get();
+        const auto signed_ = waitFor(retrieved.Credential().RequestSignAsync(challenge));
         if (signed_.Status() != KeyCredentialStatus::Success) {
             if (error) {
                 *error = statusText(signed_.Status());
@@ -137,9 +174,19 @@ QByteArray unlockKey(bool create, QString* error)
         hash.addData(QByteArrayView(reinterpret_cast<const char*>(signature.data()), qsizetype(signature.size())));
         SecureZeroMemory(signature.data(), signature.size());
         return hash.result();
+    } catch (const winrt::hresult_canceled&) {
+        if (error) {
+            *error = tr("cancelled");
+        }
+        return {};
     } catch (const winrt::hresult_error& e) {
         if (error) {
             *error = QString::fromWCharArray(e.message().c_str());
+        }
+        return {};
+    } catch (...) { // never into QtConcurrent: its result would rethrow on the GUI thread
+        if (error) {
+            *error = tr("Windows Hello failed");
         }
         return {};
     }
@@ -150,8 +197,19 @@ void removeKey()
     try {
         const Apartment apartment;
         KeyCredentialManager::DeleteAsync(kKeyName).get();
-    } catch (const winrt::hresult_error&) {
+    } catch (...) {
         // Not there (never created, or deleted already): nothing to remove.
+    }
+}
+
+void cancelPending()
+{
+    const std::lock_guard lock(g_pendingMutex);
+    if (g_pending) {
+        try {
+            g_pending->Cancel();
+        } catch (...) {
+        }
     }
 }
 

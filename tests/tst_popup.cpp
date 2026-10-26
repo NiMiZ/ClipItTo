@@ -11,6 +11,7 @@
 #include "TestDb.h"
 
 #include <QAction>
+#include <QClipboard>
 #include <QApplication>
 #include <QBuffer>
 #include <QHelpEvent>
@@ -1186,7 +1187,20 @@ private slots:
         QVERIFY(!search->isPasswordMode());
         QCOMPARE(search->text(), QStringLiteral("p[]"));
 
-        // Pasted in one go: masked right away. Closing wipes it.
+        // Pasted in one go (Ctrl+V): it never enters the line edit.
+        search->clear();
+        QGuiApplication::clipboard()->setText(QStringLiteral("p[] hunter2"));
+        QSignalSpy edits(search, &QLineEdit::textChanged);
+        QTest::keyClick(search, Qt::Key_V, Qt::ControlModifier);
+        QVERIFY(search->isPasswordMode());
+        QCOMPARE(search->passwordQuery(), QStringLiteral("hunter2"));
+        for (const auto& args : edits) {
+            QVERIFY(!args.at(0).toString().contains(QLatin1String("hunter2")));
+        }
+        search->clear();
+        QVERIFY(!search->isPasswordMode());
+
+        // Set programmatically in one go: masked right away. Closing wipes it.
         search->setText(QStringLiteral("p[] hunter2"));
         QVERIFY(search->isPasswordMode());
         QCOMPARE(search->text(), QStringLiteral("p[] *******"));

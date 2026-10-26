@@ -5,6 +5,7 @@
 #include "DbusNames.h"
 
 #include <QDBusConnectionInterface>
+#include <QDBusError>
 #include <QDebug>
 
 namespace clipitto::ipc {
@@ -99,6 +100,7 @@ void DbusControlChannel::Ingest(const QString& text, const QStringList& mimeType
     // A marked copy becomes a password copy, named after its source app: only the shell
     // extension may hand those in, so other programs can't plant "passwords".
     if (ClipFilter::isSensitive(mimeTypes) && !calledFromShell("Ingest of a marked copy")) {
+        sendErrorReply(QDBusError::AccessDenied, QStringLiteral("marked copies are accepted from GNOME Shell only"));
         return;
     }
     emit ingestRequested(text, mimeTypes);

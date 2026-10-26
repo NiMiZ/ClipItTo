@@ -60,6 +60,23 @@ private slots:
         QCOMPARE(ClipFilter::sourceApp({QStringLiteral("x-clipitto-source:") + QString(200, QLatin1Char('a'))}).size(), 64);
         QVERIFY(ClipFilter::sourceApp({QStringLiteral("text/plain")}).isEmpty());
         QVERIFY(!ClipFilter::isSensitive({ClipFilter::sourceMimeType(QStringLiteral("App"))}));
+        // Backends append the real source last; one the copying app offered is dropped.
+        const QStringList spoofed = {QStringLiteral("x-clipitto-source:Bank"), QStringLiteral("text/plain")};
+        QCOMPARE(ClipFilter::withoutSource(spoofed), QStringList{QStringLiteral("text/plain")});
+        QCOMPARE(ClipFilter::sourceApp(spoofed + QStringList{QStringLiteral("x-clipitto-source:KeePassXC")}),
+                 QStringLiteral("KeePassXC"));
+    }
+
+    void aPastedPasswordsLateEchoIsStillOurs()
+    {
+        qint64 now = 1000;
+        ClipFilter f(1024, [&now] { return now; });
+        f.noteOwnPassword(QStringLiteral("hunter2"));
+        now += 10 * ClipFilter::ownWriteWindowMs; // the GNOME extension's echo, unmarked and late
+        QVERIFY(f.check(QStringLiteral("hunter2"), {QStringLiteral("text/plain")}) == Verdict::OwnWrite);
+        QVERIFY(f.check(QStringLiteral("hunter2"), {}) == Verdict::OwnWrite); // until something else
+        QVERIFY(f.check(QStringLiteral("something else"), {}) == Verdict::Accept);
+        QVERIFY(f.check(QStringLiteral("hunter2"), {}) == Verdict::Accept); // copied again, later: a copy
     }
 
     void ownPastedPasswordIsAnEchoNotASecret()

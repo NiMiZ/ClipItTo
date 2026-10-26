@@ -622,11 +622,10 @@ void PopupWindow::withPasswordsUnlocked(std::function<void()> then)
         if (!password) {
             return;
         }
-        QByteArray bytes = password->toUtf8();
-        PasswordVault::wipe(*password);
+        QByteArray bytes = PasswordVault::passwordBytes(*password);
         m_unlocking = true;
         ++m_modalDepth; // the popup stays while the key is derived
-        m_passwords->unlock(bytes, [this, self = QPointer<PopupWindow>(this), then](bool ok) {
+        m_passwords->unlock(std::move(bytes), [this, self = QPointer<PopupWindow>(this), then](bool ok) {
             if (!self) {
                 return; // closed down meanwhile
             }
@@ -638,7 +637,6 @@ void PopupWindow::withPasswordsUnlocked(std::function<void()> then)
                 showMessage(tr("Wrong master password."));
             }
         });
-        PasswordVault::wipe(bytes);
     };
     if (m_helloUnlock && m_passwords->helloEnabled()) {
         m_unlocking = true;

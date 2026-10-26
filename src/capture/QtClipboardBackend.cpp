@@ -59,7 +59,13 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
         return;
     }
     if (data->hasText()) {
-        emitText(data->text(), data->formats());
+        const QStringList formats = data->formats();
+        if (ClipFilter::isSensitive(formats) && (!readMarkedText() || mode != QClipboard::Clipboard)) {
+            // Never fetched: only the markers (a marked primary selection isn't a password copy).
+            emit captured(QString(), formats);
+        } else {
+            emitText(data->text(), formats);
+        }
     } else if (mode == QClipboard::Clipboard && data->hasImage()) {
         readImage(data->formats()); // text wins when a copy offers both
     }
@@ -120,6 +126,7 @@ void QtClipboardBackend::emitText(const QString& text, QStringList formats)
     } else if (!readMarkedText()) {
         emit captured(QString(), formats); // only the markers: the pipeline drops it
     } else {
+        formats = ClipFilter::withoutSource(formats); // an app can't name itself
         if (const QString source = ClipFilter::sourceMimeType(clipboardSourceApp()); !source.isEmpty()) {
             formats << source;
         }

@@ -32,6 +32,7 @@ private slots:
         QVERIFY(defaults.keepPasswords);
         QVERIFY(!defaults.passwordsInGroup);
         QCOMPARE(defaults.passwordUnlockMinutes, 5);
+        QCOMPARE(defaults.passwordClearSeconds, 30);
         QVERIFY(!defaults.windowsHello);
         QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
 
