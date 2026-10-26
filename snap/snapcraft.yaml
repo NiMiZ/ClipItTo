@@ -41,11 +41,11 @@ apps:
       - password-manager-service
       - wayland
       - x11
+  # Started at login through the snap's autostart (run clipitto.setup once): snap user
+  # daemons are still an experimental snapd feature.
   clipitto-daemon:
     command: usr/bin/clipitto-daemon
-    daemon: simple
-    daemon-scope: user
-    restart-condition: on-failure
+    autostart: clipitto-daemon.desktop
     slots:
       - dbus-clipitto
     plugs:
@@ -56,7 +56,16 @@ apps:
       - wayland
       - x11
 
+  setup:
+    command: bin/clipitto-snap-setup
+
 parts:
+  snap-setup:
+    plugin: dump
+    source: snap/local
+    organize:
+      clipitto-snap-setup: bin/clipitto-snap-setup
+
   clipitto:
     plugin: cmake
     source: .
