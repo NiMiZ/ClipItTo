@@ -8,6 +8,7 @@ It uses the components below, under their own licenses, all compatible with the 
 | SQLite | public domain | built in | built in |
 | SQLite3 Multiple Ciphers (with the parts listed below) | MIT | built in | built in |
 | toml++ | MIT | system package (not shipped) | built in |
+| Monocypher | CC0-1.0 or BSD-2-Clause | built in | built in |
 | Qt 6 | LGPL-3.0 | system packages (not shipped) | DLLs shipped, unmodified |
 | QtKeychain | BSD-3-Clause | system package (not shipped) | not used |
 | Microsoft Visual C++ runtime | Microsoft redistributable | not used | DLLs shipped |
@@ -79,6 +80,37 @@ https://github.com/marzer/tomlplusplus (reads config.toml)
 Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>
 
 Licensed under the MIT license quoted above.
+
+## Monocypher
+
+https://monocypher.org (version 4.0.2; the crypto behind password copies: Argon2id,
+X25519, XChaCha20-Poly1305, BLAKE2b). Dual-licensed CC0-1.0 or BSD-2-Clause; ClipItTo uses
+it under the BSD-2-Clause license:
+
+> Copyright (c) 2017-2023, Loup Vaillant
+> Copyright (c) 2017-2019, Michael Savage
+> Copyright (c) 2017-2023, Fabio Scotoni
+> All rights reserved.
+>
+> Redistribution and use in source and binary forms, with or without modification, are
+> permitted provided that the following conditions are met:
+>
+> 1. Redistributions of source code must retain the above copyright notice, this list of
+>    conditions and the following disclaimer.
+>
+> 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+>    conditions and the following disclaimer in the documentation and/or other materials
+>    provided with the distribution.
+>
+> THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS
+> OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+> MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+> COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+> EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+> SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+> HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+> TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+> SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Qt 6
 

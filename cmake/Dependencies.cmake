@@ -49,6 +49,28 @@ else()
     target_link_libraries(clipitto_sqlite INTERFACE SQLite::SQLite3)
 endif()
 
+# Monocypher (CC0 / BSD-2-Clause): the password copies' crypto (X25519 sealed boxes,
+# XChaCha20-Poly1305, Argon2id, keyed BLAKE2b). Two files, built in on every platform, so
+# there is no extra DLL on Windows and no extra package on Linux. Offline builds can point
+# FETCHCONTENT_SOURCE_DIR_MONOCYPHER at an unpacked copy of the same tarball.
+include(FetchContent)
+FetchContent_Declare(monocypher
+    # The tag's GitHub archive: the same code as monocypher.org's 4.0.2 tarball, without
+    # that tarball's documentation symlinks, which fail to extract on Windows and /mnt drives.
+    URL https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.2.tar.gz
+    URL_HASH SHA256=bc1ca30b1b2654e4e7daf2492c0d204200e55137f23fda6b7142fd7d523bd6b4
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+    SOURCE_SUBDIR no-cmake-project) # sources only: its Makefile is not used
+FetchContent_MakeAvailable(monocypher)
+add_library(clipitto_monocypher STATIC ${monocypher_SOURCE_DIR}/src/monocypher.c)
+target_include_directories(clipitto_monocypher SYSTEM PUBLIC ${monocypher_SOURCE_DIR}/src)
+set_target_properties(clipitto_monocypher PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+    target_compile_options(clipitto_monocypher PRIVATE /w)
+else()
+    target_compile_options(clipitto_monocypher PRIVATE -w)
+endif()
+
 # The history key's keyring: Windows uses the Credential Manager API directly; Linux uses
 # Secret Service through qtkeychain (distro package), optional.
 if(UNIX AND NOT APPLE)
