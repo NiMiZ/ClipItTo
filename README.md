@@ -133,8 +133,9 @@ finds them by note, group or "image".
 lines each copy shows, how many copies and pictures the history keeps, how many Favorites to keep, where the popup opens (near the pointer, centered, a corner, or where it was last: drag it by its name), where the selection starts when it opens and after a search (*Start on*: the first pinned copy, the first copy in a group, or the first unsaved one), whether a copy you choose becomes the latest, the shortcut
 (default Ctrl+Alt+V; e.g. Ctrl+` works too; on Windows ClipItTo registers it, on GNOME it
 becomes the GNOME keyboard shortcut, set again at every start; on KDE, Sway and other
-desktops bind `clipitto --toggle` yourself, and `clipitto --status` reminds you), history encryption, and group management (new,
-sub-group, rename/move, delete, move up/down; saved immediately). Saving keeps your own comments and
+desktops bind `clipitto --toggle` yourself, and `clipitto --status` reminds you), history encryption, group management (new,
+sub-group, rename/move, delete, move up/down; saved immediately), and
+[password copies](#password-copies) (the master password, Windows Hello, the search keyword). Saving keeps your own comments and
 layout in `config.toml`.
 
 ### Encrypted history
@@ -164,6 +165,36 @@ Measured cost (`build/debug/tests/bench_encryption`, debug build, 1000 copies):
 The build downloads the SQLite3 Multiple Ciphers amalgamation (pinned version and SHA-256);
 offline builds can set `FETCHCONTENT_SOURCE_DIR_SQLITE3MC` to an unpacked copy, or
 configure with `-DCLIPITTO_ENCRYPTION=OFF` to use the system SQLite.
+
+### Password copies
+
+Password managers (KeePassXC, Bitwarden, KeePass, 1Password, ...) mark what they copy as
+secret. Without a master password ClipItTo skips those copies, as before; the popup says once
+how to keep them. Once you set a master password in Settings › *Passwords*:
+
+- **Kept encrypted.** A marked copy is encrypted the moment it arrives (X25519 + XChaCha20-Poly1305,
+  via the built-in [Monocypher](https://monocypher.org)) and only that is stored. It works while
+  locked: copies are encrypted to a public key, and only unlocking can open them.
+- **Hidden.** It is listed as `●●●●` with a padlock, its note set to the app it came from
+  (Windows, X11, GNOME; not with wl-paste). Ordinary search finds it by note or group only.
+- **Unlocked with the master password.** Choosing one (Enter), *Show password* (10 s in its row)
+  and *Not a password* ask for it first. An unlock lasts 5 minutes (`password_unlock_minutes`);
+  `clipitto --lock` or *Lock passwords* ends it. Unlocking takes about 0.1 s (Argon2id, 64 MiB).
+  On Windows, *Unlock with Windows Hello too* lets your face, fingerprint or PIN do it.
+- **Pasted marked.** A password pasted back carries the password-manager markers, so other
+  clipboard managers and Windows' clipboard history skip it too (not through the GNOME
+  extension, which can put only one format on the clipboard).
+- **Searched with a keyword.** Type `p[] ` (the keyword and a space; Settings can change it):
+  what follows shows as asterisks and searches inside your passwords while unlocked, or for a
+  whole password while locked. Locked searching needs the system keyring, which keeps the key
+  for it; the history file alone can't be used to test guesses.
+- Right-click *Mark as password* turns any copy into one (its text is wiped from the file);
+  *Put new password copies in the "Passwords" group* files them there (off by default).
+
+The master password is never stored or shown; only a key derived from it unlocks. **If you
+forget it, the password copies can't be recovered**: *Remove…* deletes them and starts over.
+This protects them in the history file and from people using your computer while they are
+locked; programs running as you can still read the clipboard when a password is copied.
 
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs
@@ -207,7 +238,8 @@ are stored only in local files under your user account (`~/.local/share/clipitto
 Windows), readable by your account only; turn on [encryption](#encrypted-history) to
 protect them at rest as well. The daemon, the CLI and the GNOME extension talk to each
 other over your session's D-Bus or a local socket, never over the network. Logs never
-contain clipboard contents. To erase everything, quit ClipItTo and delete those folders.
+contain clipboard contents. Copies that password managers mark as secret are skipped, or kept
+only encrypted once you set a [master password](#password-copies). To erase everything, quit ClipItTo and delete those folders.
 
 ## Building
 
