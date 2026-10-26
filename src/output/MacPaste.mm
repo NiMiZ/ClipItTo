@@ -3,6 +3,8 @@
 
 #include "MacPaste.h"
 
+#include <initializer_list>
+
 #include <unistd.h>
 
 namespace clipitto {
