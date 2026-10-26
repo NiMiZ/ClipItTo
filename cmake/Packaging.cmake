@@ -77,7 +77,7 @@ if(NOT CLIPITTO_DEB_SHLIBDEPS)
         string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libsqlite3-0 (>= 3.35)") # DROP COLUMN; otherwise SQLite is built in
     endif()
 endif()
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gnome-shell | wl-clipboard")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "wl-clipboard | gnome-shell")
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     ${PROJECT_SOURCE_DIR}/packaging/debian/postinst ${PROJECT_SOURCE_DIR}/packaging/debian/prerm)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
