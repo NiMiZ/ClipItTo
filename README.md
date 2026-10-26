@@ -24,6 +24,34 @@ Then, once per user, **log out and back in** (so GNOME Shell sees the extension)
 `clipitto-setup`; see [Installing](#installing-ubuntu-2404) for what it does. Press
 **Ctrl+Alt+V** to open the popup. To remove it: `sudo apt remove clipitto`.
 
+## Download for other Linux distributions
+
+Two downloads carry everything inside (Qt and the other libraries), so nothing else needs
+installing. Both are on the [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest).
+
+**AppImage** (`ClipItTo-<version>-x86_64.AppImage`): one file for most distributions from 2024
+on (glibc 2.39+: Ubuntu 24.04, Fedora 40, Debian 13, Arch, ...).
+
+```bash
+chmod +x ClipItTo-*-x86_64.AppImage
+./ClipItTo-*-x86_64.AppImage --install    # start with the session, menu entry, GNOME extension, shortcut
+```
+
+`--install` sets it up for your account, pointing at the AppImage where it is (keep it
+there); on GNOME, log out and back in and run `--install` once more to enable the extension.
+The AppImage also takes every `clipitto` option (`--toggle`, `--status`, `--lock`, ...).
+`--uninstall` undoes the setup and keeps your history. Without FUSE (some containers), set
+`APPIMAGE_EXTRACT_AND_RUN=1`.
+
+**Snap** (`clipitto_<version>_amd64.snap`), strictly confined:
+
+```bash
+sudo snap install --dangerous ./clipitto_*_amd64.snap
+```
+
+`--dangerous` is needed while it isn't in the Snap Store. On GNOME, the extension is not part
+of the snap; install it from the `.deb` or the AppImage (`--install`).
+
 ## Quick start on Ubuntu 24.04+ (from source, no install)
 
 ```bash
