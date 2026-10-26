@@ -412,6 +412,7 @@ jobs:
         run: |
           sudo snap install --dangerous "${{ steps.build.outputs.snap }}"
           snap run clipitto --version
+          snap run clipitto.setup
       - uses: actions/upload-artifact@v4
         with:
           name: clipitto-snap
