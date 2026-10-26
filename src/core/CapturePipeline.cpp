@@ -155,6 +155,9 @@ void CapturePipeline::storeSecret(const SealedCopy& copy)
             m_repo.prune(m_maxHistory);
         }
         emit stored(result.id, result.inserted);
+        if (result.inserted) {
+            emit passwordStored(result.id, copy.note);
+        }
     } catch (const db::DbError& e) {
         qCWarning(lcCapture) << "failed to store a password copy:" << e.what();
     }

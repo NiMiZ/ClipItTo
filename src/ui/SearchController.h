@@ -56,6 +56,7 @@ private:
     HistoryModel& m_model;
     QTimer m_debounce;
     QString m_query;
+    QString m_hideSecretsIn; // a group whose password copies stay out of Recent
     int m_recentCount = 20;
     int m_savedCap = 15;
     bool m_showSavedOnTop = true;

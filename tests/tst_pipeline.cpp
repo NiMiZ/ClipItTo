@@ -158,6 +158,33 @@ private slots:
         QCOMPARE(t.repo->countSecrets(), 0);
     }
 
+    void aNewPasswordIsAnnouncedOnceWithItsSource()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("master", {64, 1}));
+        vault.setMatchKey(QByteArray(32, 'm'));
+        vault.setMatchCost({64, 1});
+        p.setPasswords(&vault, true, QString());
+        QSignalSpy announced(&p, &CapturePipeline::passwordStored);
+        const QStringList marked = {QStringLiteral("x-kde-passwordManagerHint"),
+                                    ClipFilter::sourceMimeType(QStringLiteral("Safari"))};
+
+        p.process(QStringLiteral("pw-one"), marked);
+        QCOMPARE(announced.size(), 1);
+        QCOMPARE(announced.at(0).at(1).toString(), QStringLiteral("Safari"));
+        QVERIFY(t.repo->get(announced.at(0).at(0).toLongLong())->secret);
+
+        p.process(QStringLiteral("pw-one"), marked); // the same password again: not new
+        QCOMPARE(announced.size(), 1);
+        p.process(QStringLiteral("pw-two"), {QStringLiteral("x-kde-passwordManagerHint")}); // no source
+        QCOMPARE(announced.size(), 2);
+        QVERIFY(announced.at(1).at(1).toString().isEmpty());
+        p.process(QStringLiteral("not a password"), {});
+        QCOMPARE(announced.size(), 2);
+    }
+
     void markedCopiesWithoutAMasterPasswordAreDropped()
     {
         TestDb t;

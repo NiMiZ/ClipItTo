@@ -221,7 +221,14 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   for it; the history file alone can't be used to test guesses, and with the keyring each guess
   still costs a memory-hard hash (Argon2id, 16 MiB).
 - Right-click *Mark as password* turns any copy into one (its text is wiped from the file);
-  *Put new password copies in the "Passwords" group* files them there (off by default).
+  *Put new password copies in the "Passwords" group* files them there (off by default). With
+  that on, *Also show them in Recent* chooses whether they also appear in the Recent list
+  (as `●●●●`) or only in the group and the `p[]` search.
+- *After copying a password, ask for a name* (off by default): when a **new** password is
+  copied, ClipItTo opens with a box to name it. The app it came from is suggested as grey
+  text that goes away when you type; leave the box empty (or cancel) to keep that name. The
+  window closes again afterwards if it wasn't open. (On Windows the window may not take the
+  focus when it opens by itself.)
 
 The master password is never stored or shown; only a key derived from it unlocks. Changing it
 also changes the key every password copy is sealed with. **If you forget it, the password

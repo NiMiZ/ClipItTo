@@ -27,6 +27,9 @@ void SearchController::applyConfig(const Config& config)
     m_recentCount = config.recentCount;
     m_savedCap = config.savedCap;
     m_showSavedOnTop = config.showSavedOnTop;
+    // Passwords kept in the Passwords group can stay out of Recent (they remain in the group and
+    // in the p[] search).
+    m_hideSecretsIn = config.passwordsInGroup && !config.passwordsInRecent ? PasswordKeeper::passwordsGroup() : QString();
     m_debounce.setInterval(config.searchDebounceMs);
     m_model.setPreviewLines(config.previewLines);
 }
@@ -112,8 +115,8 @@ void SearchController::run()
             auto pinned = m_showSavedOnTop ? m_repo.pinned(m_savedCap) : std::vector<Entry>{};
             // Recent is the copy history (starred and grouped copies too, also found in the
             // group tree); pinned copies are listed above it, so it leaves those out.
-            auto recent = m_showSavedOnTop ? m_repo.recentUnpinned(m_recentCount)
-                                           : m_repo.recent(m_recentCount, /*unsavedOnly=*/false);
+            auto recent = m_showSavedOnTop ? m_repo.recentUnpinned(m_recentCount, m_hideSecretsIn)
+                                           : m_repo.recent(m_recentCount, /*unsavedOnly=*/false, m_hideSecretsIn);
             if (!pinned.empty()) {
                 sections.push_back({tr("Pinned"), std::move(pinned)});
                 // A header only separates something: with nothing pinned, recent stands alone.

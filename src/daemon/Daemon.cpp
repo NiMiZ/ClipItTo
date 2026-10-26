@@ -235,6 +235,12 @@ Daemon::StartResult Daemon::start(QString* error)
             }
         });
     });
+    // "Ask for a name after copying a password": open the popup with a name box on the new copy.
+    connect(m_pipeline.get(), &CapturePipeline::passwordStored, this, [this](qint64 id, const QString& source) {
+        if (m_config.passwordAskNote && m_popup) {
+            m_popup->askPasswordNote(id, source);
+        }
+    });
     applyPasswordSettings();
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
@@ -755,7 +761,7 @@ void Daemon::applyPasswordSettings()
     }
     m_passwords->setUnlockMinutes(m_config.passwordUnlockMinutes);
     m_pipeline->setPasswords(&m_passwords->vault(), m_config.keepPasswords,
-                             m_config.passwordsInGroup ? QStringLiteral("Passwords") : QString());
+                             m_config.passwordsInGroup ? PasswordKeeper::passwordsGroup() : QString());
     if (m_capture.backend) {
         m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
     }

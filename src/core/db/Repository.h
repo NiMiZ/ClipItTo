@@ -92,10 +92,12 @@ public:
     const Limits& limits() const { return m_limits; }
 
     // Newest first. With unsavedOnly, pinned, starred and grouped items are excluded.
-    std::vector<Entry> recent(int limit, bool unsavedOnly);
+    // `hideSecretsIn`: password copies in that group are left out (the Passwords group, when
+    // the user keeps them out of Recent); empty: nothing is left out.
+    std::vector<Entry> recent(int limit, bool unsavedOnly, const QString& hideSecretsIn = {});
     // The copy history: newest (last copied or pasted) first, each text once, leaving out
     // pinned copies (the popup lists those above). Starred and grouped copies are included.
-    std::vector<Entry> recentUnpinned(int limit);
+    std::vector<Entry> recentUnpinned(int limit, const QString& hideSecretsIn = {});
     // Pinned copies in their pinned order.
     std::vector<Entry> pinned(int limit);
     // Starred copies without a group (the Favorites group), newest first.

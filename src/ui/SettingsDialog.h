@@ -121,6 +121,8 @@ public:
     QTreeWidget* groupTree() const { return m_groups; }
     QCheckBox* keepPasswordsBox() const { return m_keepPasswords; }
     QCheckBox* passwordsInGroupBox() const { return m_passwordsInGroup; }
+    QCheckBox* passwordsInRecentBox() const { return m_passwordsInRecent; }
+    QCheckBox* askNoteBox() const { return m_askNote; }
     QSpinBox* unlockMinutesBox() const { return m_unlockMinutes; }
     QSpinBox* clearSecondsBox() const { return m_clearSeconds; }
     QCheckBox* helloBox() const { return m_hello; }
@@ -134,6 +136,7 @@ private:
     void reloadGroups(const QString& select = {});
     void createGroup(const QString& parentPath);
     void updatePasswordPage(); // master password state, buttons
+    void updatePasswordDependents(); // "also show in Recent" follows "put in the Passwords group"
     void onHelloToggled(bool on);
 
     Config m_config;
@@ -171,6 +174,8 @@ private:
     PasswordSupport m_passwordSupport;
     QCheckBox* m_keepPasswords;
     QCheckBox* m_passwordsInGroup;
+    QCheckBox* m_passwordsInRecent;
+    QCheckBox* m_askNote;
     QSpinBox* m_unlockMinutes;
     QSpinBox* m_clearSeconds;
     QCheckBox* m_hello;

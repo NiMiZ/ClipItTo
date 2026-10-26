@@ -78,6 +78,13 @@ public:
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
     void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
+    void setNamePrompt(NamePrompt prompt) { m_namePrompt = std::move(prompt); }
+
+    // "Ask for a name after copying a password": opens the popup with the new copy selected
+    // and a name box on it (`suggestion`, the app it came from, as placeholder). A typed name
+    // becomes its note; empty or cancelled keeps the note it has. The popup closes again
+    // afterwards if it wasn't open, so the focus goes back to where the user was.
+    void askPasswordNote(qint64 id, const QString& suggestion);
 
     // Password copies (null: none): shown hidden; showing, pasting and "not a password" ask
     // for the master password first, unless unlocked. The owner pastes them (entryActivated
@@ -183,6 +190,8 @@ private:
     ConfirmPrompt m_confirm;
     Notify m_notify;
     PasswordPrompt m_passwordPrompt;
+    NamePrompt m_namePrompt;
+    bool m_namingPassword = false; // a name box is open or about to open: one at a time
     PasswordKeeper* m_passwords = nullptr;
     HelloUnlock m_helloUnlock;
     QTimer* m_revealTimer = nullptr; // hides revealed passwords again

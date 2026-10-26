@@ -477,6 +477,33 @@ private slots:
         QVERIFY(t.repo->sealedSecret(r.id).isEmpty()); // went with its row
     }
 
+    void recentCanLeaveOutThePasswordsOfOneGroup()
+    {
+        TestDb t;
+        const auto plain = t.repo->ingest(QStringLiteral("plain")).id;
+        const auto inGroup = t.repo->ingestSecret("S1", QStringLiteral("secret:a"), QString(), QStringLiteral("Passwords")).id;
+        const auto elsewhere = t.repo->ingestSecret("S2", QStringLiteral("secret:b"), QString(), QStringLiteral("Other")).id;
+        const auto free = t.repo->ingestSecret("S3", QStringLiteral("secret:c"), QString(), QString()).id;
+        const auto idsOf = [](const std::vector<Entry>& entries) {
+            QSet<qint64> ids;
+            for (const Entry& e : entries) {
+                ids << e.id;
+            }
+            return ids;
+        };
+
+        QCOMPARE(idsOf(t.repo->recent(10, false)), (QSet<qint64>{plain, inGroup, elsewhere, free}));
+        QCOMPARE(idsOf(t.repo->recentUnpinned(10)), (QSet<qint64>{plain, inGroup, elsewhere, free}));
+        // Only the password copies of that group are left out: not plain copies, not passwords elsewhere.
+        const QString hide = QStringLiteral("Passwords");
+        QCOMPARE(idsOf(t.repo->recent(10, false, hide)), (QSet<qint64>{plain, elsewhere, free}));
+        QCOMPARE(idsOf(t.repo->recentUnpinned(10, hide)), (QSet<qint64>{plain, elsewhere, free}));
+        QCOMPARE(idsOf(t.repo->recent(10, true, hide)), (QSet<qint64>{plain, free})); // unsaved copies
+        // They are still in the group, and found by a search of their note or group.
+        QVERIFY(idsOf(t.repo->groupedEntries()).contains(inGroup));
+        QVERIFY(idsOf(t.repo->search(QStringLiteral("Passwords"))).contains(inGroup));
+    }
+
     void markingAsPasswordWipesTheText()
     {
         QTemporaryDir dir;

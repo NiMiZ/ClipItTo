@@ -177,6 +177,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
         QMessageBox::warning(parent, QStringLiteral("ClipItTo"), message);
     })
     , m_passwordPrompt(defaultPasswordPrompt())
+    , m_namePrompt(defaultNamePrompt())
 {
     setWindowTitle(QStringLiteral("ClipItTo"));
     resize(560, 480);
@@ -673,6 +674,37 @@ void PopupWindow::revealPassword(qint64 id)
         m_model->setRevealed(id, text);
         PasswordVault::wipe(text);
         m_revealTimer->start();
+    });
+}
+
+void PopupWindow::askPasswordNote(qint64 id, const QString& suggestion)
+{
+    if (m_namingPassword || isBusy()) {
+        return; // another box is open (the copy keeps its default note), or the history is busy
+    }
+    m_namingPassword = true;
+    // From the event loop, not from inside the capture signal that announced the copy.
+    QTimer::singleShot(0, this, [this, id, suggestion] {
+        const bool wasVisible = isVisible();
+        showPopup();
+        refreshSelecting(Selection{Kind::Entry, id, {}});
+        std::optional<QString> name;
+        {
+            ModalGuard guard(m_modalDepth);
+            name = m_namePrompt(this, suggestion);
+        }
+        m_namingPassword = false;
+        if (name && !name->trimmed().isEmpty()) {
+            try {
+                m_repo.setNote(id, *name);
+            } catch (const db::DbError& err) {
+                qCWarning(lcPopup) << "naming a password copy failed:" << err.what();
+            }
+        }
+        refreshSelecting(Selection{Kind::Entry, id, {}});
+        if (!wasVisible) {
+            hidePopup();
+        }
     });
 }
 

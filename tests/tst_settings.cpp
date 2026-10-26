@@ -429,6 +429,60 @@ private slots:
         QVERIFY(again.startupBox()->isChecked());
     }
 
+    void showInRecentFollowsThePasswordsGroupOption()
+    {
+        TestDb t;
+        clipitto::PasswordKeeper keeper(*t.repo, std::make_shared<FakeKeyStore>());
+        keeper.setKdfCost({64, 1});
+        clipitto::ui::PasswordSupport support;
+        support.keeper = &keeper;
+        {
+            // No master password: the password settings are all greyed.
+            SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+            QVERIFY(!d.passwordsInGroupBox()->isEnabled());
+            QVERIFY(!d.passwordsInRecentBox()->isEnabled());
+            QVERIFY(!d.askNoteBox()->isEnabled());
+        }
+        bool set = false;
+        keeper.setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+
+        SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+        // "Also show them in Recent" is only for passwords put in the group: greyed until then.
+        QVERIFY(d.passwordsInGroupBox()->isEnabled());
+        QVERIFY(!d.passwordsInGroupBox()->isChecked());
+        QVERIFY(!d.passwordsInRecentBox()->isEnabled());
+        QVERIFY(d.passwordsInRecentBox()->isChecked()); // the default: they show
+        QVERIFY2(d.passwordsInRecentBox()->toolTip().contains(QLatin1String("asterisks")),
+                 qPrintable(d.passwordsInRecentBox()->toolTip()));
+        d.passwordsInGroupBox()->setChecked(true);
+        QVERIFY(d.passwordsInRecentBox()->isEnabled());
+        d.passwordsInRecentBox()->setChecked(false);
+        Config c = d.config();
+        QVERIFY(c.passwordsInGroup);
+        QVERIFY(!c.passwordsInRecent);
+        d.passwordsInGroupBox()->setChecked(false);
+        QVERIFY(!d.passwordsInRecentBox()->isEnabled());
+
+        // Ask for a name: its own switch, off by default.
+        QVERIFY(d.askNoteBox()->isEnabled());
+        QVERIFY(!d.askNoteBox()->isChecked());
+        QVERIFY(d.askNoteBox()->toolTip().contains(QLatin1String("name")));
+        d.askNoteBox()->setChecked(true);
+        QVERIFY(d.config().passwordAskNote);
+
+        // Loaded from the config.
+        Config saved;
+        saved.passwordsInGroup = true;
+        saved.passwordsInRecent = false;
+        saved.passwordAskNote = true;
+        SettingsDialog again(saved, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+        QVERIFY(again.passwordsInGroupBox()->isChecked());
+        QVERIFY(again.passwordsInRecentBox()->isEnabled());
+        QVERIFY(!again.passwordsInRecentBox()->isChecked());
+        QVERIFY(again.askNoteBox()->isChecked());
+    }
+
     void passwordSettingsAreReturned()
     {
         TestDb t;

@@ -33,6 +33,9 @@ public:
     void reload();
     const PasswordVault& vault() const { return m_vault; }
 
+    // Where new password copies go when passwords_in_group is on.
+    static QString passwordsGroup() { return QStringLiteral("Passwords"); }
+
     bool isSetUp() const { return m_vault.isSetUp(); }
     bool isUnlocked() const { return m_vault.isUnlocked(); }
     bool canMatch() const { return m_vault.canMatch(); } // false without a keyring
