@@ -18,6 +18,11 @@ private slots:
         QCOMPARE(QDir::cleanPath(clipitto::paths::configDir()), QDir(config.path()).filePath(QStringLiteral("clipitto")));
         // History stays machine-local (%LOCALAPPDATA%), not in the roaming profile.
         QVERIFY(!QDir::cleanPath(clipitto::paths::dataDir()).startsWith(QDir::cleanPath(config.path())));
+#elif defined(Q_OS_MACOS)
+        // Qt ignores XDG variables there: settings and history live in Application Support.
+        const QString support = QDir::cleanPath(clipitto::paths::dataDir());
+        QVERIFY2(support.endsWith(QStringLiteral("/Library/Application Support/clipitto")), qPrintable(support));
+        QCOMPARE(QDir::cleanPath(clipitto::paths::configDir()), support);
 #else
         qputenv("XDG_CONFIG_HOME", QFile::encodeName(config.path()));
         qputenv("XDG_DATA_HOME", QFile::encodeName(data.path()));

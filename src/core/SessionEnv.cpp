@@ -7,8 +7,10 @@ namespace clipitto {
 
 SessionEnv SessionEnv::detect()
 {
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN)
     return {Display::Windows, false};
+#elif defined(Q_OS_MACOS)
+    return {Display::MacOS, false};
 #else
     return from(qEnvironmentVariable("XDG_SESSION_TYPE"), qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
                 !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"), !qEnvironmentVariableIsEmpty("DISPLAY"));

@@ -127,6 +127,54 @@ private slots:
         QCOMPARE(captured.at(0).at(0).toString(), QStringLiteral("שלום עולם"));
     }
 
+    void aChangeCounterReplacesTheClipboardSignal()
+    {
+        // macOS: no change event reaches a background program, so a counter is polled. Only
+        // changes after start count, and QClipboard's own signal is not used.
+        ScriptedReader reader;
+        *reader.script << ok(QStringLiteral("first")) << ok(QStringLiteral("second"));
+        auto count = std::make_shared<qint64>(10);
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false, nullptr, reader,
+                                   [count] { return *count; });
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
+        backend.start();
+
+        QTest::qWait(QtClipboardBackend::kPollMs * 2);
+        QCOMPARE(captured.size(), 0); // what was there already is not a copy
+        QCOMPARE(*reader.calls, 0);
+        QGuiApplication::clipboard()->setText(QStringLiteral("qt signal"));
+        QTest::qWait(QtClipboardBackend::kPollMs * 2);
+        QCOMPARE(*reader.calls, 0); // the counter didn't move: nothing read
+
+        ++*count;
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(captured.at(0).at(0).toString(), QStringLiteral("first"));
+        QTest::qWait(QtClipboardBackend::kPollMs * 3);
+        QCOMPARE(captured.size(), 1); // an unchanged counter is not read again
+
+        *count += 5; // several copies between two polls are one read of the latest
+        QTRY_COMPARE(captured.size(), 2);
+        QCOMPARE(captured.at(1).at(0).toString(), QStringLiteral("second"));
+        QCOMPARE(*reader.calls, 2);
+
+        backend.stop();
+        ++*count;
+        QTest::qWait(QtClipboardBackend::kPollMs * 2);
+        QCOMPARE(*reader.calls, 2); // stopped: no polling
+    }
+
+    void aCounterThatSaysMinusOneUsesTheClipboardSignal()
+    {
+        ScriptedReader reader;
+        *reader.script << ok(QStringLiteral("by signal"));
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false, nullptr, reader, [] { return qint64(-1); });
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
+        backend.start();
+        QGuiApplication::clipboard()->setText(QStringLiteral("x"));
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(captured.at(0).at(0).toString(), QStringLiteral("by signal"));
+    }
+
     void busyTextIsReadAgainShortly()
     {
         ScriptedReader reader;

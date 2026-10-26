@@ -146,6 +146,11 @@ NativeClipboardRead::Status readPicture(NativeClipboardRead& result)
 
 } // namespace
 
+qint64 clipboardChangeCount()
+{
+    return -1; // Windows tells us (the format listener): nothing to poll
+}
+
 NativeClipboardRead readNativeClipboard(bool readMarkedText)
 {
     NativeClipboardRead result;

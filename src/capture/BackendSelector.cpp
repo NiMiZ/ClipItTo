@@ -60,9 +60,10 @@ Selection selectBackend(const Config& config, const SessionEnv& session, const C
         break;
     case Kind::QtClipboard: {
         s.backend = std::make_unique<QtClipboardBackend>(clipboard, config.capturePrimary);
-        // QClipboard sees every change on X11 and Windows, but only focused changes on Wayland.
+        // Every change is seen on X11 (XFixes), on Windows (format listener) and on macOS
+        // (the backend polls the pasteboard's change count); on Wayland only focused ones.
         const bool complete = session.display == SessionEnv::Display::X11
-            || session.display == SessionEnv::Display::Windows;
+            || session.display == SessionEnv::Display::Windows || session.display == SessionEnv::Display::MacOS;
         if (!complete) {
             s.degraded = true;
             note += wayland ? QStringLiteral("; enable the ClipItTo GNOME Shell extension for full capture, "

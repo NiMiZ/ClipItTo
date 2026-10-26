@@ -41,7 +41,8 @@ if(NOT CLIPITTO_DBUS)
     add_dependencies(tst_localipc clipitto)
 endif()
 
-if(UNIX)
+if(UNIX AND NOT APPLE)
+    # Linux desktop only (wl-paste, GNOME): none of it runs on macOS.
     # Drives the backend against fake-wl-paste.sh (POSIX shell).
     clipitto_add_test(tst_wlpaste clipitto_capture)
     target_compile_definitions(tst_wlpaste PRIVATE CLIPITTO_FAKE_WLPASTE="${CMAKE_CURRENT_SOURCE_DIR}/fake-wl-paste.sh")

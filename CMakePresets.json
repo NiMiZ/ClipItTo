@@ -43,6 +43,23 @@
       }
     },
     {
+      "name": "macos",
+      "inherits": "base",
+      "displayName": "macOS (universal, 11.0+)",
+      "description": "Run on a Mac with Qt 6.5+ for macOS (QT_ROOT_DIR, e.g. ~/Qt/6.5.3/macos) and Xcode's command line tools.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT_DIR}",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0",
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64"
+      }
+    },
+    {
       "name": "windows",
       "inherits": "base",
       "displayName": "Windows (MSVC + vcpkg)",
@@ -78,6 +95,10 @@
       "configurePreset": "deb"
     },
     {
+      "name": "macos",
+      "configurePreset": "macos"
+    },
+    {
       "name": "windows",
       "configurePreset": "windows"
     }
@@ -102,6 +123,16 @@
       "environment": {
         "QT_QPA_PLATFORM": "offscreen",
         "LSAN_OPTIONS": "suppressions=${sourceDir}/tests/lsan.supp"
+      }
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "QT_QPA_PLATFORM": "offscreen"
       }
     },
     {

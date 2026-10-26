@@ -12,3 +12,10 @@ if(CLIPITTO_X11_PASTE)
     target_compile_definitions(clipitto_output PRIVATE CLIPITTO_HAVE_XTEST)
     target_link_libraries(clipitto_output PRIVATE X11::X11 X11::Xtst)
 endif()
+
+# macOS: a pasted password carries nspasteboard.org's ConcealedType, which Qt can't write.
+if(APPLE)
+    target_sources(clipitto_output PRIVATE MacPasteboard.mm MacPasteboard.h)
+    target_link_libraries(clipitto_output PRIVATE "-framework AppKit")
+    target_compile_options(clipitto_output PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+endif()
