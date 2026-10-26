@@ -23,6 +23,7 @@ private slots:
         QFile file(path);
         QVERIFY(file.open(QIODevice::ReadOnly));
         const QString text = QString::fromUtf8(file.readAll());
+        file.close(); // Windows can't replace a file that is still open
         QVERIFY(text.contains(QLatin1String("<string>io.github.nimiz.ClipItTo</string>")));
         QVERIFY(text.contains(QLatin1String("<string>/Applications/ClipItTo.app/Contents/MacOS/clipitto-daemon</string>")));
         QVERIFY(text.contains(QLatin1String("<key>RunAtLoad</key>\n    <true/>")));
@@ -44,6 +45,7 @@ private slots:
         QFile file(path);
         QVERIFY(file.open(QIODevice::ReadOnly));
         const QString text = QString::fromUtf8(file.readAll());
+        file.close();
         QVERIFY(text.contains(QLatin1String("/new/clipitto-daemon")));
         QVERIFY(!text.contains(QLatin1String("/old/")));
     }
