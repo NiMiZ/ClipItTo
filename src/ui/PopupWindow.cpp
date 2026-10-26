@@ -5,7 +5,9 @@
 #include "GroupPath.h"
 #include "HistoryDelegate.h"
 #include "HistoryView.h"
+#include "MacApp.h"
 #include "PasswordKeeper.h"
+#include "PlatformKeys.h"
 #include "SearchBar.h"
 #include "SearchController.h"
 #include "Theme.h"
@@ -195,7 +197,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     }
     m_settingsButton->setAutoRaise(true);
     m_settingsButton->setFocusPolicy(Qt::NoFocus); // keyboard: Ctrl+,
-    m_settingsButton->setToolTip(tr("Settings (Ctrl+,)"));
+    m_settingsButton->setToolTip(platformKeys(tr("Settings (Ctrl+,)")));
     connect(m_settingsButton, &QToolButton::clicked, this, &PopupWindow::settingsRequested);
     auto* settingsShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma), this);
     connect(settingsShortcut, &QShortcut::activated, this, &PopupWindow::settingsRequested);
@@ -222,9 +224,9 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_clearButton->setMenu(clearMenu);
     connect(m_clearButton, &QToolButton::clicked, this, [this] { clearHistory(false); });
 
-    m_footer->setText(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+P pin · Ctrl+G group · Ctrl+E note · "
-                         "Alt+↑↓ move · Del remove"));
-    m_footer->setToolTip(tr("Alt+↑/↓ moves a group, or a pinned copy, up or down. Esc closes."));
+    m_footer->setText(platformKeys(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+P pin · Ctrl+G group · Ctrl+E note · "
+                                      "Alt+↑↓ move · Del remove")));
+    m_footer->setToolTip(platformKeys(tr("Alt+↑/↓ moves a group, or a pinned copy, up or down. Esc closes.")));
     m_footer->setFont(scaledFont(m_footer->font(), 0.85));
     m_footer->setEnabled(false); // dim
     m_footer->setWordWrap(true); // a second line rather than a wider popup (fonts vary)
@@ -417,6 +419,7 @@ void PopupWindow::showPopup(const QString& activationToken)
     show();
     raise();
     activateWindow();
+    bringAppToFront(); // macOS: a menu-bar app must activate itself to take keyboard focus
     m_search->setFocus();
 }
 

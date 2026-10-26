@@ -3,6 +3,8 @@
 #include "CapturePipeline.h"
 #include "GnomeShortcut.h"
 #include "Hotkey.h"
+#include "LoginItem.h"
+#include "MacPaste.h"
 #include "SettingsDialog.h"
 #include "Theme.h"
 #include "ClipboardWriter.h"
@@ -563,7 +565,7 @@ void Daemon::openSettings()
         return;
     }
     ui::ShortcutSupport support;
-    if (m_options.session.display == SessionEnv::Display::Windows) {
+    if (m_options.session.display == SessionEnv::Display::Windows || m_options.session.display == SessionEnv::Display::MacOS) {
         support.note = tr("ClipItTo registers this shortcut itself.");
     } else if (m_options.session.isGnome) {
         support.note = tr("Saved as the GNOME keyboard shortcut for ClipItTo.");
@@ -580,7 +582,13 @@ void Daemon::openSettings()
     passwords.helloAvailable = m_helloAvailable;
     passwords.helloReason = m_helloReason;
     passwords.setHello = [this](bool on, std::function<void(QString)> done) { setWindowsHello(on, std::move(done)); };
-    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords);
+    ui::StartupSupport startup;
+    if (m_options.session.display == SessionEnv::Display::MacOS) {
+        startup.available = true;
+        startup.enabled = loginItem().isEnabled();
+        startup.set = [this](bool on, QString* error) { return loginItem().setEnabled(on, error); };
+    }
+    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup);
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
@@ -601,6 +609,12 @@ bool Daemon::applySettings(const Config& config, QString* error)
     return true;
 }
 
+LoginItem Daemon::loginItem() const
+{
+    return LoginItem(m_options.loginItemPath.isEmpty() ? LoginItem::defaultPlistPath() : m_options.loginItemPath,
+                     QCoreApplication::applicationFilePath());
+}
+
 QString Daemon::cliCommand() const
 {
     // In an AppImage the binaries live in a mount that is gone after it quits: the shortcut
@@ -614,10 +628,10 @@ QString Daemon::cliCommand() const
 
 void Daemon::applyDesktopShortcut()
 {
-    // Windows registers the hotkey in-process (see main.cpp, configReloaded) and reports it
-    // as "hotkey"; GNOME keeps it as a custom keyboard shortcut; elsewhere the user binds
-    // `clipitto --toggle` themselves.
-    if (m_options.session.display == SessionEnv::Display::Windows) {
+    // Windows and macOS register the hotkey in-process (see main.cpp, configReloaded) and
+    // report it as "hotkey"; GNOME keeps it as a custom keyboard shortcut; elsewhere the user
+    // binds `clipitto --toggle` themselves.
+    if (m_options.session.display == SessionEnv::Display::Windows || m_options.session.display == SessionEnv::Display::MacOS) {
         return;
     }
     if (!m_options.session.isGnome) {
@@ -811,6 +825,13 @@ QVariantMap Daemon::status() const
         encryption += QStringLiteral(" (problem: %1)").arg(m_encryptionError);
     }
     s[QStringLiteral("encryption")] = encryption;
+    if (m_options.session.display == SessionEnv::Display::MacOS) {
+        // Auto-paste (⌘V into the previous app) needs this permission; copying doesn't.
+        s[QStringLiteral("accessibility")] = macAccessibilityGranted()
+            ? QStringLiteral("granted")
+            : QStringLiteral("not granted: auto-paste needs it (System Settings › Privacy & Security › Accessibility)");
+        s[QStringLiteral("login_item")] = loginItem().isEnabled() ? QStringLiteral("on") : QStringLiteral("off");
+    }
     if (m_passwords) {
         QString passwords;
         if (!m_passwords->isSetUp()) {

@@ -23,6 +23,7 @@
 namespace clipitto {
 
 class CapturePipeline;
+class LoginItem;
 class ClipboardWriter;
 
 namespace ui {
@@ -40,6 +41,7 @@ struct DaemonOptions {
     SessionEnv session;
     QString wlPasteProgram = QStringLiteral("wl-paste");
     QString gsettingsProgram = QStringLiteral("gsettings"); // GNOME shortcut updates
+    QString loginItemPath; // macOS launch agent; empty: ~/Library/LaunchAgents (tests set one)
     std::shared_ptr<KeyStore> keyStore; // holds the history key; null: encryption unavailable
     std::shared_ptr<KeyStore> matchKeyStore; // password copies' match key; null: no keyring
     // Pastes with synthetic keys where there is no desktop integration (tests replace it, so
@@ -102,6 +104,7 @@ private:
     void setUpWindowsHello(); // availability, and the popup's Hello unlock
     void setWindowsHello(bool on, std::function<void(QString error)> done);
     QString cliCommand() const;
+    LoginItem loginItem() const; // macOS: start at login
     void onEntryActivated(const Entry& entry);
     void onPopupVisibilityChanged(bool visible);
     bool integrationAvailable() const { return m_integration && m_integration->isAvailable(); }

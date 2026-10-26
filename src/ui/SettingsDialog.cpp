@@ -3,6 +3,7 @@
 #include "GroupPath.h"
 #include "Hotkey.h"
 #include "PasswordKeeper.h"
+#include "PlatformKeys.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -42,9 +43,35 @@ constexpr const char* kEncryptionNote = QT_TRANSLATE_NOOP(
     "password to type. Cost: about 25 ms more when ClipItTo starts and under 1 ms more per saved copy; searching is just as fast. Turning it on or off converts the history once. Copies made before turning it on may "
     "remain readable in free disk space; for that, use full-disk encryption.");
 
+// On a Mac, Qt's "Ctrl" is the ⌘ key and its "Meta" is ⌃, while the config names the keys as
+// they are labelled (Ctrl, Alt, Shift, Cmd): translate between the two spellings.
+QString swapMacModifiers(const QString& shortcut, bool toQt)
+{
+#ifdef Q_OS_MACOS
+    QStringList parts = shortcut.split(QLatin1Char('+'));
+    for (int i = 0; i + 1 < parts.size(); ++i) { // the last part is the key
+        const QString mod = parts[i].trimmed().toLower();
+        if (toQt && (mod == QLatin1String("ctrl") || mod == QLatin1String("control"))) {
+            parts[i] = QStringLiteral("Meta");
+        } else if (toQt && (mod == QLatin1String("cmd") || mod == QLatin1String("command") || mod == QLatin1String("win")
+                            || mod == QLatin1String("super") || mod == QLatin1String("meta"))) {
+            parts[i] = QStringLiteral("Ctrl");
+        } else if (!toQt && mod == QLatin1String("ctrl")) {
+            parts[i] = QStringLiteral("Cmd");
+        } else if (!toQt && mod == QLatin1String("meta")) {
+            parts[i] = QStringLiteral("Ctrl");
+        }
+    }
+    return parts.join(QLatin1Char('+'));
+#else
+    Q_UNUSED(toQt)
+    return shortcut;
+#endif
+}
+
 QKeySequence sequenceFor(const QString& hotkey)
 {
-    return QKeySequence::fromString(hotkey, QKeySequence::PortableText);
+    return QKeySequence::fromString(swapMacModifiers(hotkey, /*toQt=*/true), QKeySequence::PortableText);
 }
 
 // An (i) icon whose explanation shows as a tooltip on hover, or right away on click, so
@@ -84,7 +111,8 @@ void setNote(QLabel* label, const QString& text)
 } // namespace
 
 SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
-                               EncryptionSupport encryption, QWidget* parent, PasswordSupport passwords)
+                               EncryptionSupport encryption, QWidget* parent, PasswordSupport passwords,
+                               StartupSupport startup)
     : QDialog(parent)
     , m_config(config)
     , m_repo(repo)
@@ -98,6 +126,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_position(new QComboBox(this))
     , m_startFocus(new QComboBox(this))
     , m_encrypt(new QCheckBox(tr("Encrypt the history on disk"), this))
+    , m_startupSupport(std::move(startup))
+    , m_startup(new QCheckBox(tr("Start ClipItTo when I sign in"), this))
     , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
     , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
     , m_tabs(new QTabWidget(this))
@@ -233,6 +263,21 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     encryptRow->addWidget(m_encrypt);
     encryptRow->addWidget(m_encryptionInfo);
     encryptRow->addStretch(1);
+    if (m_startupSupport.available) {
+        QSignalBlocker block(m_startup);
+        m_startup->setChecked(m_startupSupport.enabled);
+        form->addRow(tr("Startup:"), m_startup);
+        connect(m_startup, &QCheckBox::toggled, this, [this](bool on) {
+            QString error;
+            if (!m_startupSupport.set || !m_startupSupport.set(on, &error)) {
+                QSignalBlocker revert(m_startup);
+                m_startup->setChecked(!on); // it didn't work: show what is true
+                m_notify(this, tr("Could not change the startup setting: %1").arg(error));
+            }
+        });
+    } else {
+        m_startup->hide();
+    }
     form->addRow(tr("Privacy:"), encryptRow);
     // The explanation lives behind the (i); the window only says something when it's wrong.
     QString info = tr(kEncryptionNote).toHtmlEscaped();
@@ -279,9 +324,9 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     }
     order->addStretch(1);
     groupsLayout->addLayout(order);
-    auto* hint = new QLabel(tr("<b>Changes to groups are saved immediately.</b> A copy can be put in a "
-                               "group from the popup (Ctrl+G or right-click). Move up/down sets the order "
-                               "in the popup (Alt+↑/↓ there); Favorites always comes first."),
+    auto* hint = new QLabel(platformKeys(tr("<b>Changes to groups are saved immediately.</b> A copy can be put in a "
+                                            "group from the popup (Ctrl+G or right-click). Move up/down sets the order "
+                                            "in the popup (Alt+↑/↓ there); Favorites always comes first.")),
                             this);
     hint->setWordWrap(true);
     groupsLayout->addWidget(hint);
@@ -607,14 +652,19 @@ void SettingsDialog::onShortcutEdited()
         QSignalBlocker block(m_shortcut);
         m_shortcut->setKeySequence(first);
     }
-    const auto parsed = parseHotkey(first.toString(QKeySequence::PortableText));
+    const auto parsed = parseHotkey(swapMacModifiers(first.toString(QKeySequence::PortableText), /*toQt=*/false));
     if (parsed) {
         m_hotkey = parsed->canonical;
         setNote(m_shortcutStatus, tr("Opens the popup: %1").arg(m_hotkey));
     } else {
-        setNote(m_shortcutStatus, tr("%1 can't be used: use Ctrl, Alt, Shift or Super with a letter, digit, "
-                                     "F-key or ` - = [ ] ; ' , . /. Keeping %2.")
-                                      .arg(first.toString(QKeySequence::NativeText), m_hotkey));
+#ifdef Q_OS_MACOS
+        const QString modifiers = tr("Control, Option, Shift or Command");
+#else
+        const QString modifiers = tr("Ctrl, Alt, Shift or Super");
+#endif
+        setNote(m_shortcutStatus, tr("%1 can't be used: use %2 with a letter, digit, "
+                                     "F-key or ` - = [ ] ; ' , . /. Keeping %3.")
+                                      .arg(first.toString(QKeySequence::NativeText), modifiers, m_hotkey));
     }
 }
 

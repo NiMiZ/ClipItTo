@@ -5,6 +5,8 @@
 // Platform headers define macros (None, Bool, KeyPress, ...) that clash with Qt: include last.
 #if defined(Q_OS_WIN)
 #include <windows.h>
+#elif defined(Q_OS_MACOS)
+#include "MacPaste.h"
 #elif defined(CLIPITTO_HAVE_XTEST)
 #include <X11/Xlib.h>
 #include <X11/extensions/XTest.h>
@@ -56,6 +58,18 @@ bool pasteWithSyntheticKeys(PasteKeys keys)
     inputs[3].ki.wVk = modifier;
     inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
     return SendInput(4, inputs, sizeof(INPUT)) == 4;
+}
+
+#elif defined(Q_OS_MACOS)
+
+void rememberPasteTarget()
+{
+    macRememberPasteTarget();
+}
+
+bool pasteWithSyntheticKeys(PasteKeys)
+{
+    return macPasteCommandV(); // always ⌘V: Ctrl+V / Shift+Insert are not Mac paste keys
 }
 
 #elif defined(CLIPITTO_HAVE_XTEST)

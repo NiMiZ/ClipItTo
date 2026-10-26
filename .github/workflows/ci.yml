@@ -305,6 +305,9 @@ jobs:
           grep -qx "session: macos" status.txt
           grep -qx "backend: qt-clipboard" status.txt
           grep -qx "backend_degraded: false" status.txt
+          grep -qx "hotkey: Alt+Cmd+V" status.txt # Carbon registered the global shortcut
+          grep -q "^accessibility: " status.txt   # granted or not: auto-paste needs it
+          grep -qx "login_item: off" status.txt
           items() { "$bin/cli/clipitto" --status | sed -n 's/^items: //p'; }
           mark() { # TYPE TEXT: a copy marked with an nspasteboard.org type
             osascript -l JavaScript -e '
