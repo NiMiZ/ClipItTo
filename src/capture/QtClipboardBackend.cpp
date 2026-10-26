@@ -15,24 +15,37 @@ Q_LOGGING_CATEGORY(lcQtClipboard, "clipitto.capture.qt")
 namespace clipitto::capture {
 
 QtClipboardBackend::QtClipboardBackend(QClipboard* clipboard, bool capturePrimary, QObject* parent,
-                                       NativeReader nativeReader)
+                                       NativeReader nativeReader, ChangeCounter changeCounter)
     : CaptureBackend(parent)
     , m_clipboard(clipboard)
     , m_capturePrimary(capturePrimary)
     , m_nativeReader(std::move(nativeReader))
+    , m_changeCounter(std::move(changeCounter))
 {
-    if (!m_nativeReader && QGuiApplication::platformName() == QLatin1String("windows")) {
+    const QString platform = QGuiApplication::platformName();
+    if (!m_nativeReader && (platform == QLatin1String("windows") || platform == QLatin1String("cocoa"))) {
         m_nativeReader = [this] { return readNativeClipboard(readMarkedText()); };
+    }
+    if (!m_changeCounter && platform == QLatin1String("cocoa")) {
+        m_changeCounter = clipboardChangeCount;
     }
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &QtClipboardBackend::readNative);
+    m_poll.setInterval(kPollMs);
+    connect(&m_poll, &QTimer::timeout, this, &QtClipboardBackend::poll);
 }
 
 void QtClipboardBackend::start()
 {
     stop();
-    m_clipboardConn = connect(m_clipboard, &QClipboard::dataChanged, this,
-                              [this] { read(QClipboard::Clipboard); });
+    // What is on the clipboard now is not a new copy: only changes after this count.
+    m_lastCount = m_changeCounter ? m_changeCounter() : -1;
+    if (m_lastCount >= 0) {
+        m_poll.start(); // no change event on this platform (macOS)
+    } else {
+        m_clipboardConn = connect(m_clipboard, &QClipboard::dataChanged, this,
+                                  [this] { read(QClipboard::Clipboard); });
+    }
     if (m_capturePrimary && m_clipboard->supportsSelection()) {
         m_selectionConn = connect(m_clipboard, &QClipboard::selectionChanged, this,
                                   [this] { read(QClipboard::Selection); });
@@ -44,6 +57,17 @@ void QtClipboardBackend::stop()
     disconnect(m_clipboardConn);
     disconnect(m_selectionConn);
     m_retry.stop();
+    m_poll.stop();
+}
+
+void QtClipboardBackend::poll()
+{
+    const qint64 count = m_changeCounter();
+    if (count < 0 || count == m_lastCount) {
+        return;
+    }
+    m_lastCount = count;
+    read(QClipboard::Clipboard);
 }
 
 void QtClipboardBackend::read(QClipboard::Mode mode)

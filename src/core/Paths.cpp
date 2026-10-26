@@ -22,6 +22,10 @@ QString configDir()
     if (base.isEmpty()) {
         base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     }
+#elif defined(Q_OS_MACOS)
+    // ~/Library/Application Support/clipitto: Preferences is for property lists, and settings
+    // and history sit together, as other Mac apps keep theirs.
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
 #else
     const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
 #endif
@@ -35,7 +39,7 @@ QString configFile()
 
 QString dataDir()
 {
-    // Machine-local on both platforms: $XDG_DATA_HOME, %LOCALAPPDATA%.
+    // Machine-local: $XDG_DATA_HOME, %LOCALAPPDATA%, ~/Library/Application Support.
     return QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)).filePath(kAppDir);
 }
 

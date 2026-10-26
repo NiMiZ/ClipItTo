@@ -27,6 +27,7 @@ private slots:
         const int W = int(SessionEnv::Display::Wayland);
         const int X = int(SessionEnv::Display::X11);
         const int Win = int(SessionEnv::Display::Windows);
+        const int Mac = int(SessionEnv::Display::MacOS);
         const int U = int(SessionEnv::Display::Unknown);
         const int Auto = int(BackendChoice::Auto);
         const QString qt = QStringLiteral("qt-clipboard");
@@ -35,6 +36,7 @@ private slots:
 
         QTest::newRow("x11") << X << Auto << false << false << qt << false;
         QTest::newRow("windows") << Win << Auto << false << false << qt << false;
+        QTest::newRow("macos") << Mac << Auto << false << false << qt << false;
         QTest::newRow("wayland, nothing") << W << Auto << false << false << qt << true;
         QTest::newRow("wayland, extension") << W << Auto << true << false << gnome << false;
         QTest::newRow("wayland, data-control") << W << Auto << false << true << wl << false;

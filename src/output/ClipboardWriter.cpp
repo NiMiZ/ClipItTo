@@ -2,6 +2,9 @@
 
 #include "ClipFilter.h"
 #include "DesktopIntegration.h"
+#if defined(__APPLE__)
+#include "MacPasteboard.h"
+#endif
 
 #include <QClipboard>
 #include <QImage>
@@ -31,6 +34,10 @@ void ClipboardWriter::setImage(const QByteArray& png, const QString& pixelHash)
     data->setData(QStringLiteral("application/x-qt-windows-mime;value=\"PNG\""), png);
 #elif defined(__linux__)
     // X11 and Wayland apps ask for image/png: the stored bytes serve as they are, nothing to decode.
+    data->setData(QStringLiteral("image/png"), png);
+#elif defined(__APPLE__)
+    // Qt offers the picture to Cocoa as TIFF and PNG (public.tiff, public.png).
+    data->setImageData(QImage::fromData(png, "PNG"));
     data->setData(QStringLiteral("image/png"), png);
 #else
 #error "unsupported platform"
@@ -64,6 +71,9 @@ void ClipboardWriter::setPassword(const QString& text)
         m_integration->setClipboard(text);
         return;
     }
+#if defined(__APPLE__)
+    setConcealedText(text); // marked the way macOS password managers mark theirs
+#else
     auto* data = new QMimeData;
     data->setText(text);
 #if defined(_WIN32)
@@ -79,6 +89,7 @@ void ClipboardWriter::setPassword(const QString& text)
 #error "unsupported platform"
 #endif
     m_clipboard->setMimeData(data, QClipboard::Clipboard);
+#endif
 }
 
 } // namespace clipitto

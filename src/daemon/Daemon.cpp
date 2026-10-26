@@ -43,6 +43,8 @@ QString displayName(SessionEnv::Display display)
         return QStringLiteral("x11");
     case SessionEnv::Display::Windows:
         return QStringLiteral("windows");
+    case SessionEnv::Display::MacOS:
+        return QStringLiteral("macos");
     case SessionEnv::Display::Unknown:
         break;
     }

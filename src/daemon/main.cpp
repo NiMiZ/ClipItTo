@@ -26,7 +26,10 @@
 
 #ifdef Q_OS_WIN
 #include "WindowsHotkey.h"
+#endif
 
+// A tray (menu bar) icon, and a dialog for errors: no console to print to there.
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
 #include <QMenu>
 #include <QMessageBox>
 #include <QSystemTrayIcon>
@@ -37,8 +40,8 @@ namespace {
 void reportStartupError(const QString& message)
 {
     qCritical().noquote() << "clipitto-daemon failed to start:" << message;
-#ifdef Q_OS_WIN
-    // A GUI-subsystem program has no console to print to.
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // A GUI program has no console to print to.
     QMessageBox::critical(nullptr, QStringLiteral("ClipItTo"),
                           QStringLiteral("ClipItTo could not start:\n%1").arg(message));
 #endif
@@ -136,9 +139,11 @@ int main(int argc, char* argv[])
     QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &hotkey, registerHotkey);
     QObject::connect(&hotkey, &clipitto::WindowsHotkey::activated, daemon.popup(),
                      [&daemon] { daemon.popup()->togglePopup(); });
+#endif
 
-    // Tray icon: the visible sign that ClipItTo runs, and the way to quit it.
-    // The icon follows the theme chosen in Settings (and the desktop, for "system").
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // Tray icon (menu bar icon on macOS): the visible sign that ClipItTo runs, and the way to
+    // quit it. The icon follows the theme chosen in Settings (and the desktop, for "system").
     QSystemTrayIcon tray(clipitto::ui::appIcon(clipitto::ui::currentThemeIsDark()));
     clipitto::ui::onThemeApplied([&tray] { tray.setIcon(clipitto::ui::appIcon(clipitto::ui::currentThemeIsDark())); });
     QMenu trayMenu;
@@ -148,8 +153,12 @@ int main(int argc, char* argv[])
     trayMenu.addAction(QObject::tr("Quit ClipItTo"), &app, &QCoreApplication::quit);
     tray.setContextMenu(&trayMenu);
     const auto updateTooltip = [&] {
+#ifdef Q_OS_WIN
         tray.setToolTip(hotkey.isRegistered() ? QStringLiteral("ClipItTo (%1)").arg(hotkey.shortcut())
                                               : QStringLiteral("ClipItTo"));
+#else
+        tray.setToolTip(QStringLiteral("ClipItTo"));
+#endif
     };
     updateTooltip();
     QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &tray, updateTooltip);

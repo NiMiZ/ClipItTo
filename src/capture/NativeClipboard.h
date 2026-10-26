@@ -32,7 +32,13 @@ struct NativeClipboardRead {
 };
 
 // `readMarkedText`: also read the text of a copy marked by a password manager (password
-// copies are kept). Pictures with a marker are never read.
+// copies are kept). Pictures with a marker are never read, and nothing of a copy marked
+// transient (ClipFilter::isTransient) is.
 NativeClipboardRead readNativeClipboard(bool readMarkedText = false);
+
+// A number that changes whenever the clipboard's content does, for platforms that send no
+// "changed" event to a background program (macOS: NSPasteboard's changeCount, which the
+// backend polls). -1: this platform has an event, nothing to poll.
+qint64 clipboardChangeCount();
 
 } // namespace clipitto::capture

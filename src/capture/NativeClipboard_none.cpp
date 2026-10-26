@@ -11,4 +11,9 @@ NativeClipboardRead readNativeClipboard(bool)
     return result;
 }
 
+qint64 clipboardChangeCount()
+{
+    return -1;
+}
+
 } // namespace clipitto::capture

@@ -263,6 +263,87 @@ jobs:
           name: clipitto-windows-portable
           path: stage
 
+  # macOS 11+, Apple Silicon and Intel in one binary. The unit tests run on the offscreen
+  # platform; the smoke test then drives the daemon on the real pasteboard.
+  macos:
+    name: macOS (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          cache: true
+      - name: Make sure Ninja is there
+        run: command -v ninja >/dev/null || brew install ninja
+      - name: Configure
+        run: cmake --preset macos
+      - name: Build
+        run: cmake --build --preset macos
+      - name: Test
+        run: ctest --preset macos
+      - name: Both architectures
+        run: |
+          lipo -archs build/macos/src/daemon/clipitto-daemon
+          lipo -archs build/macos/src/daemon/clipitto-daemon | grep -q arm64
+          lipo -archs build/macos/src/daemon/clipitto-daemon | grep -q x86_64
+
+      # The real NSPasteboard: pbcopy copies like any app, a JXA script sets the
+      # nspasteboard.org markers password managers set.
+      - name: Smoke test with the real pasteboard
+        timeout-minutes: 5
+        run: |
+          bin=build/macos/src
+          unset QT_QPA_PLATFORM
+          "$bin/daemon/clipitto-daemon" > daemon.log 2>&1 &
+          daemon=$!
+          cleanup() { "$bin/cli/clipitto" --quit >/dev/null 2>&1 || kill "$daemon" 2>/dev/null || true; }
+          trap cleanup EXIT
+          for i in $(seq 100); do "$bin/cli/clipitto" --status >/dev/null 2>&1 && break; sleep 0.2; done
+          "$bin/cli/clipitto" --status | tee status.txt
+          grep -qx "session: macos" status.txt
+          grep -qx "backend: qt-clipboard" status.txt
+          grep -qx "backend_degraded: false" status.txt
+          items() { "$bin/cli/clipitto" --status | sed -n 's/^items: //p'; }
+          mark() { # TYPE TEXT: a copy marked with an nspasteboard.org type
+            osascript -l JavaScript -e '
+              ObjC.import("AppKit");
+              const pb = $.NSPasteboard.generalPasteboard;
+              pb.declareTypesOwner($(["public.utf8-plain-text", "'"$1"'"]), null);
+              pb.setStringForType($("'"$2"'"), $("public.utf8-plain-text"));
+              pb.setStringForType($(""), $("'"$1"'"));'
+          }
+          [ "$(items)" = 0 ]
+          printf 'copied with pbcopy %s' "$RANDOM" | pbcopy
+          for i in $(seq 20); do [ "$(items)" = 1 ] && break; sleep 0.25; done
+          [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a pbcopy copy was not captured"; cat daemon.log; exit 1; }
+          mark org.nspasteboard.ConcealedType 'a-password-1'
+          sleep 1.5
+          [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a ConcealedType copy was kept"; exit 1; }
+          mark org.nspasteboard.TransientType 'temporary-data'
+          sleep 1.5
+          [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a TransientType copy was kept"; exit 1; }
+          printf 'second ordinary copy' | pbcopy
+          for i in $(seq 20); do [ "$(items)" = 2 ] && break; sleep 0.25; done
+          [ "$(items)" = 2 ] || { echo "::error title=pasteboard::a later ordinary copy was not captured"; exit 1; }
+          cleanup
+          wait "$daemon" || true
+
+      - name: Run headless (offscreen)
+        timeout-minutes: 3
+        run: |
+          bin=build/macos/src
+          export QT_QPA_PLATFORM=offscreen
+          "$bin/daemon/clipitto-daemon" > daemon2.log 2>&1 &
+          daemon=$!
+          for i in $(seq 100); do "$bin/cli/clipitto" --status >/dev/null 2>&1 && break; sleep 0.2; done
+          before=$("$bin/cli/clipitto" --status | sed -n 's/^items: //p') # the history of the step above
+          "$bin/cli/clipitto" --ingest "hello from macOS"
+          [ "$("$bin/cli/clipitto" --status | sed -n 's/^items: //p')" = "$((before + 1))" ]
+          "$bin/cli/clipitto" --quit
+          wait "$daemon"
+
   # One file for most Linux distributions (glibc 2.39+, e.g. Ubuntu 24.04, Fedora 40, Debian 13):
   # Qt, toml++ and QtKeychain inside. See packaging/appimage/.
   appimage:

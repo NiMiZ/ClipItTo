@@ -2,8 +2,24 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ClipItTo
     VERSION 0.5.0
-    DESCRIPTION "Clipboard manager with history, groups and favorites for Linux"
+    DESCRIPTION "Clipboard manager with history, groups and favorites for Linux, Windows and macOS"
     LANGUAGES C CXX)
+
+if(APPLE)
+    # The macOS pasteboard, source-app and (later) hotkey code is Objective-C++ (.mm).
+    # macOS 11 is the first release for Apple Silicon Macs (the late-2020 M1 ones); Qt 6.5
+    # supports it. Both architectures in one binary unless the caller chose.
+    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+    endif()
+    if(NOT CMAKE_OSX_ARCHITECTURES)
+        set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
+    endif()
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+    set(CMAKE_OBJCXX_EXTENSIONS OFF)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

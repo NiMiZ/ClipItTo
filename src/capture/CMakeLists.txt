@@ -8,19 +8,21 @@ add_library(clipitto_capture STATIC
     SourceApp.h
     ImageCodec.cpp ImageCodec.h
 )
+# Per platform: the native clipboard reader and the app a password copy came from.
+#   Windows: Win32 (clipboard owner's process); macOS: AppKit (NSPasteboard, frontmost app);
+#   X11: Xlib (already needed for auto-paste); elsewhere unknown.
 if(WIN32)
     target_sources(clipitto_capture PRIVATE NativeClipboard_win.cpp SourceApp_win.cpp)
     target_link_libraries(clipitto_capture PRIVATE Version) # GetFileVersionInfoW
-else()
-    target_sources(clipitto_capture PRIVATE NativeClipboard_none.cpp)
-endif()
-# The app a password copy came from: Windows above; X11 through Xlib (already needed for
-# auto-paste); elsewhere unknown.
-if(UNIX AND X11_FOUND)
-    target_sources(clipitto_capture PRIVATE SourceApp_x11.cpp)
+elseif(APPLE)
+    target_sources(clipitto_capture PRIVATE NativeClipboard_mac.mm SourceApp_mac.mm)
+    target_link_libraries(clipitto_capture PRIVATE "-framework AppKit")
+    target_compile_options(clipitto_capture PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+elseif(UNIX AND X11_FOUND)
+    target_sources(clipitto_capture PRIVATE NativeClipboard_none.cpp SourceApp_x11.cpp)
     target_link_libraries(clipitto_capture PRIVATE X11::X11)
-elseif(NOT WIN32)
-    target_sources(clipitto_capture PRIVATE SourceApp_none.cpp)
+else()
+    target_sources(clipitto_capture PRIVATE NativeClipboard_none.cpp SourceApp_none.cpp)
 endif()
 
 target_include_directories(clipitto_capture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
