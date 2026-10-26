@@ -7,6 +7,7 @@
 #endif
 
 #include <QClipboard>
+#include <QGuiApplication>
 #include <QImage>
 #include <QMimeData>
 
@@ -72,8 +73,13 @@ void ClipboardWriter::setPassword(const QString& text)
         return;
     }
 #if defined(__APPLE__)
-    setConcealedText(text); // marked the way macOS password managers mark theirs
-#else
+    // The real pasteboard, marked the way macOS password managers mark theirs. (Other Qt
+    // platforms on a Mac, like the offscreen one the tests use, keep their own clipboard.)
+    if (QGuiApplication::platformName() == QLatin1String("cocoa")) {
+        setConcealedText(text);
+        return;
+    }
+#endif
     auto* data = new QMimeData;
     data->setText(text);
 #if defined(_WIN32)
@@ -85,11 +91,12 @@ void ClipboardWriter::setPassword(const QString& text)
     data->setData(QStringLiteral("application/x-qt-windows-mime;value=\"CanUploadToCloudClipboard\""), zero);
 #elif defined(__linux__)
     data->setData(QStringLiteral("x-kde-passwordManagerHint"), QByteArrayLiteral("secret"));
+#elif defined(__APPLE__)
+    data->setData(QStringLiteral("org.nspasteboard.ConcealedType"), QByteArrayLiteral(" "));
 #else
 #error "unsupported platform"
 #endif
     m_clipboard->setMimeData(data, QClipboard::Clipboard);
-#endif
 }
 
 } // namespace clipitto

@@ -15,6 +15,13 @@ if(APPLE)
     if(NOT CMAKE_OSX_ARCHITECTURES)
         set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
     endif()
+    # Xcode 15's linker warns about every library listed twice, as static-library cycles
+    # (core <-> db, ui <-> output) make CMake do; the repeat is harmless.
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "LINKER:-no_warn_duplicate_libraries" CLIPITTO_LD_NO_WARN_DUPLICATES)
+    if(CLIPITTO_LD_NO_WARN_DUPLICATES)
+        add_link_options("LINKER:-no_warn_duplicate_libraries")
+    endif()
     enable_language(OBJCXX)
     set(CMAKE_OBJCXX_STANDARD 20)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
