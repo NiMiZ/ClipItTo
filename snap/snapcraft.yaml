@@ -20,6 +20,15 @@ source-code: https://github.com/NiMiZ/ClipItTo
 issues: https://github.com/NiMiZ/ClipItTo/issues
 grade: stable
 confinement: strict
+icon: data/io.github.nimiz.ClipItTo.svg
+
+# The daemon owns this name on the session bus (the CLI and the GNOME extension call it);
+# strict confinement allows that only when the snap declares it.
+slots:
+  dbus-clipitto:
+    interface: dbus
+    bus: session
+    name: io.github.nimiz.ClipItTo
 
 apps:
   clipitto:
@@ -37,6 +46,8 @@ apps:
     daemon: simple
     daemon-scope: user
     restart-condition: on-failure
+    slots:
+      - dbus-clipitto
     plugs:
       - desktop
       - desktop-legacy

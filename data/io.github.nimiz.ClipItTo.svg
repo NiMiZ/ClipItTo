@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ClipItTo's icon, the light variant src/ui/AppIcon.cpp draws, on the same 32x32 grid. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 32 32">
+  <rect x="5" y="4" width="22" height="26" rx="4" fill="#3d7ed6"/>
+  <rect x="8" y="8" width="16" height="19" rx="2" fill="#f7f9fc"/>
+  <rect x="11" y="2" width="10" height="6" rx="2" fill="#2b2f36"/>
+  <rect x="11" y="12" width="10" height="2" rx="1" fill="#9aa5b5"/>
+  <rect x="11" y="16.5" width="10" height="2" rx="1" fill="#9aa5b5"/>
+  <rect x="11" y="21" width="7" height="2" rx="1" fill="#9aa5b5"/>
+</svg>

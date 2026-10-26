@@ -36,7 +36,8 @@ if [ "${1:-}" = "--remove" ]; then
 fi
 
 binding=${1:-'<Control><Alt>v'}
-command=$(command -v clipitto || echo clipitto)
+# CLIPITTO_COMMAND: what runs the CLI when it isn't on PATH (the AppImage sets its own path).
+command=${CLIPITTO_COMMAND:-$(command -v clipitto || echo clipitto)}
 
 { other_entries; echo "'$path'"; } | set_list
 gsettings set "$entry" name 'ClipItTo'

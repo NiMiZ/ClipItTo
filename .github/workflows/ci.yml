@@ -263,12 +263,85 @@ jobs:
           name: clipitto-windows-portable
           path: stage
 
-  # Pushing a tag such as v0.1.0 publishes a GitHub Release with the Ubuntu .deb and the
-  # Windows installer, once both were built and tested above.
+  # One file for most Linux distributions (glibc 2.39+, e.g. Ubuntu 24.04, Fedora 40, Debian 13):
+  # Qt, toml++ and QtKeychain inside. See packaging/appimage/.
+  appimage:
+    name: AppImage (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Ubuntu's mirror for the runners is sometimes very slow (tens of kB/s): keep the
+      # downloaded packages between runs, and retry failed downloads.
+      - name: Cache downloaded Ubuntu packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml', 'cmake/Packaging.cmake') }}
+          restore-keys: apt-${{ github.job }}-
+      - name: Point apt at the cache
+        run: |
+          mkdir -p ~/apt-cache/partial
+          printf 'Dir::Cache::Archives "%s";\nAcquire::Retries "3";\nAcquire::http::Timeout "30";\nAPT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-cache" | sudo tee /etc/apt/apt.conf.d/90clipitto-ci
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build qt6-base-dev qt6-wayland libgl-dev libsqlite3-dev libtomlplusplus-dev \
+            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev file dbus
+      - name: Build the AppImage
+        run: sh packaging/appimage/build-appimage.sh build/appimage
+      - name: Run the AppImage
+        timeout-minutes: 5
+        run: |
+          app=$(ls build/appimage/ClipItTo-*-x86_64.AppImage)
+          export APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen
+          "$app" --version
+          if ! timeout 120 dbus-run-session -- sh -euc '
+            "$0" > daemon.log 2>&1 & daemon=$!
+            for i in $(seq 100); do "$0" --status >/dev/null 2>&1 && break; sleep 0.2; done
+            "$0" --ingest "hello from the AppImage"
+            "$0" --status | tee status.txt | grep -qx "items: 1"
+            "$0" --quit
+            wait $daemon
+          ' "$app"; then
+            echo "::error title=AppImage::$(cat status.txt daemon.log 2>/dev/null | tail -n 25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipitto-appimage
+          path: build/appimage/ClipItTo-*-x86_64.AppImage
+
+      # apt wrote the cache as root; the cache action saves it as the runner user.
+      - name: Let the package cache be saved
+        if: always()
+        run: sudo chown -R "$USER" ~/apt-cache
+
+  # The snap (snap/snapcraft.yaml): Qt and the rest inside, strictly confined.
+  snap:
+    name: Snap (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: snapcore/action-build@v1
+        id: build
+      - name: Install and run the snap
+        timeout-minutes: 5
+        run: |
+          sudo snap install --dangerous "${{ steps.build.outputs.snap }}"
+          snap run clipitto --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipitto-snap
+          path: ${{ steps.build.outputs.snap }}
+
+  # Pushing a tag such as v0.1.0 publishes a GitHub Release with the Ubuntu .deb, the
+  # AppImage, the snap and the Windows installer, once all were built and tested above.
   release:
     name: GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, package, windows]
+    needs: [linux, package, windows, appimage, snap]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -277,19 +350,21 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: clipitto-{deb,windows-installer}
+          pattern: clipitto-{deb,windows-installer,appimage,snap}
           merge-multiple: true
       - name: Add the install scripts and SHA256SUMS
         working-directory: dist
         run: |
           cp ../install.sh ../install.ps1 .
-          sha256sum *.deb *.exe install.sh install.ps1 > SHA256SUMS
+          sha256sum *.deb *.exe *.AppImage *.snap install.sh install.ps1 > SHA256SUMS
           cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.deb
             dist/*.exe
+            dist/*.AppImage
+            dist/*.snap
             dist/install.sh
             dist/install.ps1
             dist/SHA256SUMS

@@ -1,0 +1,65 @@
+#!/bin/sh
+# Entry point of the ClipItTo AppImage.
+#   ClipItTo.AppImage                       start the daemon
+#   ClipItTo.AppImage --toggle | --status   the clipitto CLI (any of its options)
+#   ClipItTo.AppImage --install             set it up for this user: start with the session,
+#                                           menu entry, D-Bus activation, GNOME extension + shortcut
+#   ClipItTo.AppImage --uninstall           undo --install (the history stays)
+set -eu
+here=$(dirname "$(readlink -f "$0")")
+self=${APPIMAGE:-$here/AppRun}
+uuid=clipitto@nimiz.github.io
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+config=${XDG_CONFIG_HOME:-$HOME/.config}
+
+install_user() {
+    echo "== Files for $self"
+    mkdir -p "$config/systemd/user" "$data/dbus-1/services" "$data/applications" \
+        "$data/icons/hicolor/scalable/apps" "$data/gnome-shell/extensions"
+    sed "s|^ExecStart=.*|ExecStart=\"$self\"|" "$here/usr/lib/systemd/user/clipitto.service" \
+        > "$config/systemd/user/clipitto.service"
+    sed "s|^Exec=.*|Exec=\"$self\"|" "$here/usr/share/dbus-1/services/io.github.nimiz.ClipItTo.service" \
+        > "$data/dbus-1/services/io.github.nimiz.ClipItTo.service"
+    sed "s|^Exec=.*|Exec=\"$self\" --show|" "$here/usr/share/applications/io.github.nimiz.ClipItTo.desktop" \
+        > "$data/applications/io.github.nimiz.ClipItTo.desktop"
+    cp "$here/usr/share/icons/hicolor/scalable/apps/io.github.nimiz.ClipItTo.svg" "$data/icons/hicolor/scalable/apps/"
+    rm -rf "$data/gnome-shell/extensions/$uuid"
+    cp -r "$here/usr/share/gnome-shell/extensions/$uuid" "$data/gnome-shell/extensions/"
+    echo "Installed the systemd unit, the D-Bus service, the menu entry and the GNOME extension."
+    # The rest is what clipitto-setup does for the .deb, with this AppImage as the command.
+    CLIPITTO_COMMAND="$self" PATH="$here/usr/bin:$PATH" "$here/usr/bin/clipitto-setup" "$@"
+    echo
+    echo "Keep this AppImage where it is: the setup points at $self."
+}
+
+uninstall_user() {
+    systemctl --user disable --now clipitto.service 2>/dev/null || true
+    if command -v gsettings >/dev/null 2>&1; then
+        "$here/usr/bin/clipitto-shortcut" --remove 2>/dev/null || true
+    fi
+    gnome-extensions disable "$uuid" 2>/dev/null || true
+    rm -rf "$data/gnome-shell/extensions/$uuid"
+    rm -f "$config/systemd/user/clipitto.service" "$data/dbus-1/services/io.github.nimiz.ClipItTo.service" \
+        "$data/applications/io.github.nimiz.ClipItTo.desktop" "$data/icons/hicolor/scalable/apps/io.github.nimiz.ClipItTo.svg"
+    systemctl --user daemon-reload 2>/dev/null || true
+    echo "Removed. Your history and settings stay in $data/clipitto and $config/clipitto."
+}
+
+case "${1:-}" in
+--install)
+    shift
+    install_user "$@"
+    ;;
+--uninstall)
+    uninstall_user
+    ;;
+-*)
+    case "$1" in
+    --verbose) exec "$here/usr/bin/clipitto-daemon" "$@" ;; # a daemon option
+    esac
+    exec "$here/usr/bin/clipitto" "$@"
+    ;;
+*)
+    exec "$here/usr/bin/clipitto-daemon" "$@"
+    ;;
+esac

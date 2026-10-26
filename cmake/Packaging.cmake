@@ -20,6 +20,7 @@ install(FILES ${PROJECT_BINARY_DIR}/data/clipitto.service DESTINATION ${CLIPITTO
 install(FILES ${PROJECT_BINARY_DIR}/data/io.github.nimiz.ClipItTo.service
     DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 install(FILES data/io.github.nimiz.ClipItTo.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES data/io.github.nimiz.ClipItTo.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 install(FILES data/config.example.toml README.md LICENSE THIRD-PARTY-NOTICES.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/clipitto)
 install(FILES licenses/LGPL-3.0.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/clipitto/licenses)

@@ -601,6 +601,11 @@ bool Daemon::applySettings(const Config& config, QString* error)
 
 QString Daemon::cliCommand() const
 {
+    // In an AppImage the binaries live in a mount that is gone after it quits: the shortcut
+    // runs the AppImage itself, which hands --toggle to the CLI.
+    if (const QString appImage = qEnvironmentVariable("APPIMAGE"); !appImage.isEmpty()) {
+        return QLatin1Char('"') + appImage + QStringLiteral("\" --toggle");
+    }
     const QString local = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("clipitto"));
     return (QFileInfo(local).isExecutable() ? local : QStringLiteral("clipitto")) + QStringLiteral(" --toggle");
 }
