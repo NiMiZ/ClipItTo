@@ -49,8 +49,10 @@ The AppImage also takes every `clipitto` option (`--toggle`, `--status`, `--lock
 sudo snap install --dangerous ./clipitto_*_amd64.snap
 ```
 
-`--dangerous` is needed while it isn't in the Snap Store. On GNOME, the extension is not part
-of the snap; install it from the `.deb` or the AppImage (`--install`).
+`--dangerous` is needed while it isn't in the Snap Store. Then run `clipitto.setup` once
+(ClipItTo starts with your session from then on), start it now with
+`clipitto.clipitto-daemon &`, and bind `clipitto --toggle` to a shortcut. On GNOME, the
+extension is not part of the snap; install it from the `.deb` or the AppImage (`--install`).
 
 ## Quick start on Ubuntu 24.04+ (from source, no install)
 

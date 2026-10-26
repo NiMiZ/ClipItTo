@@ -1,0 +1,17 @@
+#!/bin/sh
+# clipitto.setup (snap only): start ClipItTo with your session. Snaps can't install a systemd
+# user unit (snap user daemons are an experimental snapd feature), so this uses the snap's
+# autostart: snapd starts the app named by this file at login.
+set -eu
+dir="$SNAP_USER_DATA/.config/autostart"
+mkdir -p "$dir"
+cat > "$dir/clipitto-daemon.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=ClipItTo
+Exec=clipitto.clipitto-daemon
+X-GNOME-Autostart-enabled=true
+DESKTOP
+echo "ClipItTo starts with your session from now on."
+echo "To start it now: clipitto.clipitto-daemon &"
+echo "Then bind 'clipitto --toggle' to a shortcut in your desktop's keyboard settings."
