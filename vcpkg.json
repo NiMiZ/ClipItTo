@@ -1,6 +1,6 @@
 {
   "name": "clipitto",
-  "version-string": "0.5.0",
+  "version-string": "0.6.0",
   "description": "Used on Windows (vcpkg manifest mode); Linux builds use distro packages.",
   "dependencies": [
     {
