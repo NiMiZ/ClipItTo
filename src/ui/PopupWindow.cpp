@@ -694,9 +694,12 @@ void PopupWindow::askPasswordNote(qint64 id, const QString& suggestion)
             name = m_namePrompt(this, suggestion);
         }
         m_namingPassword = false;
-        if (name && !name->trimmed().isEmpty()) {
+        // OK, Enter or Cancel with nothing typed: the suggestion (the app it came from) is the
+        // note. A typed name replaces it.
+        const QString chosen = name && !name->trimmed().isEmpty() ? *name : suggestion;
+        if (!chosen.trimmed().isEmpty()) {
             try {
-                m_repo.setNote(id, *name);
+                m_repo.setNote(id, chosen);
             } catch (const db::DbError& err) {
                 qCWarning(lcPopup) << "naming a password copy failed:" << err.what();
             }

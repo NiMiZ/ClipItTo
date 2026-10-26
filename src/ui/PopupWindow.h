@@ -82,7 +82,7 @@ public:
 
     // "Ask for a name after copying a password": opens the popup with the new copy selected
     // and a name box on it (`suggestion`, the app it came from, as placeholder). A typed name
-    // becomes its note; empty or cancelled keeps the note it has. The popup closes again
+    // becomes its note; with nothing typed (OK, Enter or Cancel) the suggestion is the note. The popup closes again
     // afterwards if it wasn't open, so the focus goes back to where the user was.
     void askPasswordNote(qint64 id, const QString& suggestion);
 

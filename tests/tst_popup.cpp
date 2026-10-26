@@ -1104,13 +1104,32 @@ private slots:
         QTRY_VERIFY(!f.popup->isVisible());
         QCOMPARE(f.t.repo->get(third)->note, QStringLiteral("Safari"));
 
+        // Even if the copy has no note yet, nothing typed (OK, Enter or Cancel) saves the
+        // suggestion as its note: the default is the app it came from.
+        const qint64 bare = newPassword("bare", QString());
+        QVERIFY(f.t.repo->get(bare)->note.isEmpty());
+        answer = QString();
+        f.popup->askPasswordNote(bare, QStringLiteral("Firefox"));
+        QTRY_COMPARE(suggestions.size(), 4);
+        QTRY_COMPARE(f.t.repo->get(bare)->note, QStringLiteral("Firefox"));
+        const qint64 bareCancelled = newPassword("bare2", QString());
+        answer = std::nullopt;
+        f.popup->askPasswordNote(bareCancelled, QStringLiteral("Edge"));
+        QTRY_COMPARE(suggestions.size(), 5);
+        QTRY_COMPARE(f.t.repo->get(bareCancelled)->note, QStringLiteral("Edge"));
+        answer = QStringLiteral("   "); // only spaces count as nothing too
+        const qint64 spaces = newPassword("bare3", QString());
+        f.popup->askPasswordNote(spaces, QStringLiteral("Brave"));
+        QTRY_COMPARE(suggestions.size(), 6);
+        QTRY_COMPARE(f.t.repo->get(spaces)->note, QStringLiteral("Brave"));
+
         // A popup that was open stays open.
         QVERIFY(f.show());
         const qint64 fourth = newPassword("four", QString());
         answer = QStringLiteral("  Wi-Fi  ");
         f.popup->askPasswordNote(fourth, QString()); // source unknown: no suggestion
-        QTRY_COMPARE(suggestions.size(), 4);
-        QCOMPARE(suggestions.at(3), QString());
+        QTRY_COMPARE(suggestions.size(), 7);
+        QCOMPARE(suggestions.at(6), QString());
         QTRY_VERIFY(f.t.repo->get(fourth)->note == QStringLiteral("Wi-Fi"));
         QVERIFY(f.popup->isVisible());
     }
