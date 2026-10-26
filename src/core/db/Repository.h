@@ -2,6 +2,7 @@
 
 #include "Entry.h"
 #include "ImageClip.h"
+#include "PasswordVault.h"
 
 #include <QDateTime>
 #include <QStringList>
@@ -57,6 +58,30 @@ public:
     IngestResult ingest(const QString& text);
     // The same picture (same pixels) again only bumps its last_used, like text.
     IngestResult ingestImage(const ImageClip& image);
+    // A password copy, already sealed by PasswordVault. `match` ("secret:<hex>") finds the same
+    // password again (only last_used is bumped then); empty without the keyring's match key,
+    // and then every copy is a new entry. The note and group apply to a new entry only.
+    IngestResult ingestSecret(const QByteArray& sealed, const QString& match, const QString& note,
+                              const QString& group);
+    QByteArray sealedSecret(qint64 id); // empty for other copies
+    std::vector<std::pair<qint64, QByteArray>> allSealedSecrets(); // newest first
+    std::optional<Entry> findSecret(const QString& match);
+    // "Mark as password": the text is replaced by the sealed copy, and wiped from the file
+    // (secure_delete, search index, WAL). Returns the id that holds it: another one when the
+    // same password was already kept (this copy is then removed).
+    qint64 convertToSecret(qint64 id, const QByteArray& sealed, const QString& match);
+    // "Not a password": the copy becomes plain text again. Returns the id that holds it.
+    qint64 convertToText(qint64 id, const QString& text);
+    qint64 countSecrets();
+
+    // The master password's vault; nullopt until one is set.
+    std::optional<PasswordVault::Stored> loadVault();
+    void saveVault(const PasswordVault::Stored& stored);
+    // Removes the vault and every password copy (a forgotten or removed master password).
+    void resetVault();
+
+    static QString secretLabel() { return QStringLiteral("Password"); }
+
     // The full picture (PNG) of an image entry; empty for text or a missing id.
     QByteArray imageData(qint64 id);
 
@@ -126,6 +151,7 @@ private:
     QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
     bool checkpoint(); // WAL folded in and truncated; false if a reader kept it busy
+    void scrub(); // after removing text: search index merged, WAL folded in
     void loadImageDetails(Entry& entry);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
     Stmt& likeStatement(int tokenCount);
@@ -138,6 +164,7 @@ private:
     QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;
     std::unique_ptr<Stmt> m_ingestImage;
+    std::unique_ptr<Stmt> m_ingestSecret;
     std::unique_ptr<Stmt> m_imageDetails;
     std::unique_ptr<Stmt> m_recentAll;
     std::unique_ptr<Stmt> m_recentUnsaved;

@@ -25,6 +25,10 @@ struct Entry {
     QByteArray thumbnail; // PNG, at most kThumbnailSize on each side
     QString contentHash; // content_hash: for images "image:<sha256 of the pixels>"
 
+    // A password copy: `content` is only its label ("Password"); the password is stored sealed
+    // (Repository::sealedSecret) and shown or pasted only after an unlock.
+    bool secret = false;
+
     bool pinned() const { return pinPosition >= 0; }
     // Saved items are immune to pruning and rank first in search.
     bool isSaved() const { return favorite || !group.isEmpty() || pinned(); }

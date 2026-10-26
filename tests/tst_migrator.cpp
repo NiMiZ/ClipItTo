@@ -129,7 +129,7 @@ private slots:
         auto migrations = builtinMigrations();
         migrate(db, {migrations[0], migrations[1], migrations[2]}); // schema 3
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
-        migrate(db);
+        migrate(db, {migrations[0], migrations[1], migrations[2], migrations[3]}); // up to schema 4
         QCOMPARE(schemaVersion(db), 4);
 
         Stmt kind(db, "SELECT kind FROM clips WHERE content = 'old text'");
@@ -143,6 +143,33 @@ private slots:
         Stmt left(db, "SELECT count(*) FROM clip_images");
         QVERIFY(left.step());
         QCOMPARE(left.colInt(0), 0); // the picture went with its row
+    }
+
+    void passwordsMigrationAddsSecretsAndVault()
+    {
+        Db db(QStringLiteral(":memory:"));
+        configureConnection(db);
+        auto migrations = builtinMigrations();
+        migrate(db, {migrations[0], migrations[1], migrations[2], migrations[3]}); // schema 4
+        db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
+        migrate(db);
+        QCOMPARE(schemaVersion(db), 5);
+
+        Stmt secret(db, "SELECT secret FROM clips WHERE content = 'old text'");
+        QVERIFY(secret.step());
+        QCOMPARE(secret.colInt(0), 0); // existing copies are not passwords
+
+        db.exec("INSERT INTO clips(content, content_hash, secret) VALUES ('Password', 'secret:x', 1)");
+        db.exec("INSERT INTO clip_secrets(clip_id, sealed) SELECT id, x'01' FROM clips WHERE secret = 1");
+        db.exec("DELETE FROM clips WHERE secret = 1");
+        Stmt left(db, "SELECT count(*) FROM clip_secrets");
+        QVERIFY(left.step());
+        QCOMPARE(left.colInt(0), 0); // the sealed password went with its row
+
+        db.exec("INSERT INTO vault(id, salt, kdf_blocks, kdf_passes, public_key, wrapped_secret) "
+                "VALUES (1, x'00', 8, 1, x'00', x'00')");
+        QVERIFY_THROWS_EXCEPTION(DbError, db.exec("INSERT INTO vault(id, salt, kdf_blocks, kdf_passes, public_key, "
+                                                  "wrapped_secret) VALUES (2, x'00', 8, 1, x'00', x'00')"));
     }
 
     void newerSchemaIsRejected()
