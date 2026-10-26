@@ -175,7 +175,9 @@ private slots:
         QTRY_VERIFY(unlocked);
         emit d.popup()->entryActivated(e);
         QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("hunter2"));
-        QVERIFY(QGuiApplication::clipboard()->mimeData()->hasFormat(QStringLiteral("x-kde-passwordManagerHint")));
+        // Marked the platform's way (x-kde-passwordManagerHint; Windows' exclude formats).
+        QVERIFY2(clipitto::ClipFilter::isSensitive(QGuiApplication::clipboard()->mimeData()->formats()),
+                 qPrintable(QGuiApplication::clipboard()->mimeData()->formats().join(QLatin1Char(' '))));
         QTRY_VERIFY_WITH_TIMEOUT(QGuiApplication::clipboard()->text().isEmpty(), 3000);
         QCOMPARE(d.repository()->countSecrets(), 1); // our own paste wasn't stored again
         QCOMPARE(d.repository()->count(), 1);
