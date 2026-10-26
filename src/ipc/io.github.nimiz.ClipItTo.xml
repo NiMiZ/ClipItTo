@@ -20,6 +20,14 @@
       <arg name="mime_types" type="as" direction="in"/>
     </method>
 
+    <!-- Asked by a capture helper before it reads a copy marked by a password manager: true
+         when password copies are kept (a master password is set), so the text is sent with
+         its markers and sealed by the daemon; otherwise the helper never reads it. Ingest calls
+         with markers are accepted from GNOME Shell only. -->
+    <method name="WantsPasswords">
+      <arg name="wanted" type="b" direction="out"/>
+    </method>
+
     <!-- The same for a copied picture with no plain text: its bytes as the source offered
          them (PNG preferred) and that MIME type. The daemon decodes, re-encodes and stores it. -->
     <method name="IngestImage">

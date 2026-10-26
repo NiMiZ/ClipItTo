@@ -34,3 +34,13 @@ start_focus = "pinned"      # where the selection starts when the popup opens an
                             # unsaved (first copy that isn't pinned, starred or grouped);
                             # the first copy when there is none of that kind
 encrypt_history = false     # encrypt history.db; the key is kept in the system keyring
+
+# Password copies: copies a password manager marks as secret (KeePassXC, Bitwarden, KeePass,
+# 1Password, ...) are kept encrypted once a master password is set in Settings > Passwords,
+# shown as ●●●● and opened only after an unlock. The master password itself is never stored.
+keep_passwords = true       # false = skip them, as without a master password
+passwords_in_group = false  # put new password copies in the "Passwords" group
+password_unlock_minutes = 5 # how long an unlock lasts (1-240)
+windows_hello = false       # Windows: unlock with Windows Hello too (set up in Settings)
+password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
+                            # what follows is shown as asterisks

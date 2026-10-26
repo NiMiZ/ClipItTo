@@ -2,6 +2,7 @@
 
 #include "ClipFilter.h"
 #include "ImageCodec.h"
+#include "SourceApp.h"
 
 #include <QGuiApplication>
 #include <QLoggingCategory>
@@ -21,7 +22,7 @@ QtClipboardBackend::QtClipboardBackend(QClipboard* clipboard, bool capturePrimar
     , m_nativeReader(std::move(nativeReader))
 {
     if (!m_nativeReader && QGuiApplication::platformName() == QLatin1String("windows")) {
-        m_nativeReader = readNativeClipboard;
+        m_nativeReader = [this] { return readNativeClipboard(readMarkedText()); };
     }
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &QtClipboardBackend::readNative);
@@ -58,7 +59,7 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
         return;
     }
     if (data->hasText()) {
-        emit captured(data->text(), data->formats());
+        emitText(data->text(), data->formats());
     } else if (mode == QClipboard::Clipboard && data->hasImage()) {
         readImage(data->formats()); // text wins when a copy offers both
     }
@@ -112,6 +113,20 @@ void QtClipboardBackend::encode(PendingImage pending)
     }
 }
 
+void QtClipboardBackend::emitText(const QString& text, QStringList formats)
+{
+    if (!ClipFilter::isSensitive(formats)) {
+        emit captured(text, formats);
+    } else if (!readMarkedText()) {
+        emit captured(QString(), formats); // only the markers: the pipeline drops it
+    } else {
+        if (const QString source = ClipFilter::sourceMimeType(clipboardSourceApp()); !source.isEmpty()) {
+            formats << source;
+        }
+        emit captured(text, formats);
+    }
+}
+
 void QtClipboardBackend::readNative()
 {
     const NativeClipboardRead result = m_nativeReader();
@@ -129,7 +144,7 @@ void QtClipboardBackend::readNative()
             }
             return;
         }
-        emit captured(result.text, result.formats);
+        emitText(result.text, result.formats);
         return;
     case NativeClipboardRead::Status::NoText:
         return;

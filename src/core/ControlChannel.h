@@ -26,6 +26,11 @@ public:
     void setStatusProvider(std::function<QVariantMap()> provider) { m_statusProvider = std::move(provider); }
     QVariantMap status() const { return m_statusProvider ? m_statusProvider() : QVariantMap{}; }
 
+    // Whether the daemon keeps password copies now; a capture helper reads a copy marked by a
+    // password manager only then (WantsPasswords).
+    void setPasswordsWantedProvider(std::function<bool()> provider) { m_passwordsWanted = std::move(provider); }
+    bool passwordsWanted() const { return m_passwordsWanted && m_passwordsWanted(); }
+
 signals:
     void toggleRequested(const QString& activationToken);
     void showRequested(const QString& activationToken);
@@ -41,6 +46,7 @@ signals:
 
 private:
     std::function<QVariantMap()> m_statusProvider;
+    std::function<bool()> m_passwordsWanted;
 };
 
 } // namespace clipitto

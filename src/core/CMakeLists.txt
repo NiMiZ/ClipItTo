@@ -9,6 +9,7 @@ add_library(clipitto_core STATIC
     GroupPath.cpp GroupPath.h
     Hotkey.cpp Hotkey.h
     KeyStore.h
+    PasswordKeeper.cpp PasswordKeeper.h
     PasswordVault.cpp PasswordVault.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h

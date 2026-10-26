@@ -30,12 +30,16 @@ public slots: // D-Bus methods
     void ReloadConfig();
     void Quit();
     QVariantMap Status();
+    bool WantsPasswords();
 
 signals:
     // Relayed to D-Bus by the adaptor.
     void VisibilityChanged(bool visible);
 
 private:
+    // True for in-process calls and calls from GNOME Shell (the extension); logs a refusal.
+    bool calledFromShell(const char* method);
+
     QDBusConnection m_bus;
     bool m_registered = false;
 };

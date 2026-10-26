@@ -133,8 +133,12 @@ Daemon::StartResult Daemon::start(QString* error)
         return StartResult::Failed;
     }
 
+    m_passwords = std::make_unique<PasswordKeeper>(*m_repo, m_options.matchKeyStore);
+    m_passwords->reload();
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
+    m_control->setPasswordsWantedProvider([this] { return m_pipeline && m_pipeline->keepsPasswords(); });
+    connect(m_passwords.get(), &PasswordKeeper::vaultChanged, this, &Daemon::applyPasswordSettings);
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
     // A picture from a capture helper (the GNOME extension), decoded off the GUI thread.
     connect(m_control, &ControlChannel::ingestImageRequested, this,
@@ -195,6 +199,24 @@ Daemon::StartResult Daemon::start(QString* error)
         }
     });
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
+    connect(m_pipeline.get(), &CapturePipeline::passwordSkipped, this, [this] {
+        if (m_passwordNoticeShown) {
+            return;
+        }
+        m_passwordNoticeShown = true;
+        // Shown the next time the popup opens (a copy is usually made with the popup closed).
+        auto* once = new QObject(this);
+        connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, once, [this, once](bool visible) {
+            if (visible) {
+                once->deleteLater();
+                QTimer::singleShot(0, m_popup.get(), [this] {
+                    m_popup->showMessage(tr("A password was copied but not kept: set a master password in "
+                                            "Settings › Passwords to keep password copies, encrypted."));
+                });
+            }
+        });
+    });
+    applyPasswordSettings();
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
         QString removeError;
@@ -230,6 +252,7 @@ void Daemon::startCapture()
     connect(m_capture.backend.get(), &capture::CaptureBackend::capturedImage, m_pipeline.get(),
             &CapturePipeline::processImage);
     m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
+    m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
     m_capture.backend->start();
 
     if (m_capture.degraded) {
@@ -598,6 +621,19 @@ void Daemon::applyDesktopShortcut()
     }));
 }
 
+void Daemon::applyPasswordSettings()
+{
+    if (!m_pipeline || !m_passwords) {
+        return;
+    }
+    m_passwords->setUnlockMinutes(m_config.passwordUnlockMinutes);
+    m_pipeline->setPasswords(&m_passwords->vault(), m_config.keepPasswords,
+                             m_config.passwordsInGroup ? QStringLiteral("Passwords") : QString());
+    if (m_capture.backend) {
+        m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
+    }
+}
+
 void Daemon::reload(bool forceShortcut)
 {
     const Config previous = m_config;
@@ -612,6 +648,7 @@ void Daemon::reload(bool forceShortcut)
         m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
     }
     m_repo->setLimits(repositoryLimits(m_config));
+    applyPasswordSettings();
     if (m_config.theme != previous.theme) {
         ui::applyTheme(m_config.theme);
     }
@@ -661,6 +698,22 @@ QVariantMap Daemon::status() const
         encryption += QStringLiteral(" (problem: %1)").arg(m_encryptionError);
     }
     s[QStringLiteral("encryption")] = encryption;
+    if (m_passwords) {
+        QString passwords;
+        if (!m_passwords->isSetUp()) {
+            passwords = QStringLiteral("off (no master password)");
+        } else if (!m_config.keepPasswords) {
+            passwords = QStringLiteral("not kept (turned off in the settings)");
+        } else if (m_passwords->isUnlocked()) {
+            passwords = QStringLiteral("unlocked (%1 min left)").arg((m_passwords->secondsLeft() + 59) / 60);
+        } else {
+            passwords = QStringLiteral("locked");
+        }
+        if (m_passwords->isSetUp() && !m_passwords->canMatch()) {
+            passwords += QStringLiteral("; whole-password search while locked is off (%1)").arg(m_passwords->matchProblem());
+        }
+        s[QStringLiteral("passwords")] = passwords;
+    }
     if (m_repo && !m_converting) { // during a conversion the database belongs to the worker
         try {
             s[QStringLiteral("items")] = m_repo->count();

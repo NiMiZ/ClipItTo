@@ -8,8 +8,8 @@ export default {
     DBusError: {SERVICE_UNKNOWN: 2, NAME_HAS_NO_OWNER: 3},
     DBus: {
         session: {
-            call(name, path, iface, method, params, _replyType, flags) {
-                state.dbusCalls.push({name, path, iface, method, params, flags});
+            call(name, path, iface, method, params, _replyType, flags, _timeout, _cancellable, callback) {
+                state.dbusCalls.push({name, path, iface, method, params, flags, callback});
             },
         },
     },

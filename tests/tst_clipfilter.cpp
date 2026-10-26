@@ -51,6 +51,25 @@ private slots:
         QVERIFY(ClipFilter(1024).check(QString(), {QStringLiteral("CanIncludeInClipboardHistory=0")}) == Verdict::Sensitive);
     }
 
+    void sourceAppIsCarriedAsAPseudoType()
+    {
+        QCOMPARE(ClipFilter::sourceMimeType(QStringLiteral("KeePassXC")), QStringLiteral("x-clipitto-source:KeePassXC"));
+        QVERIFY(ClipFilter::sourceMimeType(QStringLiteral("  \n ")).isEmpty());
+        QCOMPARE(ClipFilter::sourceApp({QStringLiteral("text/plain"), QStringLiteral("x-clipitto-source:Bit\twarden ")}),
+                 QStringLiteral("Bitwarden"));
+        QCOMPARE(ClipFilter::sourceApp({QStringLiteral("x-clipitto-source:") + QString(200, QLatin1Char('a'))}).size(), 64);
+        QVERIFY(ClipFilter::sourceApp({QStringLiteral("text/plain")}).isEmpty());
+        QVERIFY(!ClipFilter::isSensitive({ClipFilter::sourceMimeType(QStringLiteral("App"))}));
+    }
+
+    void ownPastedPasswordIsAnEchoNotASecret()
+    {
+        ClipFilter f(1024);
+        f.noteOwnWrite(QStringLiteral("hunter2"));
+        QVERIFY(f.check(QStringLiteral("hunter2"), {QStringLiteral("x-kde-passwordManagerHint")}) == Verdict::OwnWrite);
+        QVERIFY(f.check(QStringLiteral("other"), {QStringLiteral("x-kde-passwordManagerHint")}) == Verdict::Sensitive);
+    }
+
     void ignoresOwnWriteEchoWithinWindow()
     {
         qint64 now = 1000;

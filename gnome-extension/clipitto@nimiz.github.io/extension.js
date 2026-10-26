@@ -4,7 +4,8 @@
 // or type keys into other windows. This extension runs inside the shell and does those
 // things for the ClipItTo daemon:
 //   - reports every clipboard change to the daemon (io.github.nimiz.ClipItTo.Ingest, or
-//     IngestImage for a copied picture);
+//     IngestImage for a copied picture); a copy marked by a password manager only when the
+//     daemon keeps password copies (WantsPasswords), with the app it came from;
 //   - exports io.github.nimiz.ClipItTo.Shell so the daemon can focus its popup, set the
 //     clipboard and paste;
 //   - optionally binds a shortcut that toggles the popup.
@@ -58,6 +59,8 @@ const SENSITIVE_MIME_TYPES = [
     'application/x-nspasteboard-concealed-type',
 ];
 const X11_TEXT_TARGETS = ['UTF8_STRING', 'STRING', 'TEXT', 'COMPOUND_TEXT'];
+// Names the app a password copy came from, for its default note (see ClipFilter::sourceApp).
+const SOURCE_PREFIX = 'x-clipitto-source:';
 
 // How long ActivateWindow waits for a popup that is not mapped yet.
 const ACTIVATION_WAIT_MS = 1000;
@@ -79,6 +82,14 @@ export function hasPlainText(mimeTypes) {
 export function imageType(mimeTypes) {
     const lower = mimeTypes.map(type => type.toLowerCase());
     return IMAGE_TYPES.find(type => lower.includes(type)) ?? null;
+}
+
+// The app's name for a window ("KeePassXC"), or its WM_CLASS; '' when unknown.
+export function sourceAppName(win) {
+    if (!win)
+        return '';
+    const name = Shell.WindowTracker.get_default().get_window_app(win)?.get_name?.() ?? win.get_wm_class?.() ?? '';
+    return name.trim().slice(0, 64);
 }
 
 export function isPopupWindow(win) {
@@ -140,11 +151,15 @@ export default class ClipItToExtension extends Extension {
         else
             return;
 
-        // Check the MIME types first so the content of a secret is never even read. Plain
-        // text first, then a picture (clipboard only), then any other text.
+        // Check the MIME types first so the content of a secret is never read unless the daemon
+        // keeps password copies. Plain text first, then a picture (clipboard only), then any
+        // other text.
         const mimeTypes = this._selection.get_mimetypes(type);
-        if (isSensitive(mimeTypes))
+        if (isSensitive(mimeTypes)) {
+            if (stType === St.ClipboardType.CLIPBOARD && hasText(mimeTypes))
+                this._sendSecret(stType, mimeTypes);
             return;
+        }
         const picture = imageType(mimeTypes);
         if (!hasPlainText(mimeTypes) && picture && stType === St.ClipboardType.CLIPBOARD) {
             this._sendImage(stType, picture, mimeTypes);
@@ -160,6 +175,30 @@ export default class ClipItToExtension extends Extension {
             this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, mimeTypes]),
                 Gio.DBusCallFlags.NO_AUTO_START);
         });
+    }
+
+    // Asks the daemon first: without a master password it keeps no password copies, and then
+    // the secret is never read. An older daemon without WantsPasswords counts as "no".
+    _sendSecret(stType, mimeTypes) {
+        const source = sourceAppName(global.display.focus_window);
+        Gio.DBus.session.call(DAEMON_NAME, DAEMON_PATH, DAEMON_IFACE, 'WantsPasswords', null,
+            new GLib.VariantType('(b)'), Gio.DBusCallFlags.NO_AUTO_START, -1, null, (connection, result) => {
+                let wanted = false;
+                try {
+                    [wanted] = connection.call_finish(result).deepUnpack();
+                } catch (e) {
+                    return;
+                }
+                if (!wanted || !this._selection)
+                    return;
+                St.Clipboard.get_default().get_text(stType, (_clipboard, text) => {
+                    if (!text || text.length > MAX_TEXT_LENGTH)
+                        return;
+                    const types = source ? [...mimeTypes, SOURCE_PREFIX + source] : mimeTypes;
+                    this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, types]),
+                        Gio.DBusCallFlags.NO_AUTO_START);
+                });
+            });
     }
 
     _sendImage(stType, mimeType, mimeTypes) {

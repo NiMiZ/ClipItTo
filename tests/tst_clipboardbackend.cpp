@@ -69,12 +69,36 @@ private slots:
 
         auto* data = new QMimeData;
         data->setText(QStringLiteral("copied text"));
-        data->setData(QStringLiteral("x-kde-passwordManagerHint"), "secret");
+        data->setData(QStringLiteral("text/html"), "<b>copied</b> text");
         QGuiApplication::clipboard()->setMimeData(data);
 
         QTRY_COMPARE(captured.size(), 1);
         QCOMPARE(captured.at(0).at(0).toString(), QStringLiteral("copied text"));
+        QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("text/html")));
+    }
+
+    void markedTextIsReadOnlyWhenPasswordsAreKept()
+    {
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
+        backend.start();
+        const auto copyMarked = [](const QString& text) {
+            auto* data = new QMimeData;
+            data->setText(text);
+            data->setData(QStringLiteral("x-kde-passwordManagerHint"), "secret");
+            QGuiApplication::clipboard()->setMimeData(data);
+        };
+
+        copyMarked(QStringLiteral("hunter2"));
+        QTRY_COMPARE(captured.size(), 1);
+        QVERIFY(captured.at(0).at(0).toString().isEmpty()); // only the markers
         QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("x-kde-passwordManagerHint")));
+
+        backend.setReadMarkedText(true);
+        copyMarked(QStringLiteral("hunter3"));
+        QTRY_COMPARE(captured.size(), 2);
+        QCOMPARE(captured.at(1).at(0).toString(), QStringLiteral("hunter3"));
+        QVERIFY(captured.at(1).at(1).toStringList().contains(QStringLiteral("x-kde-passwordManagerHint")));
     }
 
     void ignoresNonText()

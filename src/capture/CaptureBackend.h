@@ -19,6 +19,10 @@ public:
     // Pictures whose PNG would be larger are not encoded to the end (max_image_bytes).
     void setMaxImageBytes(qint64 bytes) { m_maxImageBytes = bytes; }
     qint64 maxImageBytes() const { return m_maxImageBytes; }
+    // Copies marked by a password manager: their text is read (and reported with the markers
+    // and the source app) only while password copies are kept; otherwise only the markers.
+    void setReadMarkedText(bool read) { m_readMarkedText = read; }
+    bool readMarkedText() const { return m_readMarkedText; }
     virtual void start() = 0;
     virtual void stop() = 0;
 
@@ -29,6 +33,7 @@ signals:
 
 private:
     qint64 m_maxImageBytes = 50LL * 1024 * 1024;
+    bool m_readMarkedText = false;
 };
 
 } // namespace clipitto::capture

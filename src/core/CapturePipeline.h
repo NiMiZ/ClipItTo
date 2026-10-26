@@ -6,6 +6,8 @@
 
 namespace clipitto {
 
+class PasswordVault;
+
 namespace db {
 class Repository;
 }
@@ -23,6 +25,13 @@ public:
     int maxImages() const { return m_maxImages; }
     ClipFilter& filter() { return m_filter; }
 
+    // Copies marked by a password manager are kept as password copies, sealed with `vault`
+    // (owned by the caller), when `keep` and the vault has a master password; otherwise they
+    // are rejected as before. `group` is where new ones go ("" for none).
+    void setPasswords(const PasswordVault* vault, bool keep, const QString& group);
+    // Whether marked copies are kept now: capture backends read their text only then.
+    bool keepsPasswords() const;
+
     // While paused (the database is busy elsewhere, e.g. being encrypted), accepted clips
     // wait in memory; resuming stores them in order.
     void setPaused(bool paused);
@@ -35,10 +44,18 @@ public slots:
 signals:
     void stored(qint64 id, bool inserted);
     void rejected(clipitto::ClipFilter::Verdict verdict);
+    // A marked copy was dropped because no master password is set (with keeping turned on).
+    void passwordSkipped();
 
 private:
     void store(const QString& text);
     void storeImage(const ImageClip& image);
+    struct SealedCopy {
+        QByteArray sealed;
+        QString match;
+        QString note;
+    };
+    void storeSecret(const SealedCopy& copy);
 
     db::Repository& m_repo;
     ClipFilter m_filter;
@@ -47,6 +64,10 @@ private:
     bool m_paused = false;
     QList<QString> m_waiting;
     QList<ImageClip> m_waitingImages; // a few at most: pictures are big
+    QList<SealedCopy> m_waitingSecrets; // sealed already: never held in clear
+    const PasswordVault* m_vault = nullptr;
+    bool m_keepPasswords = false;
+    QString m_passwordGroup;
 };
 
 } // namespace clipitto

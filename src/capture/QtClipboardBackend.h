@@ -39,6 +39,9 @@ public:
 private:
     void read(QClipboard::Mode mode);
     void readNative();
+    // Reports a text copy; a marked one with its source app, or without its text when
+    // password copies aren't kept.
+    void emitText(const QString& text, QStringList formats);
     void readImage(const QStringList& formats); // the clipboard's picture through Qt, if any
 
     // A picture waiting to be encoded: decoded already (Qt path) or as bytes (native path).

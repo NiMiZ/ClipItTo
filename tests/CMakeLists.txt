@@ -32,6 +32,7 @@ clipitto_add_test(tst_hotkey)
 clipitto_add_test(tst_paths)
 clipitto_add_test(tst_encryption)
 clipitto_add_test(tst_vault)
+clipitto_add_test(tst_passwordkeeper)
 
 if(NOT CLIPITTO_DBUS)
     # The local-socket transport (Windows; Unix socket elsewhere) and the CLI built on it.

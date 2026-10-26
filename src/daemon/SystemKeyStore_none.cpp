@@ -28,7 +28,7 @@ private:
 
 } // namespace
 
-std::shared_ptr<KeyStore> createSystemKeyStore()
+std::shared_ptr<KeyStore> createSystemKeyStore(const QString&)
 {
     return std::make_shared<UnsupportedKeyStore>();
 }

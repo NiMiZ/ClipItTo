@@ -44,6 +44,12 @@ struct Config {
     PopupPosition popupPosition = PopupPosition::Cursor; // X11/Windows; Wayland compositors place it
     StartFocus startFocus = StartFocus::Pinned;
     bool encryptHistory = false; // history.db encrypted at rest, key in the system keyring
+    // Password copies (copies marked by a password manager), once a master password is set.
+    bool keepPasswords = true;
+    bool passwordsInGroup = false; // new ones go to the "Passwords" group
+    int passwordUnlockMinutes = 5; // an unlock lasts this long
+    bool windowsHello = false; // Windows: unlock with Windows Hello too
+    QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
 
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)
     // and never fail: the affected values keep their defaults.

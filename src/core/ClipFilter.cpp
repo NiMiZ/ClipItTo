@@ -1,5 +1,6 @@
 #include "ClipFilter.h"
 
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 
 #include <algorithm>
@@ -8,6 +9,14 @@
 namespace clipitto {
 
 namespace {
+
+const QString kSourcePrefix = QStringLiteral("x-clipitto-source:");
+constexpr int kMaxSourceLength = 64;
+
+QByteArray textHash(const QString& text)
+{
+    return QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256);
+}
 
 ClipFilter::MsClock monotonicClock()
 {
@@ -47,8 +56,34 @@ bool ClipFilter::isSensitive(const QStringList& mimeTypes)
     });
 }
 
+QString ClipFilter::sourceMimeType(const QString& app)
+{
+    QString name;
+    for (const QChar c : app) {
+        if (c.isPrint()) {
+            name += c;
+        }
+    }
+    name = name.simplified().left(kMaxSourceLength);
+    return name.isEmpty() ? QString() : kSourcePrefix + name;
+}
+
+QString ClipFilter::sourceApp(const QStringList& mimeTypes)
+{
+    for (const QString& type : mimeTypes) {
+        if (type.startsWith(kSourcePrefix)) {
+            return sourceMimeType(type.mid(kSourcePrefix.size())).mid(kSourcePrefix.size());
+        }
+    }
+    return {};
+}
+
 ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mimeTypes) const
 {
+    // First: pasting a password back from the history must not store it a second time.
+    if (m_hasOwn && isOwnEcho(m_hasOwn, m_ownAtMs) && textHash(text) == m_ownTextHash) {
+        return Verdict::OwnWrite;
+    }
     if (isSensitive(mimeTypes)) {
         return Verdict::Sensitive;
     }
@@ -58,9 +93,6 @@ ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mi
     // UTF-8 is at most 3 bytes per UTF-16 unit, so only measure exactly when it could matter.
     if (text.size() * 3 > m_maxBytes && text.toUtf8().size() > m_maxBytes) {
         return Verdict::TooLarge;
-    }
-    if (text == m_ownText && isOwnEcho(m_hasOwn, m_ownAtMs)) {
-        return Verdict::OwnWrite;
     }
     return Verdict::Accept;
 }
@@ -89,7 +121,7 @@ bool ClipFilter::isOwnEcho(bool has, qint64 atMs) const
 
 void ClipFilter::noteOwnWrite(const QString& text)
 {
-    m_ownText = text;
+    m_ownTextHash = textHash(text);
     m_ownAtMs = m_clock();
     m_hasOwn = true;
 }

@@ -146,7 +146,7 @@ NativeClipboardRead::Status readPicture(NativeClipboardRead& result)
 
 } // namespace
 
-NativeClipboardRead readNativeClipboard()
+NativeClipboardRead readNativeClipboard(bool readMarkedText)
 {
     NativeClipboardRead result;
     const OpenedClipboard clipboard;
@@ -168,9 +168,10 @@ NativeClipboardRead readNativeClipboard()
         }
         result.formats << name;
     }
-    if (ClipFilter::isSensitive(result.formats)) {
+    if (ClipFilter::isSensitive(result.formats) && (!readMarkedText || !hasUnicodeText)) {
         // A password manager asked not to be recorded: report the markers (the pipeline
-        // rejects the copy) without ever reading or rendering the secret.
+        // rejects the copy) without ever reading or rendering the secret. Only when password
+        // copies are kept is its text read, to be sealed right away.
         result.status = NativeClipboardRead::Status::Ok;
         return result;
     }

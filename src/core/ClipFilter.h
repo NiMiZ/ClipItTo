@@ -38,6 +38,11 @@ public:
     // Password managers mark secrets with these MIME types (KeePassXC, KDE Klipper convention, ...).
     static bool isSensitive(const QStringList& mimeTypes);
 
+    // Capture backends name the app a marked copy came from with this pseudo MIME type
+    // ("x-clipitto-source:KeePassXC"); it becomes the password's default note.
+    static QString sourceMimeType(const QString& app); // empty when `app` is
+    static QString sourceApp(const QStringList& mimeTypes); // empty when not given
+
     static constexpr qint64 ownWriteWindowMs = 1000;
 
 private:
@@ -46,7 +51,7 @@ private:
     qint64 m_maxBytes;
     qint64 m_maxImageBytes = 50LL * 1024 * 1024;
     MsClock m_clock;
-    QString m_ownText;
+    QByteArray m_ownTextHash; // a hash, not the text: it may be a password
     qint64 m_ownAtMs = 0;
     bool m_hasOwn = false;
     QString m_ownImageHash;

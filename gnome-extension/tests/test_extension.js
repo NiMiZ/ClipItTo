@@ -3,7 +3,9 @@
 import System from 'system';
 
 import {CLIPBOARD, PRIMARY, makeWindow, resetState, state} from './stubs/state.js';
-import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupWindow, isSensitive} from './extension.js';
+import GLib from 'gi://GLib';
+
+import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupWindow, isSensitive, sourceAppName} from './extension.js';
 
 const NO_AUTO_START = 1;
 let passed = 0;
@@ -74,12 +76,54 @@ test('clipboard text is sent to the daemon without auto-starting it', () => {
     ext.disable();
 });
 
-test('secrets are never read', () => {
+// Answers a recorded D-Bus call as the daemon would (or fails it, with `reply` null).
+function answer(call, reply) {
+    call.callback({
+        call_finish: () => {
+            if (reply === null)
+                throw new Error('No such method');
+            return reply;
+        },
+    }, null);
+}
+
+test('secrets are read only when the daemon keeps passwords', () => {
     const ext = enabled();
-    state.selection.setOwner(CLIPBOARD, [...TEXT, 'x-kde-passwordManagerHint'], 'hunter2');
-    assertEq(state.textReads, 0, 'text reads');
-    assertEq(state.dbusCalls.length, 0, 'calls');
+    const marked = [...TEXT, 'x-kde-passwordManagerHint'];
+    state.display.focus_window = makeWindow({app: {get_name: () => 'KeePassXC'}});
+
+    // Asked first; the secret isn't read before the answer, nor after a "no".
+    state.selection.setOwner(CLIPBOARD, marked, 'hunter2');
+    assertEq(state.textReads, 0, 'text reads before the answer');
+    assertEq(state.dbusCalls.map(c => c.method), ['WantsPasswords']);
+    assertEq(state.dbusCalls[0].flags, NO_AUTO_START, 'flags');
+    answer(state.dbusCalls[0], new GLib.Variant('(b)', [false]));
+    assertEq(state.textReads, 0, 'text reads after no');
+
+    // An older daemon (no such method) counts as "no".
+    state.selection.setOwner(CLIPBOARD, marked, 'hunter2');
+    answer(state.dbusCalls[1], null);
+    assertEq(state.textReads, 0, 'text reads after an error');
+
+    // "Yes": sent with its markers and the app it came from.
+    state.selection.setOwner(CLIPBOARD, marked, 'hunter2');
+    answer(state.dbusCalls[2], new GLib.Variant('(b)', [true]));
+    assertEq(state.textReads, 1, 'text reads after yes');
+    const ingest = state.dbusCalls[3];
+    assertEq(ingest.method, 'Ingest');
+    assertEq(ingest.params.deepUnpack(), ['hunter2', [...marked, 'x-clipitto-source:KeePassXC']]);
+
+    // Marked copies from the primary selection are never sent.
+    state.settings.values['capture-primary'] = true;
+    state.selection.setOwner(PRIMARY, marked, 'hunter2');
+    assertEq(state.dbusCalls.length, 4, 'calls at the end');
     ext.disable();
+});
+
+test('sourceAppName', () => {
+    assertEq(sourceAppName(null), '');
+    assertEq(sourceAppName(makeWindow({app: {get_name: () => ' Bitwarden '}})), 'Bitwarden');
+    assertEq(sourceAppName(makeWindow({app: null, wmClass: 'firefox'})), 'firefox');
 });
 
 test('a copied picture is sent as IngestImage', () => {

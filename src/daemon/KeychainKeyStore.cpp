@@ -10,14 +10,13 @@ namespace clipitto {
 namespace {
 
 const QString kService = QStringLiteral("io.github.nimiz.ClipItTo");
-const QString kEntry = QStringLiteral("history-key");
 constexpr int kTimeoutMs = 10000; // a locked keyring may show an unlock prompt
 
 // Runs `job` to completion. Returns false (with `error`) on failure or timeout.
-bool runJob(QKeychain::Job& job, QString* error, bool notFoundIsError = true)
+bool runJob(QKeychain::Job& job, const QString& entry, QString* error, bool notFoundIsError = true)
 {
     job.setAutoDelete(false);
-    job.setKey(kEntry);
+    job.setKey(entry);
     QEventLoop loop;
     QObject::connect(&job, &QKeychain::Job::finished, &loop, &QEventLoop::quit);
     QTimer::singleShot(kTimeoutMs, &loop, &QEventLoop::quit);
@@ -51,7 +50,7 @@ bool KeychainKeyStore::available(QString* why)
     QString error;
     if (QKeychain::isAvailable()) {
         QKeychain::ReadPasswordJob probe(kService);
-        if (runJob(probe, &error, /*notFoundIsError=*/false)) {
+        if (runJob(probe, m_entry, &error, /*notFoundIsError=*/false)) {
             return true;
         }
     }
@@ -64,7 +63,7 @@ bool KeychainKeyStore::available(QString* why)
 std::optional<QByteArray> KeychainKeyStore::read(QString* error)
 {
     QKeychain::ReadPasswordJob job(kService);
-    if (!runJob(job, error, /*notFoundIsError=*/false)) {
+    if (!runJob(job, m_entry, error, /*notFoundIsError=*/false)) {
         return std::nullopt;
     }
     if (job.error() == QKeychain::EntryNotFound) {
@@ -80,13 +79,13 @@ bool KeychainKeyStore::write(const QByteArray& key, QString* error)
 {
     QKeychain::WritePasswordJob job(kService);
     job.setBinaryData(key);
-    return runJob(job, error);
+    return runJob(job, m_entry, error);
 }
 
 bool KeychainKeyStore::remove(QString* error)
 {
     QKeychain::DeletePasswordJob job(kService);
-    return runJob(job, error, /*notFoundIsError=*/false);
+    return runJob(job, m_entry, error, /*notFoundIsError=*/false);
 }
 
 } // namespace clipitto

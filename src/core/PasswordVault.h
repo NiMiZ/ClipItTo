@@ -60,6 +60,9 @@ public:
     // nullopt: no master password set (passwords are not kept).
     void load(std::optional<Stored> stored);
     const std::optional<Stored>& stored() const { return m_stored; }
+    // The same vault stored differently (a new Hello wrapping): kept unlocked. False when it
+    // isn't the same key pair.
+    bool replaceStored(const Stored& stored);
     bool isSetUp() const { return m_stored.has_value(); }
     bool isUnlocked() const { return !m_secret.isEmpty(); }
 

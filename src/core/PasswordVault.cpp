@@ -178,6 +178,15 @@ void PasswordVault::load(std::optional<Stored> stored)
     m_stored = std::move(stored);
 }
 
+bool PasswordVault::replaceStored(const Stored& stored)
+{
+    if (!m_stored || stored.publicKey != m_stored->publicKey) {
+        return false;
+    }
+    m_stored = stored;
+    return true;
+}
+
 bool PasswordVault::unlockWithKey(const QByteArray& key, bool hello)
 {
     if (!m_stored) {
