@@ -19,6 +19,7 @@ class QWindow;
 class QToolButton;
 
 namespace clipitto {
+class PasswordKeeper;
 struct Config;
 namespace db {
 class Repository;
@@ -76,6 +77,21 @@ public:
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
+    void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
+
+    // Password copies (null: none): shown hidden; showing, pasting and "not a password" ask
+    // for the master password first, unless unlocked. The owner pastes them (entryActivated
+    // comes after the unlock).
+    void setPasswords(PasswordKeeper* keeper);
+    // Windows Hello: tries it and reports whether it unlocked; the master password is asked
+    // for when it didn't. Unset: master password only.
+    using HelloUnlock = std::function<void(std::function<void(bool unlocked)> done)>;
+    void setHelloUnlock(HelloUnlock hello) { m_helloUnlock = std::move(hello); }
+    // Runs `then` once passwords are unlocked (asking for that); not at all if cancelled.
+    void withPasswordsUnlocked(std::function<void()> then);
+    // Shows a password copy's text in its row for kRevealMs (asks to unlock first).
+    void revealPassword(qint64 id);
+    static constexpr int kRevealMs = 10000;
 
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
@@ -143,6 +159,8 @@ private:
     void renameGroup(const QString& path);
     void deleteGroup(const QString& path);
     void showContextMenu(const QModelIndex& index, const QPoint& globalPos);
+    void markAsPassword(qint64 id);
+    void unmarkPassword(qint64 id);
     // focusList: the user just acted on the list (edit, menu, dialog), so it gets focus back;
     // background refreshes leave focus where it is.
     void refreshSelecting(std::optional<Selection> selection, bool focusList = true);
@@ -164,6 +182,11 @@ private:
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
     Notify m_notify;
+    PasswordPrompt m_passwordPrompt;
+    PasswordKeeper* m_passwords = nullptr;
+    HelloUnlock m_helloUnlock;
+    QTimer* m_revealTimer = nullptr; // hides revealed passwords again
+    bool m_unlocking = false; // an unlock is running: don't start another
     bool m_hideOnFocusLoss = true;
     bool m_singleClick = true;
     PopupPosition m_position = PopupPosition::Cursor;

@@ -167,6 +167,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_writer = std::make_unique<ClipboardWriter>(QGuiApplication::clipboard(), m_pipeline->filter(), m_integration);
     ui::applyTheme(m_config.theme);
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
+    m_popup->setPasswords(m_passwords.get());
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
         if (!ok) {
@@ -301,6 +302,16 @@ void Daemon::onEntryActivated(const Entry& entry)
             return;
         }
         m_writer->setImage(png, entry.contentHash.mid(int(qstrlen("image:"))));
+    } else if (entry.secret) {
+        // The popup asked for the unlock already; it may have expired just now.
+        std::optional<QByteArray> plain = m_passwords ? m_passwords->reveal(entry.id) : std::nullopt;
+        if (!plain) {
+            return;
+        }
+        QString text = QString::fromUtf8(*plain);
+        PasswordVault::wipe(*plain);
+        m_writer->setPassword(text);
+        PasswordVault::wipe(text);
     } else {
         m_writer->setText(entry.content);
     }

@@ -4,6 +4,7 @@
 #include <QTimer>
 
 namespace clipitto {
+class PasswordKeeper;
 struct Config;
 namespace db {
 class Repository;
@@ -27,6 +28,15 @@ public:
 
     void setQuery(const QString& query);
     QString query() const { return m_query; }
+
+    // Password copies (may be null: none). A password search lists only them: those
+    // matching `query` (part of a password when unlocked, the whole one when locked), or
+    // all of them while it is empty. Inactive: back to the normal query.
+    void setPasswords(const PasswordKeeper* keeper) { m_passwords = keeper; }
+    void setPasswordQuery(const QString& query, bool active);
+    bool isPasswordSearch() const { return m_passwordSearch; }
+    // The last password search found nothing while locked: an unlock may find more.
+    bool passwordSearchNeedsUnlock() const { return m_needsUnlock; }
     void refresh(); // re-run the current query now
     bool isPending() const { return m_debounce.isActive(); }
     // Suspended: no queries at all (pending ones are dropped) until resumed.
@@ -51,6 +61,10 @@ private:
     bool m_showSavedOnTop = true;
     int m_queriesRun = 0;
     bool m_suspended = false;
+    const PasswordKeeper* m_passwords = nullptr;
+    bool m_passwordSearch = false;
+    QString m_passwordQuery;
+    bool m_needsUnlock = false;
 };
 
 } // namespace clipitto::ui

@@ -49,4 +49,22 @@ ConfirmPrompt defaultConfirmPrompt()
     };
 }
 
+PasswordPrompt defaultPasswordPrompt()
+{
+    return [](QWidget* parent, const QString& label) -> std::optional<QString> {
+        QInputDialog dialog(parent);
+        dialog.setWindowTitle(QCoreApplication::translate("clipitto::ui::PopupWindow", "Unlock passwords"));
+        dialog.setLabelText(label);
+        dialog.setTextEchoMode(QLineEdit::Password);
+        dialog.setInputMethodHints(Qt::ImhSensitiveData | Qt::ImhNoPredictiveText | Qt::ImhHiddenText);
+        if (dialog.exec() != QDialog::Accepted) {
+            dialog.setTextValue(QString());
+            return std::nullopt;
+        }
+        std::optional<QString> password = dialog.textValue();
+        dialog.setTextValue(QString()); // the dialog's own copy
+        return password;
+    };
+}
+
 } // namespace clipitto::ui

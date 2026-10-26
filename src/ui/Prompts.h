@@ -23,4 +23,8 @@ TextPrompt defaultTextPrompt();
 std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices);
 ConfirmPrompt defaultConfirmPrompt();
 
+// A masked password (the master password). nullopt = cancelled. The caller wipes the text.
+using PasswordPrompt = std::function<std::optional<QString>(QWidget* parent, const QString& label)>;
+PasswordPrompt defaultPasswordPrompt();
+
 } // namespace clipitto::ui

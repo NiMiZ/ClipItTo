@@ -5,6 +5,7 @@
 #include "GroupPath.h"
 #include "HistoryDelegate.h"
 #include "HistoryView.h"
+#include "PasswordKeeper.h"
 #include "SearchBar.h"
 #include "SearchController.h"
 #include "Theme.h"
@@ -173,6 +174,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_notify([](QWidget* parent, const QString& message) {
         QMessageBox::warning(parent, QStringLiteral("ClipItTo"), message);
     })
+    , m_passwordPrompt(defaultPasswordPrompt())
 {
     setWindowTitle(QStringLiteral("ClipItTo"));
     resize(560, 480);
@@ -261,7 +263,16 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_search->installEventFilter(this);
     m_view->installEventFilter(this);
 
-    connect(m_search, &QLineEdit::textChanged, m_controller, &SearchController::setQuery);
+    connect(m_search, &QLineEdit::textChanged, this, [this](const QString& text) {
+        if (!m_search->isPasswordMode()) { // a password search shows only "p[] ****" there
+            m_controller->setQuery(text);
+        }
+    });
+    connect(m_search, &SearchBar::passwordQueryChanged, m_controller, &SearchController::setPasswordQuery);
+    m_revealTimer = new QTimer(this);
+    m_revealTimer->setSingleShot(true);
+    m_revealTimer->setInterval(kRevealMs);
+    connect(m_revealTimer, &QTimer::timeout, m_model, &HistoryModel::clearRevealed);
     connect(m_controller, &SearchController::updated, this, &PopupWindow::onResultsUpdated);
 
     connect(m_search, &SearchBar::focusListRequested, this, [this] {
@@ -298,6 +309,11 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     connect(m_search, &SearchBar::activateRequested, this, [this] {
         if (m_controller->isPending()) {
             m_controller->refresh(); // Enter right after typing: use the up-to-date results
+        }
+        if (m_controller->passwordSearchNeedsUnlock() && !m_model->firstEntry().isValid()) {
+            // A locked password search found nothing: unlock, and it searches inside them.
+            withPasswordsUnlocked([this] { m_controller->refresh(); });
+            return;
         }
         // From the search box, Enter always copies: the selected copy, else the first one.
         const QModelIndex current = m_view->currentIndex();
@@ -373,6 +389,7 @@ void PopupWindow::applyConfig(const Config& config)
     m_singleClick = config.clickToCopy == ClickMode::Single;
     m_position = config.popupPosition;
     m_startFocus = config.startFocus;
+    m_search->setPasswordKeyword(config.passwordSearchKeyword);
     if (isVisible()) {
         refresh(); // preview lines or counts may have changed
     }
@@ -556,8 +573,124 @@ void PopupWindow::activate(const QModelIndex& index)
         return; // a header or an empty group
     }
     const Entry chosen = *e; // receivers may refresh the model
+    if (chosen.secret) {
+        withPasswordsUnlocked([this, chosen] {
+            emit entryActivated(chosen);
+            hidePopup();
+        });
+        return;
+    }
     emit entryActivated(chosen);
     hidePopup();
+}
+
+void PopupWindow::setPasswords(PasswordKeeper* keeper)
+{
+    m_passwords = keeper;
+    m_controller->setPasswords(keeper);
+    if (keeper) {
+        connect(keeper, &PasswordKeeper::lockChanged, this, [this](bool unlocked) {
+            if (!unlocked) {
+                m_model->clearRevealed();
+            }
+            if (m_controller->isPasswordSearch()) {
+                m_controller->refresh(); // unlocked: search inside them now
+            }
+        });
+    }
+}
+
+void PopupWindow::withPasswordsUnlocked(std::function<void()> then)
+{
+    if (!m_passwords || !m_passwords->isSetUp()) {
+        showMessage(tr("Set a master password in Settings › Passwords first."));
+        return;
+    }
+    if (m_passwords->isUnlocked()) {
+        then();
+        return;
+    }
+    if (m_unlocking) {
+        return;
+    }
+    auto askPassword = [this, then] {
+        std::optional<QString> password;
+        {
+            ModalGuard guard(m_modalDepth);
+            password = m_passwordPrompt(this, tr("Master password:"));
+        }
+        if (!password) {
+            return;
+        }
+        QByteArray bytes = password->toUtf8();
+        PasswordVault::wipe(*password);
+        m_unlocking = true;
+        ++m_modalDepth; // the popup stays while the key is derived
+        m_passwords->unlock(bytes, [this, self = QPointer<PopupWindow>(this), then](bool ok) {
+            if (!self) {
+                return; // closed down meanwhile
+            }
+            m_unlocking = false;
+            --m_modalDepth;
+            if (ok) {
+                then();
+            } else {
+                showMessage(tr("Wrong master password."));
+            }
+        });
+        PasswordVault::wipe(bytes);
+    };
+    if (m_helloUnlock && m_passwords->helloEnabled()) {
+        m_unlocking = true;
+        ++m_modalDepth; // the Windows Hello prompt takes the focus
+        m_helloUnlock([this, self = QPointer<PopupWindow>(this), then, askPassword](bool unlocked) {
+            if (!self) {
+                return;
+            }
+            m_unlocking = false;
+            --m_modalDepth;
+            if (unlocked) {
+                then();
+            } else {
+                askPassword(); // cancelled or unavailable: the master password still works
+            }
+        });
+        return;
+    }
+    askPassword();
+}
+
+void PopupWindow::revealPassword(qint64 id)
+{
+    withPasswordsUnlocked([this, id] {
+        std::optional<QByteArray> plain = m_passwords ? m_passwords->reveal(id) : std::nullopt;
+        if (!plain) {
+            return;
+        }
+        QString text = QString::fromUtf8(*plain);
+        PasswordVault::wipe(*plain);
+        m_model->setRevealed(id, text);
+        PasswordVault::wipe(text);
+        m_revealTimer->start();
+    });
+}
+
+void PopupWindow::markAsPassword(qint64 id)
+{
+    if (!m_passwords || !m_passwords->isSetUp()) {
+        showMessage(tr("Set a master password in Settings › Passwords first."));
+        return;
+    }
+    const std::optional<qint64> holder = m_passwords->markAsPassword(id);
+    refreshSelecting(Selection{Kind::Entry, holder.value_or(id), {}});
+}
+
+void PopupWindow::unmarkPassword(qint64 id)
+{
+    withPasswordsUnlocked([this, id] {
+        const std::optional<qint64> holder = m_passwords->unmark(id);
+        refreshSelecting(Selection{Kind::Entry, holder.value_or(id), {}});
+    });
 }
 
 void PopupWindow::openGroups()
@@ -879,9 +1012,16 @@ void PopupWindow::refreshSelecting(std::optional<Selection> selection, bool focu
 
 void PopupWindow::onResultsUpdated()
 {
-    m_view->setEmptyText(m_controller->query().trimmed().isEmpty()
-                             ? tr("Nothing copied yet. Copied text will show up here.")
-                             : tr("No matches"));
+    if (m_controller->isPasswordSearch()) {
+        m_view->setEmptyText(m_controller->passwordSearchNeedsUnlock()
+                                 ? tr("Locked: only a whole password matches. Press Enter to unlock "
+                                      "and search inside your passwords.")
+                                 : tr("No password copies match."));
+    } else {
+        m_view->setEmptyText(m_controller->query().trimmed().isEmpty()
+                                 ? tr("Nothing copied yet. Copied text will show up here.")
+                                 : tr("No matches"));
+    }
 
     // Re-open what was open (the model rebuild collapsed everything).
     const QSet<QString> expanded = m_expanded;
@@ -951,6 +1091,21 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     }
 
     menu->addAction(entry.note.isEmpty() ? tr("Add note…") : tr("Edit note…"), this, [this, id] { editNote(id); });
+    if (entry.secret) {
+        menu->addSeparator();
+        menu->addAction(tr("Show password"), this, [this, id] { revealPassword(id); });
+        menu->addAction(tr("Not a password (keep as text)"), this, [this, id] { unmarkPassword(id); });
+        if (m_passwords && m_passwords->isUnlocked()) {
+            menu->addAction(tr("Lock passwords"), m_passwords, &PasswordKeeper::lock);
+        }
+    } else if (!entry.image) {
+        QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
+        if (!m_passwords || !m_passwords->isSetUp()) {
+            mark->setEnabled(false);
+            mark->setToolTip(tr("Set a master password in Settings › Passwords first."));
+            menu->setToolTipsVisible(true);
+        }
+    }
     menu->addSeparator();
     menu->addAction(tr("Delete"), this, [this, id] {
         const QModelIndex index = m_model->findEntry(id);
@@ -1075,6 +1230,10 @@ void PopupWindow::showEvent(QShowEvent* event)
 void PopupWindow::hideEvent(QHideEvent* event)
 {
     QWidget::hideEvent(event);
+    // Nothing of a password stays on screen or in the search box once closed.
+    m_revealTimer->stop();
+    m_model->clearRevealed();
+    m_search->leavePasswordMode();
     m_systemMove = false;
     m_moveEnd->stop();
     if (QGuiApplication::platformName() != QLatin1String("wayland") && m_lastPosition != pos()) {
