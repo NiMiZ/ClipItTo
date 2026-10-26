@@ -203,7 +203,19 @@ jobs:
           }
           exit 1
       - name: Build
-        run: cmake --build --preset windows
+        shell: pwsh
+        run: |
+          # The linker (its manifest step) now and then loses a race with the virus scanner on a
+          # freshly written .exe: "The process cannot access the file because it is being used by
+          # another process". Only that is tried again; a real compile or link error fails at once.
+          foreach ($attempt in 1..3) {
+            cmake --build --preset windows 2>&1 | Tee-Object -Variable log
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if (-not ($log -match 'being used by another process|Access is denied')) { exit 1 }
+            Write-Host "::warning::build hit a file lock (attempt $attempt); trying again"
+            Start-Sleep -Seconds 10
+          }
+          exit 1
       - name: Test
         shell: pwsh
         run: |
