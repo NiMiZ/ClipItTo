@@ -418,7 +418,7 @@ jobs:
       # The release build, bundled: ClipItTo.app (Qt inside, ad-hoc signed) and the .dmg.
       - name: Build the release for the app bundle
         run: |
-          cmake --preset macos-release
+          cmake --preset macos-release -DFETCHCONTENT_BASE_DIR="$HOME/fetchcontent"
           cmake --build --preset macos-release
       - name: Package ClipItTo.app and the disk image
         run: sh packaging/macos/package.sh build/macos-release build/macos-package
