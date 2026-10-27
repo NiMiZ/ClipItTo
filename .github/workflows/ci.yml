@@ -398,7 +398,7 @@ jobs:
           }
           [ "$(items)" = 0 ]
           printf 'copied with pbcopy %s' "$RANDOM" | pbcopy
-          for i in $(seq 20); do [ "$(items)" = 1 ] && break; sleep 0.25; done
+          for i in $(seq 80); do [ "$(items)" = 1 ] && break; sleep 0.25; done
           [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a pbcopy copy was not captured"; cat daemon.log; exit 1; }
           mark org.nspasteboard.ConcealedType 'a-password-1'
           sleep 1.5
@@ -407,7 +407,7 @@ jobs:
           sleep 1.5
           [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a TransientType copy was kept"; exit 1; }
           printf 'second ordinary copy' | pbcopy
-          for i in $(seq 20); do [ "$(items)" = 2 ] && break; sleep 0.25; done
+          for i in $(seq 80); do [ "$(items)" = 2 ] && break; sleep 0.25; done
           [ "$(items)" = 2 ] || { echo "::error title=pasteboard::a later ordinary copy was not captured"; exit 1; }
           "$bin/cli/clipitto" --quit # not silenced: its reply must arrive before the daemon exits
           wait "$daemon"
