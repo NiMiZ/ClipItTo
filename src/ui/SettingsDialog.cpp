@@ -8,6 +8,9 @@
 #include "db/Sqlite.h"
 
 #include <QCheckBox>
+#include <QDate>
+#include <QDialog>
+#include <QFileDialog>
 #include <QCoreApplication>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -160,6 +163,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_confirm(defaultConfirmPrompt())
     , m_notify([](QWidget* p, const QString& message) { QMessageBox::warning(p, QStringLiteral("ClipItTo"), message); })
     , m_inform([](QWidget* p, const QString& message) { QMessageBox::information(p, QStringLiteral("ClipItTo"), message); })
+    , m_backupCopies(new QCheckBox(tr("Copies, groups and passwords"), this))
+    , m_backupSettings(new QCheckBox(tr("Settings"), this))
+    , m_export(new QPushButton(tr("Export…"), this))
+    , m_import(new QPushButton(tr("Import…"), this))
     , m_passwordPrompt(defaultPasswordPrompt())
     , m_masterPrompt(defaultMasterPasswordPrompt())
 {
@@ -436,10 +443,67 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     connect(m_hello, &QCheckBox::toggled, this, &SettingsDialog::onHelloToggled);
     updatePasswordPage();
 
+    // --- Backup ------------------------------------------------------------------------
+    auto* backupPage = new QWidget(this);
+    auto* backupLayout = new QVBoxLayout(backupPage);
+    auto* backupText = new QLabel(
+        tr("Export your copies and/or settings to a file, or import them from one (on this or another "
+           "computer). Importing adds to what is here: copies that are already in the history are left as "
+           "they are.<br><br>"
+           "<b>Passwords</b> are encrypted in the file with your master password, so the file opens on any "
+           "computer, with that password. Everything else in the file is <b>plain text</b>: keep it private."),
+        backupPage);
+    backupText->setWordWrap(true);
+    backupText->setTextFormat(Qt::RichText);
+    backupLayout->addWidget(backupText);
+    m_backupCopies->setChecked(true);
+    m_backupSettings->setChecked(true);
+    m_backupCopies->setToolTip(tr("The history, with notes, stars, pins, groups, pictures and password copies."));
+    m_backupSettings->setToolTip(tr("The settings of the General and Passwords tabs. The shortcut, backend, "
+                                    "history encryption and Windows Hello stay as they are on this computer."));
+    backupLayout->addWidget(new QLabel(tr("Export includes:"), backupPage));
+    backupLayout->addWidget(m_backupCopies);
+    backupLayout->addWidget(m_backupSettings);
+    auto* backupButtons = new QHBoxLayout;
+    backupButtons->addWidget(m_export);
+    backupButtons->addWidget(m_import);
+    backupButtons->addStretch();
+    backupLayout->addLayout(backupButtons);
+    backupLayout->addStretch();
+    connect(m_export, &QPushButton::clicked, this, &SettingsDialog::exportBackup);
+    connect(m_import, &QPushButton::clicked, this, &SettingsDialog::importBackup);
+
+    m_filePrompt = [](QWidget* parent, bool save, const QString& suggestedName) {
+        const QString filter = tr("ClipItTo backup (*.json)");
+        return save ? QFileDialog::getSaveFileName(parent, tr("Export"), suggestedName, filter)
+                    : QFileDialog::getOpenFileName(parent, tr("Import"), QString(), filter);
+    };
+    m_partsPrompt = [](QWidget* parent, const backup::Info& info) -> std::optional<backup::Parts> {
+        QDialog dialog(parent);
+        dialog.setWindowTitle(tr("Import"));
+        auto* layout = new QVBoxLayout(&dialog);
+        layout->addWidget(new QLabel(tr("This backup has both. What do you want to import?"), &dialog));
+        auto* copies = new QCheckBox(tr("Copies (%1, with %2 password copies)").arg(info.copies).arg(info.passwords), &dialog);
+        auto* settings = new QCheckBox(tr("Settings"), &dialog);
+        copies->setChecked(true);
+        settings->setChecked(true);
+        layout->addWidget(copies);
+        layout->addWidget(settings);
+        auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        connect(box, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(box, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(box);
+        if (dialog.exec() != QDialog::Accepted) {
+            return std::nullopt;
+        }
+        return backup::Parts{copies->isChecked(), settings->isChecked()};
+    };
+
     // --- Dialog ------------------------------------------------------------------------
     m_tabs->addTab(general, tr("General"));
     m_tabs->addTab(groupsPage, tr("Groups"));
     m_tabs->addTab(passwordsPage, tr("Passwords"));
+    m_tabs->addTab(backupPage, tr("Backup"));
     // Group edits are already saved, so Cancel would promise an undo it can't give: the
     // Groups tab only offers Close (which also keeps any General changes, like OK).
     QPushButton* close = m_buttons->addButton(QDialogButtonBox::Close);
@@ -474,6 +538,9 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
 
 Config SettingsDialog::config() const
 {
+    if (m_imported) {
+        return *m_imported;
+    }
     Config c = m_config;
     c.theme = Theme(m_theme->currentData().toInt());
     c.recentCount = m_copies->value();
@@ -497,6 +564,153 @@ Config SettingsDialog::config() const
         c.passwordSearchKeyword = m_keyword->text();
     }
     return c;
+}
+
+void SettingsDialog::withMasterPassword(const QString& purpose, std::function<void(QByteArray password)> proceed)
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || !keeper->isSetUp()) {
+        proceed({});
+        return;
+    }
+    std::optional<QString> typed = m_passwordPrompt(this, tr("Master password (needed to %1):").arg(purpose));
+    if (!typed) {
+        return;
+    }
+    QByteArray bytes = PasswordVault::passwordBytes(*typed);
+    QByteArray copy = bytes;
+    m_busy = true;
+    updatePasswordPage();
+    keeper->unlock(std::move(bytes), [this, proceed = std::move(proceed), copy = std::move(copy),
+                                       self = QPointer<SettingsDialog>(this)](bool ok) mutable {
+        if (!self) {
+            PasswordVault::wipe(copy);
+            return;
+        }
+        m_busy = false;
+        updatePasswordPage();
+        if (!ok) {
+            PasswordVault::wipe(copy);
+            m_notify(this, tr("Wrong master password."));
+            return;
+        }
+        proceed(copy);
+        PasswordVault::wipe(copy);
+    });
+}
+
+void SettingsDialog::exportBackup()
+{
+    const backup::Parts parts{m_backupCopies->isChecked(), m_backupSettings->isChecked()};
+    if (!parts.any()) {
+        m_notify(this, tr("Tick what to export: copies, settings, or both."));
+        return;
+    }
+    withMasterPassword(tr("export"), [this, parts](QByteArray password) {
+        const QString path = m_filePrompt(this, /*save=*/true,
+                                          QStringLiteral("clipitto-backup-%1.json").arg(QDate::currentDate().toString(Qt::ISODate)));
+        if (path.isEmpty()) {
+            return;
+        }
+        QString error;
+        // The settings to export are the ones in the dialog now.
+        if (!backup::exportTo(path, m_repo, config(), m_passwordSupport.keeper, parts, password, &error)) {
+            m_notify(this, error);
+            return;
+        }
+        m_inform(this, tr("Exported to %1.").arg(path));
+    });
+}
+
+void SettingsDialog::importBackup()
+{
+    withMasterPassword(tr("import"), [this](QByteArray password) {
+        const QString path = m_filePrompt(this, /*save=*/false, QString());
+        if (path.isEmpty()) {
+            return;
+        }
+        const backup::Info info = backup::inspect(path);
+        if (!info.valid) {
+            m_notify(this, info.error);
+            return;
+        }
+        finishImport(path, info, password);
+    });
+}
+
+void SettingsDialog::finishImport(const QString& path, const backup::Info& info, const QByteArray& masterPassword)
+{
+    backup::Parts parts = info.parts;
+    if (info.parts.copies && info.parts.settings) {
+        const auto chosen = m_partsPrompt(this, info);
+        if (!chosen || !chosen->any()) {
+            return;
+        }
+        parts = *chosen;
+    }
+
+    // Password copies: they need a master password here and the backup's password.
+    QByteArray backupPassword = masterPassword;
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (parts.copies && info.passwords > 0) {
+        if (!keeper || !keeper->isSetUp()) {
+            if (!m_confirm(this, tr("This backup has %n password copies, but no master password is set here, so "
+                                    "they can't be imported. Import the rest?", nullptr, info.passwords))) {
+                return;
+            }
+        } else if (backupPassword.isEmpty() || !backup::passwordOpens(path, backupPassword)) {
+            PasswordVault::wipe(backupPassword);
+            std::optional<QString> typed =
+                m_passwordPrompt(this, tr("The backup's password copies use another master password. Enter it:"));
+            if (typed) {
+                backupPassword = PasswordVault::passwordBytes(*typed);
+            }
+            if (!typed || !backup::passwordOpens(path, backupPassword)) {
+                PasswordVault::wipe(backupPassword);
+                if (!m_confirm(this, tr("The password copies can't be opened with that. Import the rest without them?"))) {
+                    return;
+                }
+            }
+        }
+    }
+
+    QString error;
+    const auto report = backup::importFrom(path, parts, m_repo, keeper, backupPassword, &error);
+    PasswordVault::wipe(backupPassword);
+    if (!report) {
+        m_notify(this, error);
+        return;
+    }
+    QStringList lines;
+    if (parts.copies) {
+        m_groupsChanged = true;
+        lines << tr("%n copies added", nullptr, report->added)
+              << tr("%n already there", nullptr, report->alreadyThere);
+        if (report->passwordsAdded > 0) {
+            lines << tr("%n password copies added", nullptr, report->passwordsAdded);
+        }
+        if (report->passwordsSkipped > 0) {
+            lines << tr("%n password copies skipped", nullptr, report->passwordsSkipped);
+        }
+        reloadGroups();
+        // The Passwords group's rule may have come with the copies.
+        m_passwordsInRecent->setChecked(!m_repo.groupHiddenFromRecent(PasswordKeeper::passwordsGroup()));
+    }
+    if (report->settings) {
+        // What belongs to this computer stays as it is here.
+        Config merged = *report->settings;
+        const Config mine = config();
+        merged.hotkey = mine.hotkey;
+        merged.backend = mine.backend;
+        merged.encryptHistory = mine.encryptHistory;
+        merged.windowsHello = mine.windowsHello;
+        m_imported = merged;
+        lines << tr("settings imported");
+    }
+    m_inform(this, tr("Imported: %1.").arg(lines.join(tr(", "))));
+    if (m_imported) {
+        accept(); // the settings apply now
+    }
 }
 
 void SettingsDialog::accept()

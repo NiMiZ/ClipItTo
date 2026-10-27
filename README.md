@@ -155,6 +155,16 @@ pinned and grouped copies, which stay where they are.
   its sub-groups, don't appear in Recent. The Passwords group has this as the *Also show them in
   Recent* setting.
 
+**Backup** (Settings › Backup): *Export…* writes your copies (with notes, stars, pins, groups and
+pictures) and/or your settings to one JSON file; *Import…* adds a file's contents to what is here
+(copies already in the history are left alone). Tick *Copies* and/or *Settings* when exporting;
+when you import a file that has both, ClipItTo asks which to import. With a master password set,
+both ask for it first. Password copies are encrypted in the file with your master password
+(Argon2id + XChaCha20-Poly1305), not with anything of this computer, so the file opens on another
+PC with that password; importing re-seals them with that PC's own master password (set one there
+first). Everything else in the file is plain text: keep it private. Imported settings leave this
+computer's shortcut, backend, history encryption and Windows Hello choices as they are.
+
 **Clear** (the button next to ⚙) empties Recent: unfiled copies are deleted, starred and grouped
 ones only leave Recent and stay in their groups; pinned ones stay pinned. Its menu (the arrow)
 also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups

@@ -32,6 +32,7 @@ clipitto_add_test(tst_hotkey)
 clipitto_add_test(tst_paths)
 clipitto_add_test(tst_encryption)
 clipitto_add_test(tst_vault)
+clipitto_add_test(tst_backup)
 clipitto_add_test(tst_loginitem clipitto_daemon_lib)
 if(APPLE)
     clipitto_add_test(tst_keystore_mac clipitto_daemon_lib) # the real Keychain

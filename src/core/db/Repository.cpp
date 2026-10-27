@@ -827,6 +827,42 @@ void Repository::remove(qint64 id)
     m_remove->run();
 }
 
+std::vector<Entry> Repository::allEntries()
+{
+    Stmt s(m_db, "SELECT " CLIP_COLUMNS " FROM clips c ORDER BY c.id");
+    return collect(s);
+}
+
+std::optional<qint64> Repository::findByHash(const QString& contentHash)
+{
+    Stmt s(m_db, "SELECT id FROM clips WHERE content_hash = ?1");
+    s.bindText(1, contentHash);
+    if (!s.step()) {
+        return std::nullopt;
+    }
+    return s.colInt(0);
+}
+
+void Repository::restoreFiling(qint64 id, const QDateTime& created, const QDateTime& lastUsed, const QString& note,
+                               const QString& group, bool favorite)
+{
+    Transaction tx(m_db);
+    const QString path = groups::normalize(group);
+    if (!path.isEmpty()) {
+        createGroup(path);
+    }
+    Stmt s(m_db, "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, "
+                 "is_favorite = ?6 WHERE id = ?1");
+    s.bindInt(1, id);
+    s.bindText(2, (created.isValid() ? created : lastUsed).toUTC().toString(Qt::ISODateWithMs));
+    s.bindText(3, (lastUsed.isValid() ? lastUsed : created).toUTC().toString(Qt::ISODateWithMs));
+    s.bindTextOrNull(4, note.trimmed());
+    s.bindTextOrNull(5, path);
+    s.bindInt(6, favorite ? 1 : 0);
+    s.run();
+    tx.commit();
+}
+
 qint64 Repository::clearHistory(bool everything)
 {
     qint64 deleted = 0;
