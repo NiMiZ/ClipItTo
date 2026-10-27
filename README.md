@@ -6,113 +6,137 @@ your clipboard.
 Pin up to 10 clips to the top, star clips into Favorites, sort clips into your own groups
 (none of these are ever pruned), and give clips a readable title with a note.
 
-## Download for Ubuntu 24.04+
+| Your system | Get it | Details |
+|---|---|---|
+| **Ubuntu 24.04+** | `curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh \| sh` | [Linux](#linux) |
+| **Other Linux** | AppImage or Snap from the [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) | [Linux](#linux) |
+| **Windows 10/11** | `irm https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.ps1 \| iex` in PowerShell | [Windows](#windows-1011) |
+| **macOS 11+** | `ClipItTo-<version>-macos.dmg` from the [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) | [macOS](#macos-11) |
 
-Install the latest release with one command (it downloads the `.deb`, checks its SHA-256
-against the release and installs it with apt, which pulls in the Qt libraries it needs):
+On this page: [Using it](#using-it) · [Encrypted history](#encrypted-history) ·
+[Password copies](#password-copies) · [Privacy](#privacy) ·
+[Building from source](#building-from-source) · [License](#license)
+
+
+## Linux
+
+**Ubuntu 24.04+ (`.deb`).** One command downloads the latest `.deb`, checks its SHA-256
+against the release and installs it with apt, which pulls in the Qt libraries it needs:
 
 ```bash
 curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh | sh
 ```
 
 Or get `clipitto_<version>_amd64.deb` from the
-[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and install it yourself:
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and run
 `sudo apt install ./clipitto_0.6.0_amd64.deb`. [install.sh](install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run
-`clipitto-setup`; see [Installing](#installing-ubuntu-2404) for what it does. Press
-**Ctrl+Alt+V** to open the popup. To remove it: `sudo apt remove clipitto`.
+`clipitto-setup`. It starts the daemon with your session, enables the GNOME extension and
+binds **Ctrl+Alt+V** (pass another binding, e.g. `clipitto-setup '<Super>v'`).
+`clipitto-shortcut [BINDING]` changes the shortcut later; `clipitto-shortcut --remove`
+removes it. Remove ClipItTo with `sudo apt remove clipitto`.
 
-## Download for other Linux distributions
+**Other distributions.** Two downloads carry everything inside (Qt and the other libraries),
+so nothing else needs installing. Both are on the
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest).
 
-Two downloads carry everything inside (Qt and the other libraries), so nothing else needs
-installing. Both are on the [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest).
+- **AppImage** (`ClipItTo-<version>-x86_64.AppImage`): one file for most distributions from
+  2024 on (glibc 2.39+: Ubuntu 24.04, Fedora 40, Debian 13, Arch, ...).
 
-**AppImage** (`ClipItTo-<version>-x86_64.AppImage`): one file for most distributions from 2024
-on (glibc 2.39+: Ubuntu 24.04, Fedora 40, Debian 13, Arch, ...).
+  ```bash
+  chmod +x ClipItTo-*-x86_64.AppImage
+  ./ClipItTo-*-x86_64.AppImage --install    # start with the session, menu entry, GNOME extension, shortcut
+  ```
 
-```bash
-chmod +x ClipItTo-*-x86_64.AppImage
-./ClipItTo-*-x86_64.AppImage --install    # start with the session, menu entry, GNOME extension, shortcut
-```
+  `--install` sets it up for your account, pointing at the AppImage where it is (keep it
+  there); on GNOME, log out and back in and run `--install` once more to enable the
+  extension. The AppImage also takes every `clipitto` option (`--toggle`, `--status`,
+  `--lock`, ...). `--uninstall` undoes the setup and keeps your history. Without FUSE (some
+  containers), set `APPIMAGE_EXTRACT_AND_RUN=1`.
 
-`--install` sets it up for your account, pointing at the AppImage where it is (keep it
-there); on GNOME, log out and back in and run `--install` once more to enable the extension.
-The AppImage also takes every `clipitto` option (`--toggle`, `--status`, `--lock`, ...).
-`--uninstall` undoes the setup and keeps your history. Without FUSE (some containers), set
-`APPIMAGE_EXTRACT_AND_RUN=1`.
+- **Snap** (`clipitto_<version>_amd64.snap`), strictly confined:
 
-**Snap** (`clipitto_<version>_amd64.snap`), strictly confined:
+  ```bash
+  sudo snap install --dangerous ./clipitto_*_amd64.snap
+  ```
 
-```bash
-sudo snap install --dangerous ./clipitto_*_amd64.snap
-```
-
-`--dangerous` is needed while it isn't in the Snap Store. Then run `clipitto.setup` once
-(ClipItTo starts with your session from then on), start it now with
-`clipitto.clipitto-daemon &`, and bind `clipitto --toggle` to a shortcut. On GNOME, the
-extension is not part of the snap; install it from the `.deb` or the AppImage (`--install`).
-
-## Quick start on Ubuntu 24.04+ (from source, no install)
-
-```bash
-# 1. Dependencies
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-wayland libgl-dev \
-  libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev wl-clipboard
-
-# 2. Build and test
-git clone https://github.com/NiMiZ/ClipItTo.git && cd ClipItTo
-cmake --preset release
-cmake --build --preset release
-ctest --test-dir build/release --output-on-failure
-
-# 3. Run the daemon and open the popup
-build/release/src/daemon/clipitto-daemon &
-build/release/src/cli/clipitto --toggle     # bind this command to a shortcut to use it daily
-build/release/src/cli/clipitto --status     # which capture backend is active
-```
+  `--dangerous` is needed while it isn't in the Snap Store. Then run `clipitto.setup` once
+  (ClipItTo starts with your session from then on), start it now with
+  `clipitto.clipitto-daemon &`, and bind `clipitto --toggle` to a shortcut. On GNOME, the
+  extension is not part of the snap; install it from the `.deb` or the AppImage (`--install`).
 
 On **GNOME Wayland** (the Ubuntu default) the daemon can only see copies made while its own
 window has focus until the GNOME extension is installed (`backend_degraded: true` in
-`--status`). Install the extension from the source tree, log out and back in, then enable it:
+`--status`); the `.deb` and the AppImage install it. On **Xorg** no extension is needed.
 
-```bash
-gnome-extensions pack --force gnome-extension/clipitto@nimiz.github.io
-gnome-extensions install --force clipitto@nimiz.github.io.shell-extension.zip
-# log out and back in, then:
-gnome-extensions enable clipitto@nimiz.github.io
-build/release/src/cli/clipitto --status     # backend: gnome-ext
+## Windows 10/11
+
+**Install:** in PowerShell, run
+
+```powershell
+irm https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.ps1 | iex
 ```
 
-On **Ubuntu on Xorg** no extension is needed. For daily use, install it properly as below.
+It downloads the installer, checks its SHA-256, installs ClipItTo for your account with
+"Start ClipItTo when I sign in", and starts it. ([install.ps1](install.ps1) also takes
+`-Version X.Y.Z` and `-DownloadOnly DIR` when run as a file.)
 
-## Installing (Ubuntu 24.04+)
+Or download `ClipItTo-<version>-setup.exe` from the
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) (builds of every commit are
+in the [CI runs](https://github.com/NiMiZ/ClipItTo/actions): artifact `clipitto-windows-installer`,
+a portable folder in `clipitto-windows-portable`), run it, and keep "Start ClipItTo when
+I sign in" ticked. No admin rights are needed.
 
-Build the package (see [Building](#building) for the dependencies) and install it:
+**Use:** press **Ctrl+Alt+V** anywhere (Win+V is Windows' own clipboard history). The keys in the
+popup are the same as on Linux. ClipItTo lives in the notification area: click its icon to
+open the popup, right-click it to reload settings or quit.
 
-```bash
-cmake --preset deb && cmake --build --preset deb
-(cd build/deb && cpack)
-sudo apt install ./build/deb/clipitto_0.6.0_amd64.deb
-```
+Settings are in `%APPDATA%\clipitto\config.toml` (same keys as
+[config.example.toml](data/config.example.toml); `hotkey = "Ctrl+Shift+V"` changes the
+shortcut), history in `%LOCALAPPDATA%\clipitto\history.db`. `clipitto.exe --status`,
+`--reload` and `--quit` (in the install folder's `bin`) work as on Linux.
 
-Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run:
+## macOS 11+
 
-```bash
-clipitto-setup            # starts the daemon with your session, enables the GNOME extension,
-                          # binds Ctrl+Alt+V; pass another binding, e.g. clipitto-setup '<Super>v'
-```
+Apple Silicon and Intel in one app. **New: CI builds and tests it on real Macs (the unit tests,
+and the app run against the real pasteboard), but the global shortcut and auto-paste still
+need hands-on testing on a real machine.**
 
-Without root, install into `~/.local` instead (needs `~/.local/bin` on `PATH`):
+**Install:** download `ClipItTo-<version>-macos.dmg` from the
+[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest), open it and drag
+ClipItTo onto Applications.
 
-```bash
-cmake --preset release -DCMAKE_INSTALL_PREFIX=$HOME/.local
-cmake --build --preset release && cmake --install build/release
-clipitto-setup
-```
+**First launch:** the app is signed ad hoc, not with an Apple Developer ID, so macOS says it
+can't verify the developer. Right-click ClipItTo in Applications, choose *Open*, then *Open*
+again (or *Open Anyway* in System Settings › Privacy & Security). From a terminal:
+`xattr -dr com.apple.quarantine /Applications/ClipItTo.app`.
 
-`clipitto-shortcut [BINDING]` changes the shortcut later; `clipitto-shortcut --remove` removes it.
+ClipItTo lives in the **menu bar** (no Dock icon): click its icon to open the popup, reload
+settings or quit.
+- **Shortcut:** ⌘⌥V opens the popup (change it in Settings; the config key is `hotkey`, e.g.
+  `"Alt+Cmd+V"`: Ctrl is ⌃, Alt is ⌥, Cmd is ⌘). In the popup ⌘S, ⌘P, ⌘G, ⌘E star, pin,
+  group and note a copy, and ⌘, opens Settings.
+- **Auto-paste** (Enter pastes into the app you came from) presses ⌘V for you, which macOS
+  allows only with the **Accessibility** permission: System Settings › Privacy & Security ›
+  Accessibility. Without it, Enter still puts the copy on the clipboard. `clipitto --status`
+  shows the permission (`accessibility:`). Because the app is signed ad hoc, macOS asks again
+  after each update.
+- **Keychain:** the history-encryption key and the password-copy key are kept in your login
+  keychain (items named `io.github.nimiz.ClipItTo`). After an update macOS may ask whether
+  ClipItTo may use them: choose *Always Allow*.
+- **Password managers:** copies they mark with nspasteboard.org's `ConcealedType` (1Password,
+  KeePassXC, Bitwarden, ...) are kept as [password copies](#password-copies) or skipped;
+  `TransientType` and `AutoGeneratedType` copies are never recorded.
+- **Start at login:** Settings › *Start ClipItTo when I sign in*.
+- **Command line:** `/Applications/ClipItTo.app/Contents/MacOS/clipitto --toggle`, `--status`,
+  `--lock`, ... (add a symlink in your PATH if you like:
+  `ln -s /Applications/ClipItTo.app/Contents/MacOS/clipitto /usr/local/bin/clipitto`).
+- **Files:** settings and history are in `~/Library/Application Support/clipitto`.
+- **Uninstall:** untick *Start ClipItTo when I sign in*, quit from the menu bar, delete the
+  app, and delete that folder (and the Keychain items, if you used encryption or password
+  copies).
 
 ## Using it
 
@@ -312,52 +336,61 @@ other over your session's D-Bus or a local socket, never over the network. Logs 
 contain clipboard contents. Copies that password managers mark as secret are skipped, or kept
 only encrypted once you set a [master password](#password-copies). To erase everything, quit ClipItTo and delete those folders.
 
-## Building
-
-Requires Ubuntu 24.04+ (or equivalent): Qt 6.4+, SQLite 3.35+, toml++ 3.
-
-```bash
-sudo apt install build-essential cmake ninja-build qt6-base-dev libgl-dev libsqlite3-dev \
-  libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev
-cmake --preset debug
-cmake --build --preset debug
-ctest --preset debug     # gjs and dbus-run-session enable the extension and D-Bus tests
-```
+## Building from source
 
 Presets: `debug`, `release`, `asan` (address/UB sanitizers, warnings as errors), `deb`
-(installs under `/usr`, for `cpack`), `windows`. Search benchmark: `build/debug/tests/bench_search`.
+(installs under `/usr`, for `cpack`), `windows`, `macos`, `macos-release`. CI
+([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds and tests all three platforms
+and builds the Debian package, AppImage and snap.
+
+### Linux
+
+Needs Ubuntu 24.04+ or equivalent: Qt 6.4+, SQLite 3.35+, toml++ 3.
+
+```bash
+# 1. Dependencies
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-wayland libgl-dev \
+  libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev wl-clipboard
+
+# 2. Build and test
+git clone https://github.com/NiMiZ/ClipItTo.git && cd ClipItTo
+cmake --preset release && cmake --build --preset release
+ctest --preset release --output-on-failure    # gjs and dbus-run-session enable the extension and D-Bus tests
+
+# 3. Run without installing
+build/release/src/daemon/clipitto-daemon &
+build/release/src/cli/clipitto --toggle     # bind this command to a shortcut to use it daily
+build/release/src/cli/clipitto --status     # which capture backend is active
+```
+
+To install, build the package and install it (then `clipitto-setup` as above), or install
+into `~/.local` without root (needs `~/.local/bin` on `PATH`):
+
+```bash
+cmake --preset deb && cmake --build --preset deb
+(cd build/deb && cpack) && sudo apt install ./build/deb/clipitto_0.6.0_amd64.deb
+
+cmake --preset release -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build --preset release && cmake --install build/release && clipitto-setup
+```
+
+On GNOME Wayland, install the extension from the source tree, log out and back in, then
+enable it:
+
+```bash
+gnome-extensions pack --force gnome-extension/clipitto@nimiz.github.io
+gnome-extensions install --force clipitto@nimiz.github.io.shell-extension.zip
+# log out and back in, then:
+gnome-extensions enable clipitto@nimiz.github.io
+```
 
 The daemon runs as the `clipitto.service` systemd user unit and is also started on demand
 through D-Bus (`io.github.nimiz.ClipItTo`, see [the interface](src/ipc/io.github.nimiz.ClipItTo.xml)).
+Search benchmark: `build/debug/tests/bench_search`.
 
-## Windows 10/11
+### Windows
 
-**Install:** in PowerShell, run
-
-```powershell
-irm https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.ps1 | iex
-```
-
-It downloads the installer, checks its SHA-256, installs ClipItTo for your account with
-"Start ClipItTo when I sign in", and starts it. ([install.ps1](install.ps1) also takes
-`-Version X.Y.Z` and `-DownloadOnly DIR` when run as a file.)
-
-Or download `ClipItTo-<version>-setup.exe` from the
-[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) (builds of every commit are
-in the [CI runs](https://github.com/NiMiZ/ClipItTo/actions): artifact `clipitto-windows-installer`,
-a portable folder in `clipitto-windows-portable`), run it, and keep "Start ClipItTo when
-I sign in" ticked. No admin rights are needed.
-
-**Use:** press **Ctrl+Alt+V** anywhere (Win+V is Windows' own clipboard history). The keys in the
-popup are the same as on Linux. ClipItTo lives in the notification area: click its icon to
-open the popup, right-click it to reload settings or quit.
-
-Settings are in `%APPDATA%\clipitto\config.toml` (same keys as
-[config.example.toml](data/config.example.toml); `hotkey = "Ctrl+Shift+V"` changes the
-shortcut), history in `%LOCALAPPDATA%\clipitto\history.db`. `clipitto.exe --status`,
-`--reload` and `--quit` (in the install folder's `bin`) work as on Linux.
-
-**Build from source:** Visual Studio 2022 or newer, or its Build Tools, with the *Desktop
+Needs Visual Studio 2022 or newer, or its Build Tools, with the *Desktop
 development with C++* workload; Qt 6.5+ for MSVC; and [vcpkg](https://vcpkg.io), which builds
 toml++ from [vcpkg.json](vcpkg.json). The script finds them (Qt and vcpkg in `D:\` or `C:\`, or
 `QT_ROOT_DIR` / `VCPKG_ROOT`), sets up the compiler environment, builds and runs the tests:
@@ -378,50 +411,21 @@ cmake --install build/windows --prefix $PWD\stage   # runnable folder (absolute 
 iscc /DStageDir=$PWD\stage packaging\windows\clipitto.iss   # optional installer (Inno Setup 6)
 ```
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds and tests both platforms and
-builds the Debian package.
+### macOS
 
-## macOS 11+
+Needs Xcode's command line tools, CMake, Ninja and Qt 6.5+ for macOS.
+A Mac has none of these by default. Install the tools with any one of:
 
-Apple Silicon and Intel in one app. **New: CI builds and tests it on real Macs (the unit tests,
-and the app run against the real pasteboard), but the global shortcut and auto-paste still
-need hands-on testing on a real machine.**
+- **Homebrew:** `xcode-select --install`, then `brew install cmake ninja`.
+- **No Homebrew:** download the CMake `.dmg` from cmake.org/download (macOS universal) and
+  drag it to Applications; run `sudo "/Applications/CMake.app/Contents/bin/cmake-gui" --install`
+  once to put `cmake` on the PATH. Ninja is a single binary from the
+  [ninja-build releases](https://github.com/ninja-build/ninja/releases) (`ninja-mac.zip`).
+- **Python:** `pip3 install cmake ninja` (both ship as wheels).
+- **MacPorts:** `sudo port install cmake ninja`.
 
-**Install:** download `ClipItTo-<version>-macos.dmg` from the
-[latest release](https://github.com/NiMiZ/ClipItTo/releases/latest), open it and drag
-ClipItTo onto Applications.
-
-**First launch:** the app is signed ad hoc, not with an Apple Developer ID, so macOS says it
-can't verify the developer. Right-click ClipItTo in Applications, choose *Open*, then *Open*
-again (or *Open Anyway* in System Settings › Privacy & Security). From a terminal:
-`xattr -dr com.apple.quarantine /Applications/ClipItTo.app`.
-
-ClipItTo lives in the **menu bar** (no Dock icon): click its icon to open the popup, reload
-settings or quit.
-- **Shortcut:** ⌘⌥V opens the popup (change it in Settings; the config key is `hotkey`, e.g.
-  `"Alt+Cmd+V"`: Ctrl is ⌃, Alt is ⌥, Cmd is ⌘). In the popup ⌘S, ⌘P, ⌘G, ⌘E star, pin,
-  group and note a copy, and ⌘, opens Settings.
-- **Auto-paste** (Enter pastes into the app you came from) presses ⌘V for you, which macOS
-  allows only with the **Accessibility** permission: System Settings › Privacy & Security ›
-  Accessibility. Without it, Enter still puts the copy on the clipboard. `clipitto --status`
-  shows the permission (`accessibility:`). Because the app is signed ad hoc, macOS asks again
-  after each update.
-- **Keychain:** the history-encryption key and the password-copy key are kept in your login
-  keychain (items named `io.github.nimiz.ClipItTo`). After an update macOS may ask whether
-  ClipItTo may use them: choose *Always Allow*.
-- **Password managers:** copies they mark with nspasteboard.org's `ConcealedType` (1Password,
-  KeePassXC, Bitwarden, ...) are kept as [password copies](#password-copies) or skipped;
-  `TransientType` and `AutoGeneratedType` copies are never recorded.
-- **Start at login:** Settings › *Start ClipItTo when I sign in*.
-- **Command line:** `/Applications/ClipItTo.app/Contents/MacOS/clipitto --toggle`, `--status`,
-  `--lock`, ... (add a symlink in your PATH if you like:
-  `ln -s /Applications/ClipItTo.app/Contents/MacOS/clipitto /usr/local/bin/clipitto`).
-- **Files:** settings and history are in `~/Library/Application Support/clipitto`.
-- **Uninstall:** untick *Start ClipItTo when I sign in*, quit from the menu bar, delete the
-  app, and delete that folder (and the Keychain items, if you used encryption or password
-  copies).
-
-Build from source on a Mac (Xcode's command line tools, CMake, Ninja, Qt 6.5+ for macOS):
+Qt 6.5+ comes from the [Qt online installer](https://www.qt.io/download-qt-installer)
+(or `brew install qt`; then set `QT_ROOT_DIR=$(brew --prefix qt)`).
 
 ```bash
 export QT_ROOT_DIR=~/Qt/6.5.3/macos
