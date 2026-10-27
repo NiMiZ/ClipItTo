@@ -47,8 +47,11 @@ Enforced in the dialog only (not in `PasswordKeeper`, so tests/backup import can
 `PasswordKeeper::resetMasterPassword(new)` works on any *unlocked* vault (no old password): new key pair from
 the unlocked secret key, all copies re-sealed (`applyRekey`, shared with change). Settings shows "Forgot it…"
 only when Windows Hello is on (`PasswordSupport::helloUnlock` -> prompt -> new-password dialog). Hello must be
-re-enabled after (new key pair). macOS Touch ID and a Linux equivalent do NOT exist yet (see user thread 2026-10-27:
-Linux has fprintd/polkit but no hardware-bound key release; a keyring-wrapped copy would be the analogue).
+re-enabled after (new key pair). macOS Touch ID exists (`src/daemon/WindowsHello_mac.mm`, same `hello::` API as Windows; reuses the `windows_hello`
+config key and `vault.hello_wrapped`): LAContext fingerprint gate + random 32-byte key in the login Keychain
+(entry `touch-id-key`). Only a gate, since ad-hoc signing rules out biometry-bound Keychain items. Compiled by
+CI only, NOT run on a real Mac yet (needs the iMac). A Linux equivalent does not exist (fprintd/polkit hold no
+key; a keyring-wrapped copy would be the analogue, weaker, not built).
 
 ## No master password ("open" mode, not secure)
 Settings > Passwords > "Use without one…" (after a warning confirm). The vault is created with the fixed

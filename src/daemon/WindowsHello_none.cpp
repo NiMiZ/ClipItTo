@@ -8,10 +8,15 @@ namespace {
 
 QString unsupported()
 {
-    return QCoreApplication::translate("clipitto::Daemon", "Windows Hello is only on Windows.");
+    return QCoreApplication::translate("clipitto::Daemon", "Windows Hello and Touch ID are only on Windows and macOS.");
 }
 
 } // namespace
+
+QString displayName()
+{
+    return QStringLiteral("Windows Hello");
+}
 
 bool available(QString* why)
 {

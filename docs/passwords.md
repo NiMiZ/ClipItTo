@@ -69,8 +69,16 @@ characters with an uppercase letter, a lowercase letter and a digit; no form of 
 "root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row
 counting up or down (`123`, `654`; `12` is fine). A few unrelated words with a number make a strong one.
 
-**Forgot it? (Windows Hello)** If Windows Hello is turned on, Settings › Passwords shows *Forgot it…*:
-unlock with Hello, choose a new master password, and every password copy is kept under it. (Hello has
+**Windows Hello and Touch ID.** *Unlock with Windows Hello too* (Windows) or *Unlock with Touch ID too*
+(Mac, Touch ID set up in System Settings) lets a face, fingerprint or PIN open the password copies instead
+of typing the master password; turning it on asks for the master password once. On Windows the key comes
+from a Windows Hello signature. **On a Mac Touch ID is a gate, not a lock:** ClipItTo asks for your
+fingerprint before it reads a random key from your login Keychain, but the app is signed ad hoc and so
+can't tie that key to the Secure Enclave. A program running as you could read the Keychain item without
+the fingerprint; the master password still protects the file itself.
+
+**Forgot it? (Windows Hello / Touch ID)** If it is turned on, Settings › Passwords shows *Forgot it…*:
+unlock with it, choose a new master password, and every password copy is kept under it. (Hello / Touch ID has
 to be turned on again afterwards.) Without Hello, a forgotten master password can't be recovered.
 
 **Without a master password.** *Use without one…* (Settings › Passwords) keeps password copies hidden

@@ -50,6 +50,6 @@ password_ask_note = false   # after copying a new password, open ClipItTo with a
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
 password_clear_seconds = 30 # a password pasted from ClipItTo leaves the clipboard after this
                             # (unless something else was copied meanwhile); 0 = it stays
-windows_hello = false       # Windows: unlock with Windows Hello too (set up in Settings)
+windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks

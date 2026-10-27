@@ -48,7 +48,8 @@ struct EncryptionSupport {
 // groups); Windows Hello is turned on or off right away too.
 struct PasswordSupport {
     PasswordKeeper* keeper = nullptr; // null: no password copies here
-    bool helloAvailable = false; // Windows with Windows Hello set up
+    bool helloAvailable = false; // Windows with Windows Hello set up, or a Mac with Touch ID
+    QString helloName; // "Windows Hello" or "Touch ID"
     QString helloReason; // why not, when unavailable
     // Turns Windows Hello on (passwords are unlocked by then) or off; `done` gets an error
     // text, empty when it worked.
@@ -109,6 +110,7 @@ public:
     void removeMasterPassword();
     void useWithoutMasterPassword();
     void resetMasterPassword();
+    QString helloLabel() const;
 
     // Group actions (the buttons on the Groups tab).
     void newGroup();

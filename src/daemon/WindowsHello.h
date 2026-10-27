@@ -3,13 +3,16 @@
 #include <QByteArray>
 #include <QString>
 
-// Windows Hello as a second way to unlock password copies, chosen in CMake:
-//   Windows:   KeyCredentialManager (C++/WinRT)  - WindowsHello_win.cpp
-//   elsewhere: explicitly unsupported            - WindowsHello_none.cpp
-// Every call blocks (Windows shows its own prompt) and must not run on the GUI thread.
+// Windows Hello / Touch ID as a second way to unlock password copies, chosen in CMake:
+//   Windows:   KeyCredentialManager (C++/WinRT)        - WindowsHello_win.cpp
+//   macOS:     Touch ID (LocalAuthentication) gating a Keychain key - WindowsHello_mac.mm
+//   elsewhere: explicitly unsupported                  - WindowsHello_none.cpp
+// Every call blocks (the system shows its own prompt) and must not run on the GUI thread.
 namespace clipitto::hello {
 
-// Whether Windows Hello is set up and usable here; false with the reason otherwise.
+// "Windows Hello" or "Touch ID", for messages.
+QString displayName();
+// Whether it is set up and usable here; false with the reason otherwise.
 bool available(QString* why = nullptr);
 // ClipItTo's Windows Hello key signs a fixed challenge; the result, hashed, is a 32-byte key
 // that wraps the vault's secret key. `create` makes a new Hello key (when turning it on);

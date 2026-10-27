@@ -590,6 +590,7 @@ void Daemon::openSettings()
     passwords.keeper = m_passwords.get();
     passwords.helloAvailable = m_helloAvailable;
     passwords.helloReason = m_helloReason;
+    passwords.helloName = hello::displayName();
     passwords.setHello = [this](bool on, std::function<void(QString)> done) { setWindowsHello(on, std::move(done)); };
     passwords.helloUnlock = [this](std::function<void(bool)> done) { helloUnlock(std::move(done)); };
     ui::StartupSupport startup;

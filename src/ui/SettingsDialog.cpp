@@ -379,8 +379,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     masterRow->addWidget(m_removeMaster);
     masterRow->addWidget(m_resetMaster);
     masterRow->addWidget(m_useOpen);
-    m_resetMaster->setToolTip(tr("Replace the master password after unlocking with Windows Hello. "
-                                 "Your password copies are kept."));
+    const QString hello = m_passwordSupport.helloName.isEmpty() ? tr("Windows Hello") : m_passwordSupport.helloName;
+    m_hello->setText(tr("Unlock with %1 too").arg(hello));
+    m_resetMaster->setToolTip(tr("Replace the master password after unlocking with %1. "
+                                 "Your password copies are kept.").arg(hello));
     for (QPushButton* b : {m_setMaster, m_removeMaster, m_resetMaster, m_useOpen}) {
         b->setAutoDefault(false);
     }
@@ -445,8 +447,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     helloRow->addWidget(helloInfo);
     helloRow->addStretch(1);
     passwordsForm->addRow(QString(), helloRow);
-    QString helloText = tr("Your face, fingerprint or Windows Hello PIN unlocks the password copies; the "
-                           "master password keeps working too. Turning it on asks for the master password once.")
+    QString helloText = tr("Your face, fingerprint or PIN (%1) unlocks the password copies; the "
+                           "master password keeps working too. Turning it on asks for the master password once.").arg(hello)
                             .toHtmlEscaped();
     if (!m_passwordSupport.helloAvailable) {
         helloText = tr("<b>Not available:</b> %1").arg(m_passwordSupport.helloReason.toHtmlEscaped())
@@ -489,7 +491,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_backupSettings->setChecked(true);
     m_backupCopies->setToolTip(tr("The history, with notes, stars, pins, groups, pictures and password copies."));
     m_backupSettings->setToolTip(tr("The settings of the General and Passwords tabs. The shortcut, backend, "
-                                    "history encryption and Windows Hello stay as they are on this computer."));
+                                    "history encryption and Windows Hello / Touch ID stay as they are on this computer."));
     backupLayout->addWidget(new QLabel(tr("Export includes:"), backupPage));
     backupLayout->addWidget(m_backupCopies);
     backupLayout->addWidget(m_backupSettings);
@@ -843,6 +845,11 @@ void SettingsDialog::useWithoutMasterPassword()
     });
 }
 
+QString SettingsDialog::helloLabel() const
+{
+    return m_passwordSupport.helloName.isEmpty() ? tr("Windows Hello") : m_passwordSupport.helloName;
+}
+
 void SettingsDialog::resetMasterPassword()
 {
     PasswordKeeper* keeper = m_passwordSupport.keeper;
@@ -859,7 +866,7 @@ void SettingsDialog::resetMasterPassword()
         m_busy = false;
         updatePasswordPage();
         if (!unlocked) {
-            m_notify(this, tr("Windows Hello did not unlock the passwords."));
+            m_notify(this, tr("%1 did not unlock the passwords.").arg(helloLabel()));
             return;
         }
         std::optional<MasterPasswordAnswer> answer = m_masterPrompt(this, /*change=*/false);
@@ -876,8 +883,8 @@ void SettingsDialog::resetMasterPassword()
             m_busy = false;
             updatePasswordPage();
             if (ok) {
-                m_inform(this, tr("Master password replaced. Your password copies are kept; turn Windows Hello on "
-                                  "again to use it with the new one."));
+                m_inform(this, tr("Master password replaced. Your password copies are kept; turn %1 on "
+                                  "again to use it with the new one.").arg(helloLabel()));
             } else {
                 m_notify(this, tr("Could not replace the master password."));
             }
@@ -941,7 +948,7 @@ void SettingsDialog::changeMasterPassword()
         updatePasswordPage();
         if (ok) {
             m_inform(this, tr("Master password changed. Every password copy now uses a new key%1.")
-                               .arg(m_passwordSupport.helloAvailable ? tr("; turn Windows Hello on again to use it")
+                               .arg(m_passwordSupport.helloAvailable ? tr("; turn %1 on again to use it").arg(helloLabel())
                                                                      : QString()));
         } else {
             m_notify(this, tr("The current master password is not right."));
@@ -992,7 +999,7 @@ void SettingsDialog::onHelloToggled(bool on)
             m_busy = false;
             updatePasswordPage();
             if (!error.isEmpty()) {
-                m_notify(this, tr("Windows Hello: %1").arg(error));
+                m_notify(this, tr("%1: %2").arg(helloLabel(), error));
             }
         });
     };

@@ -300,7 +300,7 @@ std::vector<Line> lines(const Config& c)
         {"password_ask_note", tomlBool(c.passwordAskNote), "after copying a new password, open ClipItTo to name it"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},
         {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard; 0 = never"},
-        {"windows_hello", tomlBool(c.windowsHello), "Windows: unlock passwords with Windows Hello too"},
+        {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},
     };
