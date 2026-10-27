@@ -74,6 +74,38 @@ PasswordPrompt defaultPasswordPrompt()
     };
 }
 
+NamePrompt defaultNamePrompt()
+{
+    return [](QWidget* parent, const QString& suggestion) -> std::optional<QString> {
+        const auto tr = [](const char* text) { return QCoreApplication::translate("clipitto::ui::PopupWindow", text); };
+        QDialog dialog(parent);
+        dialog.setWindowTitle(tr("Name this password"));
+        auto* label = new QLabel(tr("A new password was copied. Name it so you can find it:"), &dialog);
+        label->setWordWrap(true);
+        auto* edit = new QLineEdit(&dialog);
+        edit->setPlaceholderText(suggestion); // grey; gone as soon as something is typed
+        edit->setInputMethodHints(Qt::ImhNoPredictiveText);
+        auto* hint = new QLabel(suggestion.isEmpty() ? QString()
+                                                     : tr("Left empty, it is named after the app it came from."),
+                                &dialog);
+        hint->setEnabled(false); // dim
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        auto* layout = new QVBoxLayout(&dialog);
+        layout->addWidget(label);
+        layout->addWidget(edit);
+        layout->addWidget(hint);
+        layout->addWidget(buttons);
+        QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        dialog.setMinimumWidth(380);
+        edit->setFocus();
+        if (dialog.exec() != QDialog::Accepted) {
+            return std::nullopt;
+        }
+        return edit->text();
+    };
+}
+
 MasterPasswordPrompt defaultMasterPasswordPrompt()
 {
     return [](QWidget* parent, bool change) -> std::optional<MasterPasswordAnswer> {

@@ -27,6 +27,12 @@ ConfirmPrompt defaultConfirmPrompt();
 using PasswordPrompt = std::function<std::optional<QString>(QWidget* parent, const QString& label)>;
 PasswordPrompt defaultPasswordPrompt();
 
+// A name for a new password copy. `suggestion` (the app it was copied from) is shown as grey
+// placeholder text that goes away when the user types; empty input keeps it as the name.
+// nullopt = cancelled.
+using NamePrompt = std::function<std::optional<QString>(QWidget* parent, const QString& suggestion)>;
+NamePrompt defaultNamePrompt();
+
 // Setting or changing the master password: masked fields only, the new one typed twice.
 struct MasterPasswordAnswer {
     QString current; // empty when setting a first one

@@ -41,6 +41,10 @@ encrypt_history = false     # encrypt history.db; the key is kept in the system 
 # shown as ●●●● and opened only after an unlock. The master password itself is never stored.
 keep_passwords = true       # false = skip them, as without a master password
 passwords_in_group = false  # put new password copies in the "Passwords" group
+passwords_in_recent = true  # with passwords_in_group: also list them in Recent, as asterisks
+                            # (false: only in the group and in the p[] search)
+password_ask_note = false   # after copying a new password, open ClipItTo with a name box on it
+                            # (the app it came from is suggested)
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
 password_clear_seconds = 30 # a password pasted from ClipItTo leaves the clipboard after this
                             # (unless something else was copied meanwhile); 0 = it stays

@@ -198,6 +198,46 @@ private slots:
         QCOMPARE(d.repository()->countSecrets(), before);
     }
 
+    void askingForANameAfterCopyingAPassword()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        d.passwords()->setKdfCost({64, 1});
+        bool set = false;
+        d.passwords()->setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        QStringList asked;
+        d.popup()->setNamePrompt([&asked](QWidget*, const QString& suggestion) {
+            asked << suggestion;
+            return std::optional<QString>(QStringLiteral("My bank"));
+        });
+        const auto copy = [&](const char* password) {
+            emit d.control()->ingestRequested(QString::fromLatin1(password),
+                                              {QStringLiteral("text/plain"), QStringLiteral("x-kde-passwordManagerHint"),
+                                               QStringLiteral("x-clipitto-source:Safari")});
+        };
+
+        copy("pw-one"); // the option is off: nothing is asked, the note is the app
+        QTest::qWait(150);
+        QVERIFY(asked.isEmpty());
+        QVERIFY(!d.popup()->isVisible());
+        QCOMPARE(d.repository()->recent(1, false).front().note, QStringLiteral("Safari"));
+
+        Config c = d.config();
+        c.passwordAskNote = true;
+        QVERIFY(d.applySettings(c));
+        copy("pw-two");
+        QTRY_COMPARE(asked, QStringList{QStringLiteral("Safari")}); // the app it came from is suggested
+        QTRY_COMPARE(d.repository()->recent(1, false).front().note, QStringLiteral("My bank"));
+        QTRY_VERIFY(!d.popup()->isVisible()); // it closes again: the focus goes back
+
+        copy("pw-two"); // the same password again is not new: not asked
+        QTest::qWait(150);
+        QCOMPARE(asked.size(), 1);
+    }
+
     void clipboardChangesAreCaptured()
     {
         Daemon d(options(), std::make_unique<FakeControl>());

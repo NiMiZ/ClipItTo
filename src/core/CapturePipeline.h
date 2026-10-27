@@ -46,6 +46,9 @@ signals:
     void rejected(clipitto::ClipFilter::Verdict verdict);
     // A marked copy was dropped because no master password is set (with keeping turned on).
     void passwordSkipped();
+    // A password copy that is new (not the same password copied again): its entry id and the
+    // app it came from ("" when unknown), for "ask for a name after copying a password".
+    void passwordStored(qint64 id, const QString& sourceApp);
 
 private:
     void store(const QString& text);

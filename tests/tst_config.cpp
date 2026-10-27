@@ -32,16 +32,21 @@ private slots:
         const Config defaults;
         QVERIFY(defaults.keepPasswords);
         QVERIFY(!defaults.passwordsInGroup);
+        QVERIFY(defaults.passwordsInRecent); // grouped passwords still show in Recent (as asterisks)
+        QVERIFY(!defaults.passwordAskNote);
         QCOMPARE(defaults.passwordUnlockMinutes, 5);
         QCOMPARE(defaults.passwordClearSeconds, 30);
         QVERIFY(!defaults.windowsHello);
         QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
 
         const Config c = Config::fromToml("keep_passwords = false\npasswords_in_group = true\n"
+                                          "passwords_in_recent = false\npassword_ask_note = true\n"
                                           "password_unlock_minutes = 15\nwindows_hello = true\n"
                                           "password_search_keyword = \"pw:\"\n");
         QVERIFY(!c.keepPasswords);
         QVERIFY(c.passwordsInGroup);
+        QVERIFY(!c.passwordsInRecent);
+        QVERIFY(c.passwordAskNote);
         QCOMPARE(c.passwordUnlockMinutes, 15);
         QVERIFY(c.windowsHello);
         QCOMPARE(c.passwordSearchKeyword, QStringLiteral("pw:"));

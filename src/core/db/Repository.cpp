@@ -65,7 +65,9 @@ Repository::Repository(Db& db, Clock clock)
         RETURNING id, created_at = last_used)");
     m_imageDetails = std::make_unique<Stmt>(m_db, "SELECT width, height, thumbnail FROM clip_images WHERE clip_id = ?1");
 
+    // ?2: a group whose password copies are left out of the list (NULL: none).
     m_recentAll = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
+        WHERE (?2 IS NULL OR c.secret = 0 OR c.group_name IS NOT ?2)
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
     m_recentUnsaved = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
@@ -73,7 +75,7 @@ Repository::Repository(Db& db, Clock clock)
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
     m_recentUnpinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
-        WHERE c.pin_position IS NULL
+        WHERE c.pin_position IS NULL AND (?2 IS NULL OR c.secret = 0 OR c.group_name IS NOT ?2)
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
     m_pinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
@@ -370,18 +372,22 @@ std::vector<Entry> Repository::collect(Stmt& stmt)
     return result;
 }
 
-std::vector<Entry> Repository::recent(int limit, bool unsavedOnly)
+std::vector<Entry> Repository::recent(int limit, bool unsavedOnly, const QString& hideSecretsIn)
 {
     Stmt& s = unsavedOnly ? *m_recentUnsaved : *m_recentAll;
     s.reset();
     s.bindInt(1, limit);
+    if (!unsavedOnly) { // unsaved copies are in no group
+        s.bindTextOrNull(2, hideSecretsIn);
+    }
     return collect(s);
 }
 
-std::vector<Entry> Repository::recentUnpinned(int limit)
+std::vector<Entry> Repository::recentUnpinned(int limit, const QString& hideSecretsIn)
 {
     m_recentUnpinned->reset();
     m_recentUnpinned->bindInt(1, limit);
+    m_recentUnpinned->bindTextOrNull(2, hideSecretsIn);
     return collect(*m_recentUnpinned);
 }
 

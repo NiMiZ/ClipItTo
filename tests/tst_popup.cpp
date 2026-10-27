@@ -94,7 +94,7 @@ private:
         QStringList prompts;
         std::optional<QString> answer = QStringLiteral("master");
 
-        PasswordFixture()
+        explicit PasswordFixture(Config cfg = {}) : Fixture(cfg)
         {
             keeper.setKdfCost({64, 1});
             bool set = false;
@@ -1059,6 +1059,130 @@ private slots:
     }
 
     // --- Password copies ----------------------------------------------------------------
+
+    void namingANewPassword()
+    {
+        PasswordFixture f;
+        QStringList suggestions;
+        std::optional<QString> answer;
+        bool openedForIt = false;
+        qint64 selected = 0;
+        f.popup->setNamePrompt([&](QWidget*, const QString& suggestion) {
+            suggestions << suggestion;
+            openedForIt = f.popup->isVisible(); // the popup is open while the box is
+            const Entry* e = f.model()->entryAt(f.current());
+            selected = e ? e->id : 0; // ... with the new copy selected
+            return answer;
+        });
+        const auto newPassword = [&](const char* match, const QString& note) {
+            const auto& v = f.keeper.vault();
+            return f.t.repo->ingestSecret(v.seal(match), v.match(match), note, QString()).id;
+        };
+
+        // Closed popup: it opens for the box, and closes again (the focus goes back to the user).
+        const qint64 first = newPassword("one", QStringLiteral("Firefox"));
+        answer = QStringLiteral("Bank login");
+        f.popup->askPasswordNote(first, QStringLiteral("Firefox"));
+        QTRY_COMPARE(suggestions.size(), 1);
+        QCOMPARE(suggestions.at(0), QStringLiteral("Firefox")); // the placeholder: where it came from
+        QVERIFY(openedForIt);
+        QCOMPARE(selected, first);
+        QTRY_VERIFY(!f.popup->isVisible());
+        QCOMPARE(f.t.repo->get(first)->note, QStringLiteral("Bank login"));
+
+        // Empty keeps the default note (the app); cancelled does too.
+        const qint64 second = newPassword("two", QStringLiteral("Chrome"));
+        answer = QString();
+        f.popup->askPasswordNote(second, QStringLiteral("Chrome"));
+        QTRY_COMPARE(suggestions.size(), 2);
+        QTRY_VERIFY(!f.popup->isVisible());
+        QCOMPARE(f.t.repo->get(second)->note, QStringLiteral("Chrome"));
+        const qint64 third = newPassword("three", QStringLiteral("Safari"));
+        answer = std::nullopt;
+        f.popup->askPasswordNote(third, QStringLiteral("Safari"));
+        QTRY_COMPARE(suggestions.size(), 3);
+        QTRY_VERIFY(!f.popup->isVisible());
+        QCOMPARE(f.t.repo->get(third)->note, QStringLiteral("Safari"));
+
+        // Even if the copy has no note yet, nothing typed (OK, Enter or Cancel) saves the
+        // suggestion as its note: the default is the app it came from.
+        const qint64 bare = newPassword("bare", QString());
+        QVERIFY(f.t.repo->get(bare)->note.isEmpty());
+        answer = QString();
+        f.popup->askPasswordNote(bare, QStringLiteral("Firefox"));
+        QTRY_COMPARE(suggestions.size(), 4);
+        QTRY_COMPARE(f.t.repo->get(bare)->note, QStringLiteral("Firefox"));
+        const qint64 bareCancelled = newPassword("bare2", QString());
+        answer = std::nullopt;
+        f.popup->askPasswordNote(bareCancelled, QStringLiteral("Edge"));
+        QTRY_COMPARE(suggestions.size(), 5);
+        QTRY_COMPARE(f.t.repo->get(bareCancelled)->note, QStringLiteral("Edge"));
+        answer = QStringLiteral("   "); // only spaces count as nothing too
+        const qint64 spaces = newPassword("bare3", QString());
+        f.popup->askPasswordNote(spaces, QStringLiteral("Brave"));
+        QTRY_COMPARE(suggestions.size(), 6);
+        QTRY_COMPARE(f.t.repo->get(spaces)->note, QStringLiteral("Brave"));
+
+        // A popup that was open stays open.
+        QVERIFY(f.show());
+        const qint64 fourth = newPassword("four", QString());
+        answer = QStringLiteral("  Wi-Fi  ");
+        f.popup->askPasswordNote(fourth, QString()); // source unknown: no suggestion
+        QTRY_COMPARE(suggestions.size(), 7);
+        QCOMPARE(suggestions.at(6), QString());
+        QTRY_VERIFY(f.t.repo->get(fourth)->note == QStringLiteral("Wi-Fi"));
+        QVERIFY(f.popup->isVisible());
+    }
+
+    void onlyOneNameBoxAtATime()
+    {
+        PasswordFixture f;
+        int asked = 0;
+        qint64 other = 0;
+        f.popup->setNamePrompt([&](QWidget*, const QString&) {
+            ++asked;
+            f.popup->askPasswordNote(other, QStringLiteral("again")); // a second copy while the box is open
+            return std::optional<QString>(QStringLiteral("name"));
+        });
+        const auto& v = f.keeper.vault();
+        const qint64 a = f.t.repo->ingestSecret(v.seal("a"), v.match("a"), QStringLiteral("A"), QString()).id;
+        other = f.t.repo->ingestSecret(v.seal("b"), v.match("b"), QStringLiteral("B"), QString()).id;
+        f.popup->askPasswordNote(a, QStringLiteral("A"));
+        f.popup->askPasswordNote(other, QStringLiteral("B")); // before the first box is even open
+        QTRY_VERIFY(!f.popup->isVisible() && asked >= 1);
+        QTest::qWait(100);
+        QCOMPARE(asked, 1); // the second kept its default note
+        QCOMPARE(f.t.repo->get(other)->note, QStringLiteral("B"));
+        // ... and the next copy can be named again.
+        f.popup->askPasswordNote(other, QStringLiteral("B"));
+        QTRY_COMPARE(asked, 2);
+    }
+
+    void passwordsInThePasswordsGroupCanStayOutOfRecent()
+    {
+        const auto listedInRecent = [](PasswordFixture& f, qint64 id) {
+            for (int row = 0; row < f.model()->rowCount(); ++row) {
+                const Entry* e = f.model()->entryAt(f.model()->index(row, 0));
+                if (e && e->id == id) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        for (const bool inRecent : {false, true}) {
+            Config c;
+            c.passwordsInGroup = true;
+            c.passwordsInRecent = inRecent;
+            PasswordFixture f(c);
+            const auto& v = f.keeper.vault();
+            const qint64 grouped = f.t.repo->ingestSecret(v.seal("g"), v.match("g"), QStringLiteral("Bank"),
+                                                          clipitto::PasswordKeeper::passwordsGroup()).id;
+            f.popup->refresh();
+            QCOMPARE(listedInRecent(f, grouped), inRecent);
+            QVERIFY(f.model()->findEntry(grouped, clipitto::PasswordKeeper::passwordsGroup()).isValid()); // in the group
+            QVERIFY(listedInRecent(f, f.secretId)); // a password that is in no group is listed either way
+        }
+    }
 
     void passwordRowsAreHidden()
     {

@@ -147,6 +147,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_passwordSupport(std::move(passwords))
     , m_keepPasswords(new QCheckBox(tr("Keep copies marked by password managers, encrypted"), this))
     , m_passwordsInGroup(new QCheckBox(tr("Put new password copies in the \"Passwords\" group"), this))
+    , m_passwordsInRecent(new QCheckBox(tr("Also show them in Recent"), this))
+    , m_askNote(new QCheckBox(tr("After copying a password, ask for a name"), this))
     , m_unlockMinutes(new QSpinBox(this))
     , m_clearSeconds(new QSpinBox(this))
     , m_hello(new QCheckBox(tr("Unlock with Windows Hello too"), this))
@@ -377,6 +379,21 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     passwordsForm->addRow(tr("Password copies:"), m_keepPasswords);
     m_passwordsInGroup->setChecked(config.passwordsInGroup);
     passwordsForm->addRow(QString(), m_passwordsInGroup);
+    m_passwordsInRecent->setChecked(config.passwordsInRecent);
+    // A paragraph makes Qt treat a tooltip as rich text, which wraps instead of one long line.
+    m_passwordsInRecent->setToolTip(QStringLiteral("<p>%1</p>")
+                                        .arg(tr("Password copies in the Passwords group also appear in the Recent list, "
+                                                "shown as asterisks (●●●●●●●●), never as text. Off: they appear only in "
+                                                "the group and in the %1 search.")
+                                                 .arg(config.passwordSearchKeyword.toHtmlEscaped())));
+    passwordsForm->addRow(QString(), m_passwordsInRecent);
+    connect(m_passwordsInGroup, &QCheckBox::toggled, this, &SettingsDialog::updatePasswordDependents);
+    m_askNote->setChecked(config.passwordAskNote);
+    m_askNote->setToolTip(QStringLiteral("<p>%1</p>")
+                              .arg(tr("Right after you copy a new password, ClipItTo opens with a box to name it. The "
+                                      "app it was copied from is suggested (grey text that goes away when you type); "
+                                      "leave it empty to keep that name. Copying the same password again doesn't ask.")));
+    passwordsForm->addRow(QString(), m_askNote);
     m_unlockMinutes->setRange(1, 240);
     m_unlockMinutes->setSuffix(tr(" min"));
     m_unlockMinutes->setValue(config.passwordUnlockMinutes);
@@ -472,6 +489,8 @@ Config SettingsDialog::config() const
     c.latestAfterPaste = m_latest->isChecked();
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
+    c.passwordsInRecent = m_passwordsInRecent->isChecked();
+    c.passwordAskNote = m_askNote->isChecked();
     c.passwordUnlockMinutes = m_unlockMinutes->value();
     c.passwordClearSeconds = m_clearSeconds->value();
     c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
@@ -479,6 +498,12 @@ Config SettingsDialog::config() const
         c.passwordSearchKeyword = m_keyword->text();
     }
     return c;
+}
+
+void SettingsDialog::updatePasswordDependents()
+{
+    // Only a password copy that is in the Passwords group can be kept out of Recent.
+    m_passwordsInRecent->setEnabled(m_passwordsInGroup->isEnabled() && m_passwordsInGroup->isChecked());
 }
 
 void SettingsDialog::updatePasswordPage()
@@ -500,11 +525,13 @@ void SettingsDialog::updatePasswordPage()
     m_setMaster->setText(setUp ? tr("Change…") : tr("Set…"));
     m_setMaster->setEnabled(keeper && !m_busy);
     m_removeMaster->setEnabled(setUp && !m_busy);
+    m_askNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
                        static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),
                        static_cast<QWidget*>(m_keyword)}) {
         w->setEnabled(setUp);
     }
+    updatePasswordDependents();
     const QSignalBlocker block(m_hello);
     m_hello->setChecked(setUp && keeper->helloEnabled());
     m_hello->setEnabled(setUp && m_passwordSupport.helloAvailable && m_passwordSupport.setHello && !m_busy);
