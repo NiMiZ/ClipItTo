@@ -34,6 +34,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | `Ctrl+G` / `Ctrl+E` | set group / edit note |
 | `Del` | delete (or take it off Recent) |
 | right-click | the same actions in a menu |
+| `img:` `pin:` `star:` `group:x` `since:3d` | search filters, next to your words |
 | `Ctrl+,`, `Esc` | settings, close |
 
 ## More

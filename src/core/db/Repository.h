@@ -4,6 +4,7 @@
 #include "Entry.h"
 #include "ImageClip.h"
 #include "PasswordVault.h"
+#include "SearchFilter.h"
 
 #include <QDateTime>
 #include <QStringList>
@@ -207,6 +208,7 @@ private:
     void scrub(); // after removing text: search index merged, WAL folded in
     void loadImageDetails(Entry& entry);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
+    std::vector<Entry> searchFiltered(const SearchFilter& filter, int limit);
     Stmt& likeStatement(int tokenCount);
     int starsIn(const QString& group); // "" = Favorites (starred, no group)
     Change roomForStar(const QString& group);

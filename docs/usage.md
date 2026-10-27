@@ -17,6 +17,21 @@ Back to the [README](../README.md).
 | `Ctrl+,` or ⚙ | settings |
 | `Esc` | close |
 
+**Search filters.** Type these next to your words to narrow the list (a filter alone works too):
+
+| Filter | Shows |
+|---|---|
+| `img:` | pictures only |
+| `text:` | text copies only (no pictures, no passwords) |
+| `pin:` / `star:` | pinned / starred copies |
+| `group:work` | copies in a group whose name contains "work" (`group:` alone: in any group) |
+| `note:todo` | copies whose note contains "todo" (`note:` alone: has a note) |
+| `today:` | copied or used today |
+| `since:3d` | copied or used in the last `30m`, `2h`, `3d`, `2w`, or since `yesterday` or a date like `2026-10-01` |
+
+Example: `star: budget since:1w`. Words and filters are all required. Anything else with a colon (a URL,
+`foo:bar`) is searched as ordinary text.
+
 **Groups** sit collapsed right under the search box. Open them to browse your groups as a
 tree: each group lists its sub-groups, then its copies. Put a copy in a group with `Ctrl+G`
 and a path such as `Work/Servers` (missing groups are created). Groups appear in the order

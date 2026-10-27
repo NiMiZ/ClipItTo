@@ -963,6 +963,43 @@ private slots:
         QCOMPARE(t.repo->count(), 2);
     }
 
+    void searchFiltersNarrowByKindPinStarGroupNoteAndTime()
+    {
+        TestDb t;
+        const auto a = t.repo->ingest(QStringLiteral("alpha budget")).id;
+        const auto b = t.repo->ingest(QStringLiteral("beta budget")).id;
+        const auto c = t.repo->ingest(QStringLiteral("gamma")).id;
+        t.repo->ingestImage(fakeImage(1));
+        t.repo->setPinned(a, true);
+        t.repo->setFavorite(b, true);
+        t.repo->setGroup(b, QStringLiteral("Work/Costs"));
+        t.repo->setNote(c, QStringLiteral("remember this"));
+        const auto ids = [&t](const char* q) {
+            std::vector<qint64> out;
+            for (const auto& e : t.repo->search(QString::fromLatin1(q), 50)) {
+                out.push_back(e.id);
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        QCOMPARE(ids("pin:"), (std::vector<qint64>{a}));
+        QCOMPARE(ids("star:"), (std::vector<qint64>{b}));
+        QCOMPARE(ids("group:work"), (std::vector<qint64>{b}));
+        QCOMPARE(ids("group:"), (std::vector<qint64>{b}));
+        QCOMPARE(ids("note:rememb"), (std::vector<qint64>{c}));
+        QCOMPARE(ids("note:"), (std::vector<qint64>{c}));
+        QCOMPARE(ids("pin: budget"), (std::vector<qint64>{a})); // filters and words together
+        QCOMPARE(ids("text: budget"), (std::vector<qint64>{a, b}));
+        QCOMPARE(ids("img:").size(), std::size_t(1));
+        QCOMPARE(ids("text:").size(), std::size_t(3));
+        // The test clock stands at 2026-01-01 12:00.
+        QCOMPARE(ids("since:2026-01-01").size(), std::size_t(4));
+        QCOMPARE(ids("since:2026-01-02").size(), std::size_t(0));
+        QCOMPARE(ids("today:").size(), std::size_t(0)); // today is later than that
+        QCOMPARE(ids("star: gamma").size(), std::size_t(0));
+        QCOMPARE(ids("http://nowhere.test").size(), std::size_t(0)); // not a filter
+    }
+
     void searchBlankQueryReturnsNothing()
     {
         TestDb t;
