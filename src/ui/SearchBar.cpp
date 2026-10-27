@@ -178,7 +178,11 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
         return;
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        emit activateRequested();
+        if (event->modifiers() & Qt::ShiftModifier) {
+            emit pasteAsRequested();
+        } else {
+            emit activateRequested();
+        }
         return;
     case Qt::Key_Delete:
         // With nothing to delete after the cursor (an empty box, or at its end), Delete acts

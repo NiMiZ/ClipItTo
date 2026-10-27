@@ -199,6 +199,7 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_control, &ControlChannel::hideRequested, m_popup.get(), &ui::PopupWindow::hidePopup);
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
+    connect(m_popup.get(), &ui::PopupWindow::textActivated, this, &Daemon::onTextActivated);
     connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
     // popup_position = last: where the popup closed, kept next to the history across runs.
     const QString positionFile = QFileInfo(m_options.databasePath).dir().filePath(QStringLiteral("popup-position"));
@@ -355,6 +356,17 @@ void Daemon::onEntryActivated(const Entry& entry)
         }
     }
 
+    pasteIfWanted();
+}
+
+void Daemon::onTextActivated(const QString& text)
+{
+    m_writer->setText(text); // a transformed copy: the stored one keeps its place and text
+    pasteIfWanted();
+}
+
+void Daemon::pasteIfWanted()
+{
     if (m_config.pasteOnEnter) {
         // Give the previously focused window time to get focus back after the popup hides.
         QTimer::singleShot(80, this, [this] {
