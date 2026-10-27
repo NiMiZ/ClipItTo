@@ -591,6 +591,7 @@ void Daemon::openSettings()
     passwords.helloAvailable = m_helloAvailable;
     passwords.helloReason = m_helloReason;
     passwords.setHello = [this](bool on, std::function<void(QString)> done) { setWindowsHello(on, std::move(done)); };
+    passwords.helloUnlock = [this](std::function<void(bool)> done) { helloUnlock(std::move(done)); };
     ui::StartupSupport startup;
     if (m_options.session.display == SessionEnv::Display::MacOS) {
         startup.available = true;
@@ -715,15 +716,18 @@ void Daemon::setUpWindowsHello()
             m_helloAvailable = result.first;
             m_helloReason = result.second;
         });
-    m_popup->setHelloUnlock([this](std::function<void(bool)> done) {
-        runOn<QByteArray>(
-            &m_helloPool, this, [] { return hello::unlockKey(/*create=*/false); },
-            [this, done = std::move(done)](QByteArray key) {
-                const bool ok = !key.isEmpty() && m_passwords && m_passwords->unlockWithHelloKey(key);
-                PasswordVault::wipe(key);
-                done(ok);
-            });
-    });
+    m_popup->setHelloUnlock([this](std::function<void(bool)> done) { helloUnlock(std::move(done)); });
+}
+
+void Daemon::helloUnlock(std::function<void(bool)> done)
+{
+    runOn<QByteArray>(
+        &m_helloPool, this, [] { return hello::unlockKey(/*create=*/false); },
+        [this, done = std::move(done)](QByteArray key) {
+            const bool ok = !key.isEmpty() && m_passwords && m_passwords->unlockWithHelloKey(key);
+            PasswordVault::wipe(key);
+            done(ok);
+        });
 }
 
 void Daemon::setWindowsHello(bool on, std::function<void(QString error)> done)

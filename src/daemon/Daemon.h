@@ -102,6 +102,7 @@ private:
     // Password copies follow the settings and the vault: kept or not, which group, unlock time.
     void applyPasswordSettings();
     void setUpWindowsHello(); // availability, and the popup's Hello unlock
+    void helloUnlock(std::function<void(bool)> done);
     void setWindowsHello(bool on, std::function<void(QString error)> done);
     QString cliCommand() const;
     LoginItem loginItem() const; // macOS: start at login

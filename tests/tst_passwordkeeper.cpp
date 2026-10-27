@@ -83,6 +83,23 @@ private slots:
         QCOMPARE(again.reveal(id).value_or(QByteArray()), QByteArray("hunter2"));
     }
 
+    void anUnlockedVaultCanGetANewMasterPasswordWithoutTheOldOne()
+    {
+        Fixture f;
+        QVERIFY(wait([&](auto done) { f.keeper.setMasterPassword("old", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("old", done); }));
+        const qint64 id = f.storePassword("hunter2");
+        // Locked: refused.
+        f.keeper.lock();
+        QVERIFY(!wait([&](auto done) { f.keeper.resetMasterPassword("Brand-new-47x", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("old", done); })); // stands in for a Windows Hello unlock
+        QVERIFY(wait([&](auto done) { f.keeper.resetMasterPassword("Brand-new-47x", done); }));
+        QVERIFY(!f.keeper.isUnlocked());
+        QVERIFY(!wait([&](auto done) { f.keeper.unlock("old", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("Brand-new-47x", done); }));
+        QCOMPARE(f.keeper.reveal(id).value_or(QByteArray()), QByteArray("hunter2")); // kept
+    }
+
     void aMasterPasswordCanReplaceTheOpenMode()
     {
         Fixture f;

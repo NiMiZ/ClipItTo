@@ -43,6 +43,13 @@ disabled until every line is met. Rules:
 8. Both fields identical.
 Enforced in the dialog only (not in `PasswordKeeper`, so tests/backup import can use any password).
 
+## Forgotten master password
+`PasswordKeeper::resetMasterPassword(new)` works on any *unlocked* vault (no old password): new key pair from
+the unlocked secret key, all copies re-sealed (`applyRekey`, shared with change). Settings shows "Forgot it…"
+only when Windows Hello is on (`PasswordSupport::helloUnlock` -> prompt -> new-password dialog). Hello must be
+re-enabled after (new key pair). macOS Touch ID and a Linux equivalent do NOT exist yet (see user thread 2026-10-27:
+Linux has fprintd/polkit but no hardware-bound key release; a keyring-wrapped copy would be the analogue).
+
 ## No master password ("open" mode, not secure)
 Settings > Passwords > "Use without one…" (after a warning confirm). The vault is created with the fixed
 password `PasswordKeeper::openPassword()`, `meta('vault_open')=1`, and `reload()` unlocks it at every start;

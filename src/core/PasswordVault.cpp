@@ -196,6 +196,11 @@ std::optional<PasswordVault::Rekeyed> PasswordVault::changePassword(const Stored
     return rekeyed;
 }
 
+PasswordVault::Rekeyed PasswordVault::rekeyUnlocked(const QByteArray& secret, const QByteArray& newPassword, KdfCost cost)
+{
+    return Rekeyed{create(newPassword, cost), secret};
+}
+
 std::optional<QByteArray> PasswordVault::reseal(const QByteArray& sealed, const QByteArray& oldSecret,
                                                 const QByteArray& oldPublicKey, const QByteArray& newPublicKey)
 {

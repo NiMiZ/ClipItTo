@@ -68,6 +68,9 @@ public:
     // A new master password, and a new key pair: every password copy is re-sealed. `done(false)`
     // when `oldPassword` is wrong. Windows Hello has to be turned on again afterwards.
     void changeMasterPassword(QByteArray oldPassword, QByteArray newPassword, Done done);
+    // The same, for a vault unlocked without the old password (Windows Hello): needs it unlocked.
+    // `done(false)` when it isn't (or has no master password).
+    void resetMasterPassword(QByteArray newPassword, Done done);
     // Deletes every password copy and the vault (a removed or forgotten master password).
     void reset();
 
@@ -94,6 +97,7 @@ signals:
 private:
     void startLockTimer();
     void lockNow();
+    void applyRekey(std::optional<PasswordVault::Rekeyed> rekeyed, const PasswordVault::Stored& current, Done done);
     QByteArray matchKey(bool create);
 
     db::Repository& m_repo;

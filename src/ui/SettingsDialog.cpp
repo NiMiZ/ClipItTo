@@ -161,6 +161,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_masterStatus(new QLabel(this))
     , m_setMaster(new QPushButton(this))
     , m_removeMaster(new QPushButton(tr("Remove…"), this))
+    , m_resetMaster(new QPushButton(tr("Forgot it…"), this))
     , m_useOpen(new QPushButton(tr("Use without one…"), this))
     , m_openWarning(new QLabel(this))
     , m_backupCopies(new QCheckBox(tr("Copies, groups and passwords"), this))
@@ -376,8 +377,11 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     masterRow->addWidget(m_masterStatus, 1);
     masterRow->addWidget(m_setMaster);
     masterRow->addWidget(m_removeMaster);
+    masterRow->addWidget(m_resetMaster);
     masterRow->addWidget(m_useOpen);
-    for (QPushButton* b : {m_setMaster, m_removeMaster, m_useOpen}) {
+    m_resetMaster->setToolTip(tr("Replace the master password after unlocking with Windows Hello. "
+                                 "Your password copies are kept."));
+    for (QPushButton* b : {m_setMaster, m_removeMaster, m_resetMaster, m_useOpen}) {
         b->setAutoDefault(false);
     }
     auto* masterInfo = makeInfoButton(this);
@@ -464,6 +468,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     });
     connect(m_removeMaster, &QPushButton::clicked, this, &SettingsDialog::removeMasterPassword);
     connect(m_useOpen, &QPushButton::clicked, this, &SettingsDialog::useWithoutMasterPassword);
+    connect(m_resetMaster, &QPushButton::clicked, this, &SettingsDialog::resetMasterPassword);
     connect(m_hello, &QCheckBox::toggled, this, &SettingsDialog::onHelloToggled);
     updatePasswordPage();
 
@@ -794,6 +799,8 @@ void SettingsDialog::updatePasswordPage()
     m_setMaster->setEnabled(keeper && !m_busy);
     m_removeMaster->setText(open ? tr("Turn off…") : tr("Remove…"));
     m_removeMaster->setEnabled(setUp && !m_busy);
+    m_resetMaster->setVisible(setUp && !open && keeper->helloEnabled() && m_passwordSupport.helloUnlock);
+    m_resetMaster->setEnabled(!m_busy);
     m_useOpen->setVisible(!setUp);
     m_useOpen->setEnabled(keeper && !m_busy);
     m_openWarning->setVisible(open);
@@ -833,6 +840,48 @@ void SettingsDialog::useWithoutMasterPassword()
         if (!ok) {
             m_notify(this, tr("Could not turn this on."));
         }
+    });
+}
+
+void SettingsDialog::resetMasterPassword()
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || !keeper->isSetUp() || keeper->isOpen() || !keeper->helloEnabled() || !m_passwordSupport.helloUnlock
+        || m_busy) {
+        return;
+    }
+    m_busy = true;
+    updatePasswordPage();
+    m_passwordSupport.helloUnlock([this, keeper, self = QPointer<SettingsDialog>(this)](bool unlocked) {
+        if (!self) {
+            return;
+        }
+        m_busy = false;
+        updatePasswordPage();
+        if (!unlocked) {
+            m_notify(this, tr("Windows Hello did not unlock the passwords."));
+            return;
+        }
+        std::optional<MasterPasswordAnswer> answer = m_masterPrompt(this, /*change=*/false);
+        if (!answer) {
+            return;
+        }
+        QByteArray chosen = PasswordVault::passwordBytes(answer->chosen);
+        m_busy = true;
+        updatePasswordPage();
+        keeper->resetMasterPassword(std::move(chosen), [this, self](bool ok) {
+            if (!self) {
+                return;
+            }
+            m_busy = false;
+            updatePasswordPage();
+            if (ok) {
+                m_inform(this, tr("Master password replaced. Your password copies are kept; turn Windows Hello on "
+                                  "again to use it with the new one."));
+            } else {
+                m_notify(this, tr("Could not replace the master password."));
+            }
+        });
     });
 }
 

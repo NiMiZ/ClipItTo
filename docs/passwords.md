@@ -69,6 +69,10 @@ characters with an uppercase letter, a lowercase letter and a digit; no form of 
 "root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row
 counting up or down (`123`, `654`; `12` is fine). A few unrelated words with a number make a strong one.
 
+**Forgot it? (Windows Hello)** If Windows Hello is turned on, Settings › Passwords shows *Forgot it…*:
+unlock with Hello, choose a new master password, and every password copy is kept under it. (Hello has
+to be turned on again afterwards.) Without Hello, a forgotten master password can't be recovered.
+
 **Without a master password.** *Use without one…* (Settings › Passwords) keeps password copies hidden
 (`●●●●`) but **not protected**: they are only obscured, so anyone who can read your history file or use
 your account can read them. ClipItTo asks you to confirm, and says "Not secure" on that page. There is
