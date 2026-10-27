@@ -594,13 +594,15 @@ private slots:
         e.setInform([&](QWidget*, const QString& m) { told2 << m; });
         std::optional<clipitto::backup::Parts> chosen2 = clipitto::backup::Parts{false, true};
         int asked_parts = 0;
-        e.setPartsPrompt([&](QWidget*, const clipitto::backup::Info& info) {
+        bool offeredBoth = false;
+        e.setPartsPrompt([&](QWidget*, const clipitto::backup::Info& info) -> std::optional<clipitto::backup::Parts> {
             ++asked_parts;
-            QVERIFY(info.parts.copies && info.parts.settings);
+            offeredBoth = info.parts.copies && info.parts.settings;
             return chosen2;
         });
         e.importButton()->click();
         QTRY_COMPARE(asked_parts, 1);
+        QVERIFY(offeredBoth);
         QCOMPARE(asked2.size(), 1);
         QVERIFY(asked2.last().contains(QLatin1String("import")));
         QTRY_VERIFY(!told2.isEmpty());
