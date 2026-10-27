@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSet>
 #include "Entry.h"
 #include "ImageClip.h"
 #include "PasswordVault.h"
@@ -165,7 +166,11 @@ public:
     // Sets the times, note, group (created if new) and star of a copy as saved in a backup.
     // Not limited by the star caps: a backup restores what was there.
     void restoreFiling(qint64 id, const QDateTime& created, const QDateTime& lastUsed, const QString& note,
-                       const QString& group, bool favorite);
+                       const QString& group, bool favorite, bool offRecent = false);
+    // Ids of the filed copies that were taken off Recent.
+    QSet<qint64> offRecentIds();
+    // Puts the group last among its siblings (a restored group arriving after the existing ones).
+    void placeGroupLast(const QString& path);
 
     qint64 count();
     qint64 countUnsaved();
