@@ -123,6 +123,11 @@ private:
 
 } // namespace
 
+QString displayName()
+{
+    return QStringLiteral("Windows Hello");
+}
+
 bool available(QString* why)
 {
     try {

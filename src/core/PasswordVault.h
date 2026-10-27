@@ -55,6 +55,9 @@ public:
     };
     static std::optional<Rekeyed> changePassword(const Stored& stored, const QByteArray& oldPassword,
                                                  const QByteArray& newPassword, KdfCost cost = {});
+    // The same for a vault that was unlocked without the old password (Windows Hello): the new
+    // key pair is made from `secret`, the unlocked secret key (see secretCopy()).
+    static Rekeyed rekeyUnlocked(const QByteArray& secret, const QByteArray& newPassword, KdfCost cost = {});
     // Opens `sealed` with `oldSecret` (and its public key) and seals it to `newPublicKey`.
     static std::optional<QByteArray> reseal(const QByteArray& sealed, const QByteArray& oldSecret,
                                             const QByteArray& oldPublicKey, const QByteArray& newPublicKey);
@@ -89,6 +92,8 @@ public:
     // With a key from deriveKey() (or a Windows Hello key and helloWrapped). False: wrong key.
     bool unlockWithKey(const QByteArray& key, bool hello = false);
     void lock(); // wipes the secret key
+    // A copy of the secret key while unlocked (empty when locked); wipe it after use.
+    QByteArray secretCopy() const { return m_secret; }
 
     // Seals `plain` to the public key; works while locked. Empty when not set up.
     QByteArray seal(const QByteArray& plain) const;

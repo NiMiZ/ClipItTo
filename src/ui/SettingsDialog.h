@@ -48,11 +48,15 @@ struct EncryptionSupport {
 // groups); Windows Hello is turned on or off right away too.
 struct PasswordSupport {
     PasswordKeeper* keeper = nullptr; // null: no password copies here
-    bool helloAvailable = false; // Windows with Windows Hello set up
+    bool helloAvailable = false; // Windows with Windows Hello set up, or a Mac with Touch ID
+    QString helloName; // "Windows Hello" or "Touch ID"
     QString helloReason; // why not, when unavailable
     // Turns Windows Hello on (passwords are unlocked by then) or off; `done` gets an error
     // text, empty when it worked.
     std::function<void(bool on, std::function<void(QString error)> done)> setHello;
+    // Unlocks with Windows Hello (the prompt); `done(true)` once unlocked. Lets a forgotten
+    // master password be replaced.
+    std::function<void(std::function<void(bool unlocked)> done)> helloUnlock;
 };
 
 // Start with the user's session (the checkbox is shown where it is offered: macOS). Applied
@@ -104,6 +108,9 @@ public:
     void setMasterPassword();
     void changeMasterPassword();
     void removeMasterPassword();
+    void useWithoutMasterPassword();
+    void resetMasterPassword();
+    QString helloLabel() const;
 
     // Group actions (the buttons on the Groups tab).
     void newGroup();
@@ -148,6 +155,8 @@ public:
     QLabel* masterStatus() const { return m_masterStatus; }
     QPushButton* setMasterButton() const { return m_setMaster; }
     QPushButton* removeMasterButton() const { return m_removeMaster; }
+    QPushButton* useOpenButton() const { return m_useOpen; }
+    QPushButton* resetMasterButton() const { return m_resetMaster; }
 
     // Saves the one setting that lives in the history (whether password copies are in Recent).
     void accept() override;
@@ -210,6 +219,9 @@ private:
     QLabel* m_masterStatus;
     QPushButton* m_setMaster; // "Set…" or "Change…"
     QPushButton* m_removeMaster;
+    QPushButton* m_resetMaster; // forgot it: replace it after a Windows Hello unlock
+    QPushButton* m_useOpen; // keep passwords without a master password
+    QLabel* m_openWarning;
     bool m_busy = false; // a master password is being derived
     QCheckBox* m_backupCopies;
     QCheckBox* m_backupSettings;

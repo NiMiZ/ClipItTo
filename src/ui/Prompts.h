@@ -40,6 +40,5 @@ struct MasterPasswordAnswer {
 };
 using MasterPasswordPrompt = std::function<std::optional<MasterPasswordAnswer>(QWidget* parent, bool change)>;
 MasterPasswordPrompt defaultMasterPasswordPrompt();
-constexpr int kMinMasterPasswordLength = 8;
 
 } // namespace clipitto::ui

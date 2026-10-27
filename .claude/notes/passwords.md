@@ -31,6 +31,38 @@ how to enable). Never log clipboard contents. Master password never stored.
   (name box after a *new* password), unlock minutes, clear seconds, windows_hello, search keyword.
 - **Backup**: password copies exported boxed with a key from the master password (see settings-groups-backend.md).
 
+## Master password rules (decided with the user, 2026-10-27; `src/core/PasswordPolicy.cpp`, `tst_passwordpolicy`)
+Shown as a live checklist (green tick / red cross) under the fields in the Set/Change dialog; OK stays
+disabled until every line is met. Rules:
+1. At least 8 characters; 2. an uppercase letter; 3. a lowercase letter; 4. a digit.
+5. No "password", "admin" or "root" in any spelling: lower-cased, look-alikes mapped (@ 4 -> a, $ 5 -> s,
+   0 -> o, 1 ! | -> i, 3 -> e, 7 -> t) and punctuation/spaces dropped before matching, so P@ssw0rd123,
+   ADMIN, r00t, P.a.s.s-word are all refused whatever numbers are added.
+6. Not the OS user name (same normalising; ignored when the name is under 3 characters).
+7. No 3+ digits in a row counting up or down by one (123, 654; 12 and 135 and 111 are fine).
+8. Both fields identical.
+Enforced in the dialog only (not in `PasswordKeeper`, so tests/backup import can use any password).
+
+## Forgotten master password
+`PasswordKeeper::resetMasterPassword(new)` works on any *unlocked* vault (no old password): new key pair from
+the unlocked secret key, all copies re-sealed (`applyRekey`, shared with change). Settings shows "Forgot it…"
+only when Windows Hello is on (`PasswordSupport::helloUnlock` -> prompt -> new-password dialog). Hello must be
+re-enabled after (new key pair). macOS Touch ID exists (`src/daemon/WindowsHello_mac.mm`, same `hello::` API as Windows; reuses the `windows_hello`
+config key and `vault.hello_wrapped`): LAContext fingerprint gate + random 32-byte key in the login Keychain
+(entry `touch-id-key`). Only a gate, since ad-hoc signing rules out biometry-bound Keychain items. Compiled by
+CI only, NOT run on a real Mac yet (needs the iMac). A Linux equivalent does not exist (fprintd/polkit hold no
+key; a keyring-wrapped copy would be the analogue, weaker, not built).
+
+## No master password ("open" mode, not secure)
+Settings > Passwords > "Use without one…" (after a warning confirm). The vault is created with the fixed
+password `PasswordKeeper::openPassword()`, `meta('vault_open')=1`, and `reload()` unlocks it at every start;
+`lock()` and the timer do nothing. It only hides password copies; the history file alone reveals them.
+Settings shows a red "Not secure" notice; Windows Hello is disabled; `--status`: "open (no master password: not secure)".
+"Set…" in this mode moves all copies to a real master password (`changeMasterPassword(openPassword, new)`),
+"Turn off…" deletes the password copies. Export: no password asked; if password copies exist the user is asked
+whether to include them as CLEAR TEXT (`passwords.clear = true` in the JSON, items' `data` = base64 plain);
+"No" exports without them (`PasswordExport::Omit`). Import of a clear file needs only a vault here (either mode).
+
 ## Limits to remember
 Protects the file at rest and other people at your session while locked; not programs running as the user
 (they can read the clipboard) and on GNOME the password crosses D-Bus from the extension to the daemon.

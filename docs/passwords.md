@@ -64,6 +64,30 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   window closes again afterwards if it wasn't open. (On Windows the window may not take the
   focus when it opens by itself.)
 
+**Choosing a master password.** The dialog lists the rules and ticks them as you type: at least 8
+characters with an uppercase letter, a lowercase letter and a digit; no form of "password", "admin" or
+"root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row
+counting up or down (`123`, `654`; `12` is fine). A few unrelated words with a number make a strong one.
+
+**Windows Hello and Touch ID.** *Unlock with Windows Hello too* (Windows) or *Unlock with Touch ID too*
+(Mac, Touch ID set up in System Settings) lets a face, fingerprint or PIN open the password copies instead
+of typing the master password; turning it on asks for the master password once. On Windows the key comes
+from a Windows Hello signature. **On a Mac Touch ID is a gate, not a lock:** ClipItTo asks for your
+fingerprint before it reads a random key from your login Keychain, but the app is signed ad hoc and so
+can't tie that key to the Secure Enclave. A program running as you could read the Keychain item without
+the fingerprint; the master password still protects the file itself.
+
+**Forgot it? (Windows Hello / Touch ID)** If it is turned on, Settings › Passwords shows *Forgot it…*:
+unlock with it, choose a new master password, and every password copy is kept under it. (Hello / Touch ID has
+to be turned on again afterwards.) Without Hello, a forgotten master password can't be recovered.
+
+**Without a master password.** *Use without one…* (Settings › Passwords) keeps password copies hidden
+(`●●●●`) but **not protected**: they are only obscured, so anyone who can read your history file or use
+your account can read them. ClipItTo asks you to confirm, and says "Not secure" on that page. There is
+nothing to unlock, and Windows Hello is off. An export then asks whether to write the password copies as
+**plain text** into the file; answer *No* to export without them. *Set…* later moves the existing copies
+to a real master password; *Turn off…* deletes them.
+
 The master password is never stored or shown; only a key derived from it unlocks. Changing it
 also changes the key every password copy is sealed with. **If you forget it, the password
 copies can't be recovered**: *Remove…* deletes them and starts over.

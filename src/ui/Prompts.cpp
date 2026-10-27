@@ -1,5 +1,7 @@
 #include "Prompts.h"
 
+#include "PasswordPolicy.h"
+
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
@@ -127,6 +129,8 @@ MasterPasswordPrompt defaultMasterPasswordPrompt()
         }
         form->addRow(tr("New master password:"), chosen);
         form->addRow(tr("Repeat it:"), repeat);
+        auto* rules = new QLabel(&dialog);
+        rules->setTextFormat(Qt::RichText);
         auto* note = new QLabel(tr("It is never stored or shown. If you forget it, your password copies can't "
                                    "be recovered. A few unrelated words make a strong one."),
                                 &dialog);
@@ -134,13 +138,24 @@ MasterPasswordPrompt defaultMasterPasswordPrompt()
         auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
         auto* layout = new QVBoxLayout(&dialog);
         layout->addLayout(form);
+        layout->addWidget(rules);
         layout->addWidget(note);
         layout->addWidget(buttons);
         QPushButton* ok = buttons->button(QDialogButtonBox::Ok);
         const auto update = [=] {
-            const bool longEnough = chosen->text().size() >= kMinMasterPasswordLength;
-            ok->setEnabled(longEnough && chosen->text() == repeat->text() && (!current || !current->text().isEmpty()));
-            ok->setToolTip(longEnough ? QString() : tr("At least 8 characters"));
+            const QString user = passwordpolicy::currentUserName();
+            QList<passwordpolicy::Rule> list = passwordpolicy::check(chosen->text(), user);
+            list.append({tr("Both fields are the same"), !chosen->text().isEmpty() && chosen->text() == repeat->text()});
+            bool all = true;
+            QStringList lines;
+            for (const passwordpolicy::Rule& rule : list) {
+                all = all && rule.met;
+                lines << QStringLiteral("<span style=\"color:%1\">%2 %3</span>")
+                             .arg(rule.met ? QStringLiteral("#2e9d4f") : QStringLiteral("#d03b3b"),
+                                  rule.met ? QStringLiteral("✓") : QStringLiteral("✗"), rule.text.toHtmlEscaped());
+            }
+            rules->setText(lines.join(QStringLiteral("<br>")));
+            ok->setEnabled(all && (!current || !current->text().isEmpty()));
         };
         for (QLineEdit* edit : {current, chosen, repeat}) {
             if (edit) {

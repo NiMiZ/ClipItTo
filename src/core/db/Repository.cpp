@@ -442,9 +442,23 @@ void Repository::resetVault()
         Transaction tx(m_db);
         m_db.exec("DELETE FROM clips WHERE secret = 1;");
         m_db.exec("DELETE FROM vault;");
+        m_db.exec("DELETE FROM meta WHERE key = 'vault_open';");
         tx.commit();
     }
     scrub();
+}
+
+bool Repository::vaultOpen()
+{
+    Stmt s(m_db, "SELECT value FROM meta WHERE key = 'vault_open'");
+    return s.step() && s.colText(0) == QLatin1String("1");
+}
+
+void Repository::setVaultOpen(bool open)
+{
+    Stmt s(m_db, "INSERT INTO meta(key, value) VALUES ('vault_open', ?1) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    s.bindText(1, open ? QStringLiteral("1") : QStringLiteral("0")).run();
 }
 
 void Repository::scrub()

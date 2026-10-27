@@ -61,6 +61,69 @@ private slots:
         QVERIFY(again.canMatch());
     }
 
+    void withoutAMasterPasswordItIsOpenAtEveryStartAndNeverLocks()
+    {
+        Fixture f;
+        f.keeper.reload();
+        QVERIFY(wait([&](auto done) { f.keeper.useWithoutMasterPassword(done); }));
+        QVERIFY(f.keeper.isSetUp());
+        QVERIFY(f.keeper.isOpen());
+        QVERIFY(f.keeper.isUnlocked());
+        const qint64 id = f.storePassword("hunter2", QStringLiteral("KeePassXC"));
+        f.keeper.lock(); // does nothing
+        QVERIFY(f.keeper.isUnlocked());
+        QCOMPARE(f.keeper.reveal(id).value_or(QByteArray()), QByteArray("hunter2"));
+
+        // After a restart it opens by itself.
+        PasswordKeeper again(*f.t.repo, f.keys);
+        again.setKdfCost({64, 1});
+        again.reload();
+        QVERIFY(again.isOpen());
+        QTRY_VERIFY_WITH_TIMEOUT(again.isUnlocked(), 10000);
+        QCOMPARE(again.reveal(id).value_or(QByteArray()), QByteArray("hunter2"));
+    }
+
+    void anUnlockedVaultCanGetANewMasterPasswordWithoutTheOldOne()
+    {
+        Fixture f;
+        QVERIFY(wait([&](auto done) { f.keeper.setMasterPassword("old", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("old", done); }));
+        const qint64 id = f.storePassword("hunter2");
+        // Locked: refused.
+        f.keeper.lock();
+        QVERIFY(!wait([&](auto done) { f.keeper.resetMasterPassword("Brand-new-47x", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("old", done); })); // stands in for a Windows Hello unlock
+        QVERIFY(wait([&](auto done) { f.keeper.resetMasterPassword("Brand-new-47x", done); }));
+        QVERIFY(!f.keeper.isUnlocked());
+        QVERIFY(!wait([&](auto done) { f.keeper.unlock("old", done); }));
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("Brand-new-47x", done); }));
+        QCOMPARE(f.keeper.reveal(id).value_or(QByteArray()), QByteArray("hunter2")); // kept
+    }
+
+    void aMasterPasswordCanReplaceTheOpenMode()
+    {
+        Fixture f;
+        QVERIFY(wait([&](auto done) { f.keeper.useWithoutMasterPassword(done); }));
+        const qint64 id = f.storePassword("hunter2");
+        QVERIFY(wait([&](auto done) { f.keeper.changeMasterPassword(PasswordKeeper::openPassword(), "Real-one-47x", done); }));
+        QVERIFY(!f.keeper.isOpen());
+        QVERIFY(!f.keeper.isUnlocked());
+        QVERIFY(!f.t.repo->vaultOpen());
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("Real-one-47x", done); }));
+        QCOMPARE(f.keeper.reveal(id).value_or(QByteArray()), QByteArray("hunter2"));
+        f.keeper.lock();
+        QVERIFY(!f.keeper.isUnlocked()); // locks now
+
+        // Turning it off deletes the copies.
+        Fixture g;
+        QVERIFY(wait([&](auto done) { g.keeper.useWithoutMasterPassword(done); }));
+        g.storePassword("x");
+        g.keeper.reset();
+        QVERIFY(!g.keeper.isOpen());
+        QCOMPARE(g.t.repo->countSecrets(), 0);
+        QVERIFY(!g.t.repo->vaultOpen());
+    }
+
     void unlockRevealsAndLockHides()
     {
         Fixture f;

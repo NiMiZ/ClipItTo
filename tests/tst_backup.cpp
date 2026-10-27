@@ -135,6 +135,52 @@ private slots:
         QVERIFY(!backup::exportTo(file(), *a.repo, config, nullptr, {false, false}, {}, &error)); // nothing chosen
     }
 
+    void withoutAMasterPasswordPasswordsGoInClearTextOnlyWhenAsked()
+    {
+        Side a;
+        QVERIFY(wait([&](auto done) { a.keeper.useWithoutMasterPassword(done); }));
+        const PasswordVault& va = a.keeper.vault();
+        a.t.repo->ingestSecret(va.seal("hunter2"), va.match("hunter2"), QStringLiteral("KeePassXC"), QString());
+        a.t.repo->ingest(QStringLiteral("plain text"));
+        QString error;
+
+        // Left out: the file has no trace of it.
+        QVERIFY2(backup::exportTo(file(), *a.t.repo, clipitto::Config{}, &a.keeper, {true, false}, {}, &error,
+                                  backup::PasswordExport::Omit), qPrintable(error));
+        QFile f(file());
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QVERIFY(!f.readAll().contains("hunter2"));
+        f.close();
+        QCOMPARE(backup::inspect(file()).passwords, 0);
+
+        // Included: in clear text, readable without any password.
+        QVERIFY2(backup::exportTo(file(), *a.t.repo, clipitto::Config{}, &a.keeper, {true, false}, {}, &error,
+                                  backup::PasswordExport::Clear), qPrintable(error));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QVERIFY(f.readAll().contains(QByteArray("aHVudGVyMg=="))); // base64 of hunter2
+        f.close();
+        const backup::Info info = backup::inspect(file());
+        QCOMPARE(info.passwords, 1);
+        QVERIFY(info.passwordsClear);
+        QVERIFY(backup::passwordOpens(file(), {}));
+
+        // Into a computer with a real master password, and into one with none.
+        Side b;
+        QVERIFY(b.setUp("a different master"));
+        const auto in = backup::importFrom(file(), {true, false}, *b.t.repo, &b.keeper, {}, &error);
+        QVERIFY(in);
+        QCOMPARE(in->passwordsAdded, 1);
+        const auto restored = b.t.repo->findByHash(b.keeper.vault().match("hunter2"));
+        QVERIFY(restored);
+        QCOMPARE(b.keeper.reveal(*restored).value_or(QByteArray()), QByteArray("hunter2"));
+
+        TestDb c;
+        const auto none = backup::importFrom(file(), {true, false}, *c.repo, nullptr, {}, &error);
+        QVERIFY(none);
+        QCOMPARE(none->passwordsSkipped, 1);
+        QCOMPARE(c.repo->countSecrets(), 0);
+    }
+
     void passwordsAreEncryptedWithTheMasterPasswordAndMoveToAnotherComputer()
     {
         Side a;
