@@ -31,6 +31,8 @@ public:
     void setPasswords(const PasswordVault* vault, bool keep, const QString& group);
     // Whether marked copies are kept now: capture backends read their text only then.
     bool keepsPasswords() const;
+    // Copies that look like a secret (secretscan) are kept as password copies when passwords are kept.
+    void setDetectSecrets(bool on) { m_detectSecrets = on; }
 
     // While paused (the database is busy elsewhere, e.g. being encrypted), accepted clips
     // wait in memory; resuming stores them in order.
@@ -70,6 +72,7 @@ private:
     QList<SealedCopy> m_waitingSecrets; // sealed already: never held in clear
     const PasswordVault* m_vault = nullptr;
     bool m_keepPasswords = false;
+    bool m_detectSecrets = false;
     QString m_passwordGroup;
 };
 

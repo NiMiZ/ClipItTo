@@ -6,6 +6,7 @@ Back to the [README](../README.md).
 |---|---|
 | type | filter history (note, group and text) |
 | `↓` / `↑` | move the selection (it starts on the latest copy: `↓` next copy, `↑` the Groups row); `↑` on the top row returns to the search bar |
+| `Shift+Enter` | **Paste as…** a menu of changes to the text for this paste only: UPPER, lower, Title Case, trim, collapse spaces, one line, JSON pretty / minified, URL and Base64 encode / decode (press the underlined letter). The stored copy is not changed |
 | `Enter` / click | copy the entry back to the clipboard and close (on a group: open/close it) |
 | `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
 | `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
@@ -15,6 +16,21 @@ Back to the [README](../README.md).
 | right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |
 | `Ctrl+,` or ⚙ | settings |
 | `Esc` | close |
+
+**Search filters.** Type these next to your words to narrow the list (a filter alone works too):
+
+| Filter | Shows |
+|---|---|
+| `img:` | pictures only |
+| `text:` | text copies only (no pictures, no passwords) |
+| `pin:` / `star:` | pinned / starred copies |
+| `group:work` | copies in a group whose name contains "work" (`group:` alone: in any group) |
+| `note:todo` | copies whose note contains "todo" (`note:` alone: has a note) |
+| `today:` | copied or used today |
+| `since:3d` | copied or used in the last `30m`, `2h`, `3d`, `2w`, or since `yesterday` or a date like `2026-10-01` |
+
+Example: `star: budget since:1w`. Words and filters are all required. Anything else with a colon (a URL,
+`foo:bar`) is searched as ordinary text.
 
 **Groups** sit collapsed right under the search box. Open them to browse your groups as a
 tree: each group lists its sub-groups, then its copies. Put a copy in a group with `Ctrl+G`

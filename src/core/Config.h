@@ -52,6 +52,7 @@ struct Config {
     // Password copies (copies marked by a password manager), once a master password is set.
     bool keepPasswords = true;
     bool passwordsInGroup = false; // new ones go to the "Passwords" group
+    bool detectSecrets = true; // copies that look like keys/tokens/card numbers are kept as password copies
     bool passwordsPerNote = false; // the same password under another note is another copy
     bool passwordAskNote = false; // after copying a new password, open ClipItTo to name it
     int passwordUnlockMinutes = 5; // an unlock lasts this long

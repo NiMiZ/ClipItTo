@@ -34,6 +34,7 @@ signals:
     void focusSearchRequested(); // Up on the first row
     void typedText(QKeyEvent* event); // printable key or Backspace: belongs to the search bar
     void activateRequested(const QModelIndex& index); // Enter on a copy
+    void pasteAsRequested(const QModelIndex& index); // Shift+Enter on a copy
     void toggleFavoriteRequested(const QModelIndex& index);
     void togglePinRequested(const QModelIndex& index);
     void moveRequested(const QModelIndex& index, int delta); // Alt+Up (-1) / Alt+Down (+1)

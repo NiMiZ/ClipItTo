@@ -606,6 +606,12 @@ std::vector<Entry> Repository::favorites()
 
 std::vector<Entry> Repository::search(const QString& query, int limit, SearchMode mode)
 {
+    if (query.contains(QLatin1Char(':'))) {
+        const SearchFilter filter = SearchFilter::parse(query);
+        if (filter.hasFilters()) {
+            return searchFiltered(filter, limit);
+        }
+    }
     const QStringList tokens = fts::tokenize(query);
     if (tokens.isEmpty()) {
         return {};
@@ -651,6 +657,55 @@ Stmt& Repository::likeStatement(int tokenCount)
     Stmt& ref = *stmt;
     m_likeByTokenCount.emplace(tokenCount, std::move(stmt));
     return ref;
+}
+
+std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int limit)
+{
+    QStringList where;
+    QStringList binds; // text values, bound in order as ?1, ?2, ...
+    const auto bind = [&binds](const QString& value) {
+        binds << value;
+        return QStringLiteral("?%1").arg(binds.size());
+    };
+    if (filter.images) {
+        where << QStringLiteral("c.kind = 'image'");
+    }
+    if (filter.textOnly) {
+        where << QStringLiteral("c.kind = 'text' AND c.secret = 0");
+    }
+    if (filter.pinned) {
+        where << QStringLiteral("c.pin_position IS NOT NULL");
+    }
+    if (filter.starred) {
+        where << QStringLiteral("c.is_favorite = 1");
+    }
+    if (filter.group) {
+        where << (filter.group->isEmpty()
+                      ? QStringLiteral("c.group_name <> ''")
+                      : QStringLiteral(R"(c.group_name LIKE %1 ESCAPE '\')").arg(bind(fts::likePattern(*filter.group))));
+    }
+    if (filter.note) {
+        where << (filter.note->isEmpty()
+                      ? QStringLiteral("c.tag_or_note <> ''")
+                      : QStringLiteral(R"(c.tag_or_note LIKE %1 ESCAPE '\')").arg(bind(fts::likePattern(*filter.note))));
+    }
+    if (filter.since) {
+        where << QStringLiteral("c.last_used >= %1").arg(bind(filter.since->toString(Qt::ISODateWithMs)));
+    }
+    for (const QString& word : filter.words) {
+        const QString p = bind(fts::likePattern(word));
+        where << QStringLiteral(R"((c.tag_or_note LIKE %1 ESCAPE '\' OR c.group_name LIKE %1 ESCAPE '\' OR c.content LIKE %1 ESCAPE '\'))").arg(p);
+    }
+    const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS " FROM clips c WHERE %1 "
+                                       "ORDER BY c.is_saved DESC, c.last_used DESC, c.id DESC LIMIT ?%2")
+                            .arg(where.join(QLatin1String(" AND ")))
+                            .arg(binds.size() + 1);
+    Stmt s(m_db, sql.toUtf8());
+    for (int i = 0; i < binds.size(); ++i) {
+        s.bindText(i + 1, binds[i]);
+    }
+    s.bindInt(int(binds.size()) + 1, limit);
+    return collect(s);
 }
 
 std::vector<Entry> Repository::searchLike(const QStringList& tokens, int limit)

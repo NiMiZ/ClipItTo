@@ -10,6 +10,7 @@
 #include "PlatformKeys.h"
 #include "SearchBar.h"
 #include "SearchController.h"
+#include "TextTransform.h"
 #include "Theme.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
@@ -332,6 +333,14 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
         QCoreApplication::sendEvent(m_search, &copy);
     });
     connect(m_view, &HistoryView::activateRequested, this, &PopupWindow::activate);
+    connect(m_view, &HistoryView::pasteAsRequested, this, &PopupWindow::pasteAs);
+    connect(m_search, &SearchBar::pasteAsRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        const QModelIndex current = m_view->currentIndex();
+        pasteAs(entryFor(current) ? current : m_model->firstEntry(m_startFocus));
+    });
     connect(m_view, &QAbstractItemView::clicked, this, [this](const QModelIndex& index) {
         if (m_model->isExpandable(index)) {
             m_view->toggleExpanded(index);
@@ -1147,6 +1156,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
             menu->addAction(tr("Lock passwords"), m_passwords, &PasswordKeeper::lock);
         }
     } else if (!entry.image) {
+        menu->addMenu(createPasteAsMenu(entry, menu));
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
         if (!m_passwords || !m_passwords->isSetUp()) {
             mark->setEnabled(false);
@@ -1160,6 +1170,44 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
         remove(index.isValid() ? index : m_view->currentIndex());
     });
     return menu;
+}
+
+QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
+{
+    auto* menu = new QMenu(tr("Paste &as"), parent);
+    const QString text = entry.content;
+    for (const texttransform::Info& info : texttransform::all()) {
+        const texttransform::Kind kind = info.kind;
+        menu->addAction(info.label, this, [this, text, kind] {
+            QString why;
+            const std::optional<QString> out = texttransform::apply(kind, text, &why);
+            if (!out) {
+                showMessage(why);
+                return;
+            }
+            emit textActivated(*out);
+            hidePopup();
+        });
+    }
+    return menu;
+}
+
+void PopupWindow::pasteAs(const QModelIndex& index)
+{
+    const Entry* e = entryFor(index);
+    if (!e || e->image || e->secret) {
+        return; // a group row, a picture or a password: nothing to transform
+    }
+    QMenu* menu = createPasteAsMenu(*e, this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    const QRect row = m_view->visualRect(index);
+    {
+        ModalGuard guard(m_modalDepth); // the menu takes the focus; the popup must not hide because of it
+        menu->exec(m_view->viewport()->mapToGlobal(row.bottomLeft()));
+    }
+    if (isVisible()) {
+        m_search->setFocus();
+    }
 }
 
 void PopupWindow::addOutOfRecentAction(QMenu* menu, const QString& path)

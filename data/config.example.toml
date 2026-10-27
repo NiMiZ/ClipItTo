@@ -44,6 +44,8 @@ encrypt_history = false     # encrypt history.db; the key is kept in the system 
 keep_passwords = true       # false = skip them, as without a master password
 passwords_in_group = false  # put new password copies in the "Passwords" group
                             # (false: only in the group and in the p[] search)
+detect_secrets = true       # a copy that looks like an API key, token, private key or card number is
+                            # kept as a password copy too (once a master password is set)
 passwords_per_note = false  # the same password under a different note is kept as a separate copy
 password_ask_note = false   # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)

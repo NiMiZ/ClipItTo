@@ -101,6 +101,9 @@ public:
     static constexpr int kRevealMs = 10000;
 
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
+    // The transforms for a text copy (Shift+Enter, and a submenu of the right-click menu).
+    QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
+    void pasteAs(const QModelIndex& index);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
     QMenu* createFavoritesMenu(QWidget* parent);
     void addOutOfRecentAction(QMenu* menu, const QString& path); // path "" = Favorites
@@ -133,6 +136,9 @@ public:
 
 signals:
     void entryActivated(const clipitto::Entry& entry);
+    // "Paste as…": this text (the copy, transformed) goes to the clipboard and into the window; the
+    // stored copy is not touched.
+    void textActivated(const QString& text);
     void aboutToShow(); // before the popup takes focus (the previous window still has it)
     void closedAt(QPoint topLeft); // where it was when it hid (for popup_position = last)
     void visibilityChanged(bool visible);

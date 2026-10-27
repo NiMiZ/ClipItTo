@@ -784,6 +784,40 @@ private slots:
         QVERIFY(!f.t.repo->get(beta.id));
     }
 
+    void pasteAsTransformsTheTextAndLeavesTheCopyAlone()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        const Entry beta = *f.model()->entryAt(f.model()->index(4, 0));
+        std::unique_ptr<QMenu> menu(f.popup->createContextMenu(beta, nullptr));
+        QMenu* sub = nullptr;
+        for (QAction* a : menu->actions()) {
+            if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                sub = a->menu();
+            }
+        }
+        QVERIFY(sub);
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        QSignalSpy plain(f.popup.get(), &PopupWindow::entryActivated);
+        for (QAction* a : sub->actions()) {
+            if (a->text().remove(QLatin1Char('&')) == QLatin1String("UPPER CASE")) {
+                a->trigger();
+            }
+        }
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), beta.content.toUpper());
+        QCOMPARE(plain.size(), 0); // the stored copy is not "used"
+        QCOMPARE(f.t.repo->get(beta.id)->content, beta.content);
+
+        // Not for pictures' or passwords' menus.
+        Entry picture = beta;
+        picture.image = true;
+        std::unique_ptr<QMenu> pictureMenu(f.popup->createContextMenu(picture, nullptr));
+        for (QAction* a : pictureMenu->actions()) {
+            QVERIFY(a->text().remove(QLatin1Char('&')) != QLatin1String("Paste as"));
+        }
+    }
+
     void reopeningClearsTheQuery()
     {
         Fixture f;

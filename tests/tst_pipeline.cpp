@@ -94,6 +94,38 @@ private slots:
         QCOMPARE(t.repo->count(), 0);
     }
 
+    void copiesThatLookLikeSecretsBecomePasswordsOnlyWhenPasswordsAreKept()
+    {
+        const QString token = QStringLiteral("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB");
+        {   // No master password: nothing changes, it is an ordinary copy.
+            TestDb t;
+            CapturePipeline p(*t.repo, 100, 1024);
+            p.setDetectSecrets(true);
+            p.process(token, {QStringLiteral("text/plain")});
+            QCOMPARE(t.repo->count(), 1);
+            QCOMPARE(t.repo->countSecrets(), 0);
+        }
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("master", {64, 1}));
+        vault.setMatchKey(QByteArray(32, 'm'));
+        p.setPasswords(&vault, true, QString());
+        p.setDetectSecrets(true);
+        p.process(token, {QStringLiteral("text/plain")});
+        p.process(QStringLiteral("4111 1111 1111 1111"), {QStringLiteral("text/plain")});
+        p.process(QStringLiteral("just a sentence"), {QStringLiteral("text/plain")});
+        QCOMPARE(t.repo->countSecrets(), 2);
+        QCOMPARE(t.repo->count(), 3);
+        QVERIFY(t.repo->search(QStringLiteral("GitHub token")).size() == 1); // named by its kind
+        QVERIFY(t.repo->search(QStringLiteral("ghp_0123")).empty()); // never in the index
+        // Off: stored as plain text again.
+        p.setDetectSecrets(false);
+        p.process(QStringLiteral("AKIAIOSFODNN7EXAMPLE"), {QStringLiteral("text/plain")});
+        QCOMPARE(t.repo->countSecrets(), 2);
+        QCOMPARE(t.repo->count(), 4);
+    }
+
     void markedCopiesBecomeSealedPasswords()
     {
         TestDb t;
