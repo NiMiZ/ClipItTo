@@ -112,6 +112,7 @@ bool exportTo(const QString& path, db::Repository& repo, const Config& config, P
         copies[QStringLiteral("favorites_hide_from_recent")] = repo.favoritesHiddenFromRecent();
 
         const std::vector<Entry> entries = repo.allEntries();
+        const QSet<qint64> offRecent = repo.offRecentIds();
         const bool hasPasswords = std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.secret; });
         QByteArray key;
         QJsonObject passwords;
@@ -137,6 +138,7 @@ bool exportTo(const QString& path, db::Repository& repo, const Config& config, P
         QJsonArray items;
         for (const Entry& e : entries) {
             QJsonObject o = filing(e);
+            o[QStringLiteral("off_recent")] = offRecent.contains(e.id);
             if (e.secret) {
                 auto plain = keeper->reveal(e.id);
                 if (!plain) {
@@ -256,10 +258,15 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
     }
 
     const QJsonObject copies = root->value(QStringLiteral("copies")).toObject();
+    const QStringList existing = repo.groups();
     for (const QJsonValue& g : copies.value(QStringLiteral("groups")).toArray()) {
         const QString groupPath = g.toObject().value(QStringLiteral("path")).toString();
-        if (repo.createGroup(groupPath).isEmpty()) {
+        const QString created = repo.createGroup(groupPath);
+        if (created.isEmpty()) {
             continue;
+        }
+        if (!existing.contains(created)) {
+            repo.placeGroupLast(created); // in the backup's order (the file lists them that way)
         }
         if (g.toObject().value(QStringLiteral("hide_from_recent")).toBool()) {
             repo.setGroupHiddenFromRecent(groupPath, true);
@@ -273,7 +280,7 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
     const auto restore = [&](qint64 id, const QJsonObject& o) {
         repo.restoreFiling(id, parseStamp(o.value(QStringLiteral("created"))), parseStamp(o.value(QStringLiteral("last_used"))),
                            o.value(QStringLiteral("note")).toString(), o.value(QStringLiteral("group")).toString(),
-                           o.value(QStringLiteral("favorite")).toBool());
+                           o.value(QStringLiteral("favorite")).toBool(), o.value(QStringLiteral("off_recent")).toBool());
         const int pin = o.value(QStringLiteral("pin")).toInt(-1);
         if (pin >= 0) {
             pins.emplace_back(pin, id);

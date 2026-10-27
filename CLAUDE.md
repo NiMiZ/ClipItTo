@@ -9,8 +9,8 @@ C++20, Qt 6 (Widgets), CMake. Targets Windows 10+ and Linux (X11 and Wayland).
 - `tests/` unit tests against a fake backend.
 
 ## Build
-- `cmake --preset linux-debug && cmake --build --preset linux-debug`
-- Windows: `cmake --preset windows-debug && cmake --build --preset windows-debug`
+- `cmake --preset debug && cmake --build --preset debug`
+- Windows: `cmake --preset windows && cmake --build --preset windows`
 - Tests: `ctest --preset <preset> --output-on-failure`
 
 ## Rules

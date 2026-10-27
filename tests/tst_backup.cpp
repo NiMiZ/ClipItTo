@@ -54,6 +54,13 @@ private slots:
         a.repo->setFavorite(starred, true);
         a.repo->setPinned(pinned, true);
         a.repo->setGroupHiddenFromRecent(QStringLiteral("Work"), true);
+        // A custom order (Zebra before Apple, which is not alphabetical) and a copy taken off Recent.
+        const auto zebra = a.repo->ingest(QStringLiteral("z")).id;
+        const auto apple = a.repo->ingest(QStringLiteral("a")).id;
+        a.repo->setGroup(zebra, QStringLiteral("Zebra"));
+        a.repo->setGroup(apple, QStringLiteral("Apple"));
+        a.repo->moveGroup(QStringLiteral("Zebra"), -1);
+        a.repo->takeOffRecent(zebra);
         clipitto::ImageClip image;
         image.png = QByteArray("not-really-a-png");
         image.thumbnail = QByteArray("thumb");
@@ -69,15 +76,15 @@ private slots:
         QVERIFY2(info.valid, qPrintable(info.error));
         QVERIFY(info.parts.copies);
         QVERIFY(!info.parts.settings);
-        QCOMPARE(info.copies, 5);
+        QCOMPARE(info.copies, 7);
         QCOMPARE(info.passwords, 0);
 
         TestDb b;
         const auto report = backup::importFrom(file(), {true, true}, *b.repo, nullptr, {}, &error);
         QVERIFY2(report, qPrintable(error));
-        QCOMPARE(report->added, 5);
+        QCOMPARE(report->added, 7);
         QVERIFY(!report->settings); // the file has none
-        QCOMPARE(b.repo->count(), 5);
+        QCOMPARE(b.repo->count(), 7);
         const auto g = b.repo->search(QStringLiteral("kubectl")).front();
         QCOMPARE(g.group, QStringLiteral("Work/Servers"));
         QCOMPARE(g.note, QStringLiteral("pods"));
@@ -86,6 +93,8 @@ private slots:
         QCOMPARE(b.repo->pinned(10).size(), 1u);
         QVERIFY(b.repo->groupHiddenFromRecent(QStringLiteral("Work")));
         QCOMPARE(b.repo->countImages(), 1);
+        QCOMPARE(b.repo->offRecentIds().size(), 1); // still off Recent
+        QCOMPARE(b.repo->groups(), a.repo->groups());
         const auto picture = b.repo->findByHash(QStringLiteral("image:abc123"));
         QVERIFY(picture);
         QCOMPARE(b.repo->imageData(*picture), image.png);
@@ -94,8 +103,8 @@ private slots:
         const auto again = backup::importFrom(file(), {true, false}, *b.repo, nullptr, {}, &error);
         QVERIFY(again);
         QCOMPARE(again->added, 0);
-        QCOMPARE(again->alreadyThere, 5);
-        QCOMPARE(b.repo->count(), 5);
+        QCOMPARE(again->alreadyThere, 7);
+        QCOMPARE(b.repo->count(), 7);
     }
 
     void settingsRoundTripAndPartsAreChosen()

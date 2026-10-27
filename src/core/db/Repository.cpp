@@ -955,7 +955,7 @@ std::optional<qint64> Repository::findByHash(const QString& contentHash)
 }
 
 void Repository::restoreFiling(qint64 id, const QDateTime& created, const QDateTime& lastUsed, const QString& note,
-                               const QString& group, bool favorite)
+                               const QString& group, bool favorite, bool offRecent)
 {
     Transaction tx(m_db);
     const QString path = groups::normalize(group);
@@ -963,15 +963,41 @@ void Repository::restoreFiling(qint64 id, const QDateTime& created, const QDateT
         createGroup(path);
     }
     Stmt s(m_db, "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, "
-                 "is_favorite = ?6 WHERE id = ?1");
+                 "is_favorite = ?6, off_recent = ?7 WHERE id = ?1");
     s.bindInt(1, id);
     s.bindText(2, (created.isValid() ? created : lastUsed).toUTC().toString(Qt::ISODateWithMs));
     s.bindText(3, (lastUsed.isValid() ? lastUsed : created).toUTC().toString(Qt::ISODateWithMs));
     s.bindTextOrNull(4, note.trimmed());
     s.bindTextOrNull(5, path);
     s.bindInt(6, favorite ? 1 : 0);
+    s.bindInt(7, offRecent ? 1 : 0);
     s.run();
     tx.commit();
+}
+
+QSet<qint64> Repository::offRecentIds()
+{
+    QSet<qint64> ids;
+    Stmt s(m_db, "SELECT id FROM clips WHERE off_recent = 1");
+    while (s.step()) {
+        ids.insert(s.colInt(0));
+    }
+    return ids;
+}
+
+void Repository::placeGroupLast(const QString& path)
+{
+    const QString normalized = groups::normalize(path);
+    const QString parent = groups::parent(normalized);
+    qint64 next = 0;
+    Stmt all(m_db, "SELECT path, position FROM groups");
+    while (all.step()) {
+        if (all.colText(0) != normalized && groups::parent(all.colText(0)) == parent && !all.colIsNull(1)) {
+            next = std::max(next, all.colInt(1) + 1);
+        }
+    }
+    Stmt s(m_db, "UPDATE groups SET position = ?2 WHERE path = ?1");
+    s.bindText(1, normalized).bindInt(2, next).run();
 }
 
 qint64 Repository::clearHistory(bool everything)
