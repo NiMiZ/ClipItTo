@@ -15,6 +15,8 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QFile>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -343,7 +345,7 @@ private slots:
             return answer;
         });
 
-        QCOMPARE(d.tabs()->count(), 3);
+        QCOMPARE(d.tabs()->count(), 4);
         QCOMPARE(d.setMasterButton()->text(), QStringLiteral("Set…"));
         QVERIFY(!d.removeMasterButton()->isEnabled());
         QVERIFY(!d.keepPasswordsBox()->isEnabled()); // nothing to keep them with yet
@@ -512,6 +514,122 @@ private slots:
         QVERIFY(!c.windowsHello);
         d.keywordEdit()->setText(QString()); // not acceptable: the keyword stays
         QCOMPARE(d.config().passwordSearchKeyword, QStringLiteral("p[]"));
+    }
+
+    void backupTabAsksForTheMasterPasswordAndImportsTheChosenParts()
+    {
+        TestDb t;
+        clipitto::PasswordKeeper keeper(*t.repo, std::make_shared<FakeKeyStore>());
+        keeper.setKdfCost({64, 1});
+        bool set = false;
+        keeper.setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        clipitto::ui::PasswordSupport support;
+        support.keeper = &keeper;
+        t.repo->ingest(QStringLiteral("a copy"));
+
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("backup.json"));
+        Config start;
+        start.recentCount = 44;
+        SettingsDialog d(start, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+        QCOMPARE(d.tabs()->tabText(3), QStringLiteral("Backup"));
+        QStringList asked;
+        std::optional<QString> answer = QStringLiteral("wrong");
+        d.setPasswordPrompt([&](QWidget*, const QString& label) {
+            asked << label;
+            return answer;
+        });
+        d.setFilePrompt([&](QWidget*, bool, const QString&) { return path; });
+        QStringList told;
+        d.setNotify([&](QWidget*, const QString& m) { told << m; });
+        d.setInform([&](QWidget*, const QString& m) { told << m; });
+        std::optional<clipitto::backup::Parts> chosen;
+        d.setPartsPrompt([&](QWidget*, const clipitto::backup::Info&) { return chosen; });
+
+        // Wrong password, then cancelled: no file.
+        d.exportButton()->click();
+        QTRY_COMPARE(told.size(), 1);
+        QVERIFY(told.last().contains(QLatin1String("Wrong master password")));
+        answer = std::nullopt;
+        d.exportButton()->click();
+        QCOMPARE(asked.size(), 2);
+        QVERIFY(!QFile::exists(path));
+
+        // Nothing ticked: says so, and does not even ask.
+        d.backupCopiesBox()->setChecked(false);
+        d.backupSettingsBox()->setChecked(false);
+        d.exportButton()->click();
+        QCOMPARE(asked.size(), 2);
+        d.backupCopiesBox()->setChecked(true);
+        d.backupSettingsBox()->setChecked(true);
+
+        // The right one exports both.
+        answer = QStringLiteral("master");
+        d.exportButton()->click();
+        QTRY_VERIFY(QFile::exists(path));
+        QCOMPARE(asked.size(), 3);
+        QVERIFY(asked.last().contains(QLatin1String("export")));
+
+        // Import asks for the master password too, then which parts: settings only.
+        TestDb other;
+        clipitto::PasswordKeeper keeper2(*other.repo, std::make_shared<FakeKeyStore>());
+        keeper2.setKdfCost({64, 1});
+        bool set2 = false;
+        keeper2.setMasterPassword("master", [&set2](bool ok) { set2 = ok; });
+        QTRY_VERIFY(set2);
+        clipitto::ui::PasswordSupport support2;
+        support2.keeper = &keeper2;
+        Config other_start;
+        other_start.recentCount = 5;
+        other_start.hotkey = QStringLiteral("Ctrl+Alt+K");
+        SettingsDialog e(other_start, *other.repo, ShortcutSupport{}, {}, nullptr, support2);
+        QStringList asked2;
+        e.setPasswordPrompt([&](QWidget*, const QString& label) {
+            asked2 << label;
+            return std::optional<QString>(QStringLiteral("master"));
+        });
+        e.setFilePrompt([&](QWidget*, bool, const QString&) { return path; });
+        QStringList told2;
+        e.setInform([&](QWidget*, const QString& m) { told2 << m; });
+        std::optional<clipitto::backup::Parts> chosen2 = clipitto::backup::Parts{false, true};
+        int asked_parts = 0;
+        bool offeredBoth = false;
+        e.setPartsPrompt([&](QWidget*, const clipitto::backup::Info& info) -> std::optional<clipitto::backup::Parts> {
+            ++asked_parts;
+            offeredBoth = info.parts.copies && info.parts.settings;
+            return chosen2;
+        });
+        e.importButton()->click();
+        QTRY_COMPARE(asked_parts, 1);
+        QVERIFY(offeredBoth);
+        QCOMPARE(asked2.size(), 1);
+        QVERIFY(asked2.last().contains(QLatin1String("import")));
+        QTRY_VERIFY(!told2.isEmpty());
+        QCOMPARE(other.repo->count(), 0); // copies were not chosen
+        QCOMPARE(e.result(), int(QDialog::Accepted)); // the settings apply: the dialog closes
+        QCOMPARE(e.config().recentCount, 44);
+        QCOMPARE(e.config().hotkey, QStringLiteral("Ctrl+Alt+K")); // this computer's own shortcut stays
+
+        // Cancelling the parts question imports nothing.
+        SettingsDialog f(other_start, *other.repo, ShortcutSupport{}, {}, nullptr, support2);
+        f.setPasswordPrompt([](QWidget*, const QString&) { return std::optional<QString>(QStringLiteral("master")); });
+        f.setFilePrompt([&](QWidget*, bool, const QString&) { return path; });
+        f.setPartsPrompt([](QWidget*, const clipitto::backup::Info&) { return std::nullopt; });
+        f.importButton()->click();
+        QTest::qWait(500);
+        QCOMPARE(other.repo->count(), 0);
+
+        // Copies only.
+        SettingsDialog g(other_start, *other.repo, ShortcutSupport{}, {}, nullptr, support2);
+        g.setPasswordPrompt([](QWidget*, const QString&) { return std::optional<QString>(QStringLiteral("master")); });
+        g.setFilePrompt([&](QWidget*, bool, const QString&) { return path; });
+        g.setInform([](QWidget*, const QString&) {});
+        g.setPartsPrompt([](QWidget*, const clipitto::backup::Info&) { return clipitto::backup::Parts{true, false}; });
+        g.importButton()->click();
+        QTRY_COMPARE(other.repo->count(), 1);
+        QVERIFY(g.groupsChanged());
+        QCOMPARE(g.config().recentCount, 5); // settings untouched
     }
 };
 

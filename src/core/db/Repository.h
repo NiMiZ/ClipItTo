@@ -157,6 +157,16 @@ public:
     // ones go to Favorites even beyond its limit: limits only block adding more).
     void deleteGroup(const QString& path);
 
+    // --- Backup support
+    // Every copy (pictures and passwords as rows without their data), oldest first.
+    std::vector<Entry> allEntries();
+    // The copy with this content_hash ("secret:<hex>", "image:<hash>", or hashOf(text)).
+    std::optional<qint64> findByHash(const QString& contentHash);
+    // Sets the times, note, group (created if new) and star of a copy as saved in a backup.
+    // Not limited by the star caps: a backup restores what was there.
+    void restoreFiling(qint64 id, const QDateTime& created, const QDateTime& lastUsed, const QString& note,
+                       const QString& group, bool favorite);
+
     qint64 count();
     qint64 countUnsaved();
     qint64 countImages();

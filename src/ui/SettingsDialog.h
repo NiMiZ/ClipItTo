@@ -1,11 +1,13 @@
 #pragma once
 
+#include "Backup.h"
 #include "Config.h"
 #include "Prompts.h"
 
 #include <QDialog>
 
 #include <functional>
+#include <optional>
 
 class QCheckBox;
 class QComboBox;
@@ -69,6 +71,10 @@ class SettingsDialog : public QDialog {
 
 public:
     using Notify = std::function<void(QWidget* parent, const QString& message)>;
+    // A file to save to or open ("" = cancelled).
+    using FilePrompt = std::function<QString(QWidget* parent, bool save, const QString& suggestedName)>;
+    // Which parts of a backup that holds both to import (nullopt = cancelled).
+    using PartsPrompt = std::function<std::optional<backup::Parts>(QWidget* parent, const backup::Info& info)>;
 
     SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
                    EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {},
@@ -83,6 +89,16 @@ public:
     void setInform(Notify inform) { m_inform = std::move(inform); } // news that isn't a problem
     void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
     void setMasterPasswordPrompt(MasterPasswordPrompt prompt) { m_masterPrompt = std::move(prompt); }
+    void setFilePrompt(FilePrompt prompt) { m_filePrompt = std::move(prompt); }
+    void setPartsPrompt(PartsPrompt prompt) { m_partsPrompt = std::move(prompt); }
+
+    // Backup tab. With a master password set, both ask for it first (even when unlocked).
+    void exportBackup();
+    void importBackup();
+    QCheckBox* backupCopiesBox() const { return m_backupCopies; }
+    QCheckBox* backupSettingsBox() const { return m_backupSettings; }
+    QPushButton* exportButton() const { return m_export; }
+    QPushButton* importButton() const { return m_import; }
 
     // Master password actions (the buttons on the Passwords tab).
     void setMasterPassword();
@@ -141,6 +157,10 @@ private:
     void updatePasswordPage(); // master password state, buttons
     void updatePasswordDependents(); // "also show in Recent" follows "put in the Passwords group"
     void onHelloToggled(bool on);
+    // Asks for the master password when one is set (and unlocks with it), then calls
+    // `proceed` with its bytes (empty when there is none). Not called when cancelled or wrong.
+    void withMasterPassword(const QString& purpose, std::function<void(QByteArray password)> proceed);
+    void finishImport(const QString& path, const backup::Info& info, const QByteArray& masterPassword);
 
     Config m_config;
     db::Repository& m_repo;
@@ -187,6 +207,11 @@ private:
     QPushButton* m_setMaster; // "Set…" or "Change…"
     QPushButton* m_removeMaster;
     bool m_busy = false; // a master password is being derived
+    QCheckBox* m_backupCopies;
+    QCheckBox* m_backupSettings;
+    QPushButton* m_export;
+    QPushButton* m_import;
+    std::optional<Config> m_imported; // settings taken from a backup: what config() returns
 
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
@@ -194,6 +219,8 @@ private:
     Notify m_inform;
     PasswordPrompt m_passwordPrompt;
     MasterPasswordPrompt m_masterPrompt;
+    FilePrompt m_filePrompt;
+    PartsPrompt m_partsPrompt;
 };
 
 } // namespace clipitto::ui

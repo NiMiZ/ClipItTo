@@ -1,6 +1,7 @@
 add_library(clipitto_core STATIC
     CapturePipeline.cpp CapturePipeline.h
     ClipFilter.cpp ClipFilter.h
+    Backup.cpp Backup.h
     Config.cpp Config.h
     ControlChannel.h
     DesktopIntegration.h

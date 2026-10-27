@@ -65,6 +65,13 @@ public:
     // Hello signature). Empty when locked.
     QByteArray wrapSecret(const QByteArray& key) const;
 
+    // Passwords in a backup file: encrypted under a key from a password (Argon2id), not under
+    // this machine's vault, so any machine with the password can open them. Slow (Argon2id).
+    // The cost is bounded like the vault's: an empty key for a cost that is out of range.
+    static QByteArray deriveBackupKey(const QByteArray& password, const QByteArray& salt, KdfCost cost);
+    static QByteArray boxWithBackupKey(const QByteArray& key, const QByteArray& plain);
+    static std::optional<QByteArray> unboxWithBackupKey(const QByteArray& key, const QByteArray& boxed);
+
     PasswordVault() = default;
     ~PasswordVault();
     PasswordVault(const PasswordVault&) = delete;

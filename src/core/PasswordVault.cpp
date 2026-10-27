@@ -20,6 +20,7 @@ constexpr char kSealVersion = 1;
 // Bound to every wrapped key and sealed password, so one can't be passed off as the other.
 const QByteArray kWrapContext = QByteArrayLiteral("clipitto-vault-v1");
 const QByteArray kSealContext = QByteArrayLiteral("clipitto-seal-v1");
+const QByteArray kBackupContext = QByteArrayLiteral("clipitto-backup-v1");
 const QByteArray kMatchContext = QByteArrayLiteral("clipitto-match-v1");
 
 const uint8_t* bytes(const QByteArray& data)
@@ -161,6 +162,24 @@ PasswordVault::Stored PasswordVault::create(const QByteArray& masterPassword, Kd
 QByteArray PasswordVault::deriveKey(const QByteArray& masterPassword, const Stored& stored)
 {
     return argon2id(masterPassword, stored.salt, stored.kdfBlocks, stored.kdfPasses);
+}
+
+QByteArray PasswordVault::deriveBackupKey(const QByteArray& password, const QByteArray& salt, KdfCost cost)
+{
+    return argon2id(password, salt, cost.blocks, cost.passes);
+}
+
+QByteArray PasswordVault::boxWithBackupKey(const QByteArray& key, const QByteArray& plain)
+{
+    return lockWith(key, plain, kBackupContext);
+}
+
+std::optional<QByteArray> PasswordVault::unboxWithBackupKey(const QByteArray& key, const QByteArray& boxed)
+{
+    if (key.size() != 32) {
+        return std::nullopt;
+    }
+    return unlockWith(key, boxed, kBackupContext);
 }
 
 std::optional<PasswordVault::Rekeyed> PasswordVault::changePassword(const Stored& stored, const QByteArray& oldPassword,
