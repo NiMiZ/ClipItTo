@@ -53,5 +53,11 @@ Ordered by how much they would likely help, not by effort.
 12. **Undo delete / Clear** for a few seconds (a toast with "Undo") instead of only asking first.
 13. **Sync without a server:** export/import to a folder the user already syncs (Syncthing, Nextcloud),
     encrypted with the master password, keeping the "no network from ClipItTo" promise.
-14. **Previews for more kinds:** colour swatch for `#rrggbb`, QR code view of a copy, code highlighting,
+14. **Copy with formatting:** today only plain text is kept, so a copy from Word, a web page or a mail loses
+    its bold, links, colours and tables. Wanted: also keep the rich version (HTML / RTF) of a text copy, and
+    offer it in the **Paste as** menu as "with formatting" (plain text stays the default). It needs a
+    database change (the rich flavour stored next to the text, with a size cap), capture in each backend
+    (`text/html` and RTF on Wayland and X11, `HTML Format` and `Rich Text Format` on Windows, `public.html`
+    on macOS), and the writer putting both flavours on the clipboard. Encrypted history covers it too.
+15. **Previews for more kinds:** colour swatch for `#rrggbb`, QR code view of a copy, code highlighting,
     file-path list for copied files.
