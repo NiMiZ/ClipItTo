@@ -19,6 +19,11 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   thumbnail (blurry on HiDPI).
 - **Security:** text over D-Bus (`Ingest`) has no sender check.
 - **KDE, Sway and others:** no shortcut helper; users bind `clipitto --toggle` themselves.
+- **Keyring prompts without an explanation.** A user saw "unlock keyring" dialogs several times and didn't
+  know what asked for them (a Linux keyring unlock wants the *keyring's* password, which is often not the
+  sudo password). Wanted: say before touching the keyring why ("ClipItTo needs the key that protects your
+  history / password copies"), touch it only when a feature needs it, and show in `--status` when a keyring
+  call is waiting. Test and driver runs already use a private D-Bus without a keyring.
 - **Optional:** normalize CRLF when deduplicating.
 - **Open question:** "search doesn't find custom groups" was reported once and could not be reproduced.
 
@@ -26,8 +31,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
 
 Ordered by how much they would likely help, not by effort.
 
-1. **Paste as plain text** (a key in the popup, e.g. `Shift+Enter`): strips formatting. Also **transform
-   on paste**: UPPER / lower / Title case, trim, collapse whitespace, JSON pretty/minify, URL decode/encode.
+1. **Transform on paste** (ClipItTo stores plain text only, so formatting is never pasted anyway): UPPER / lower / Title case, trim, collapse whitespace, JSON pretty/minify, URL decode/encode.
 2. **Quick paste keys** (`Ctrl+1`…`9` in the popup, or a global chord) for the pinned copies, so a
    frequent snippet is one chord away without opening the list.
 3. **Snippets with placeholders:** pinned copies that expand `{date}`, `{time}`, `{clipboard}` or ask for a
