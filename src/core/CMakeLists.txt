@@ -13,6 +13,7 @@ add_library(clipitto_core STATIC
     PasswordKeeper.cpp PasswordKeeper.h
     PasswordPolicy.cpp PasswordPolicy.h
     TextTransform.cpp TextTransform.h
+    SecretScan.cpp SecretScan.h
     PasswordVault.cpp PasswordVault.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h

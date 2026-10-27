@@ -474,6 +474,10 @@ private slots:
         QVERIFY(d.askNoteBox()->toolTip().contains(QLatin1String("name")));
         d.askNoteBox()->setChecked(true);
         QVERIFY(d.config().passwordAskNote);
+        QVERIFY(d.detectSecretsBox()->isEnabled());
+        QVERIFY(d.config().detectSecrets);
+        d.detectSecretsBox()->setChecked(false);
+        QVERIFY(!d.config().detectSecrets);
         QVERIFY(d.passwordsPerNoteBox()->isEnabled());
         QVERIFY(!d.config().passwordsPerNote);
         d.passwordsPerNoteBox()->setChecked(true);

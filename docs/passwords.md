@@ -64,6 +64,14 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   window closes again afterwards if it wasn't open. (On Windows the window may not take the
   focus when it opens by itself.)
 
+**Copies that look like secrets.** Once passwords are kept, a copy that no password manager marked but
+that looks like a private key, an API key or access token (AWS, GitHub, GitLab, Slack, Google, Stripe,
+Anthropic, OpenAI, npm, a JSON web token) or a whole-copy card number (Luhn-checked) is kept encrypted too,
+and shown as `●●●●` with the kind of secret as its note ("GitHub token"). It judges by shape, so now and
+then it takes an ordinary copy: *Not a password* in the right-click menu turns it back into text. Turn it
+off with *Keep copies that look like secrets as password copies* (`detect_secrets`). Without a master
+password nothing changes.
+
 **Choosing a master password.** The dialog lists the rules and ticks them as you type: at least 8
 characters with an uppercase letter, a lowercase letter and a digit; no form of "password", "admin" or
 "root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row

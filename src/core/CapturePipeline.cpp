@@ -1,5 +1,6 @@
 #include "CapturePipeline.h"
 
+#include "SecretScan.h"
 #include "PasswordVault.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
@@ -104,7 +105,14 @@ void CapturePipeline::storeImage(const ImageClip& image)
 
 void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
 {
-    const ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
+    ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
+    QString detected; // what an unmarked copy looks like, when it is kept as a password anyway
+    if (verdict == ClipFilter::Verdict::Accept && m_detectSecrets && keepsPasswords()) {
+        detected = secretscan::kindOf(text);
+        if (!detected.isEmpty()) {
+            verdict = ClipFilter::Verdict::Sensitive; // an unmarked key or token: kept like a password copy
+        }
+    }
     if (verdict == ClipFilter::Verdict::Sensitive && m_keepPasswords && !keepsPasswords()) {
         // Backends don't even read the text then; say why nothing was kept.
         emit rejected(verdict);
@@ -119,7 +127,11 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
     if (verdict == ClipFilter::Verdict::Sensitive && keepsPasswords() && !text.trimmed().isEmpty()) {
         // Sealed right away: the password is never stored, queued or logged in clear.
         QByteArray plain = text.toUtf8();
-        SealedCopy copy{m_vault->seal(plain), m_vault->match(plain), ClipFilter::sourceApp(mimeTypes)};
+        QString note = ClipFilter::sourceApp(mimeTypes);
+        if (note.isEmpty()) {
+            note = detected;
+        }
+        SealedCopy copy{m_vault->seal(plain), m_vault->match(plain), note};
         PasswordVault::wipe(plain);
         if (m_paused) {
             m_waitingSecrets << copy;
