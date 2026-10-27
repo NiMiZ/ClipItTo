@@ -379,7 +379,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     passwordsForm->addRow(tr("Password copies:"), m_keepPasswords);
     m_passwordsInGroup->setChecked(config.passwordsInGroup);
     passwordsForm->addRow(QString(), m_passwordsInGroup);
-    m_passwordsInRecent->setChecked(config.passwordsInRecent);
+    m_passwordsInRecent->setChecked(!m_repo.groupHiddenFromRecent(PasswordKeeper::passwordsGroup()));
     // A paragraph makes Qt treat a tooltip as rich text, which wraps instead of one long line.
     m_passwordsInRecent->setToolTip(QStringLiteral("<p>%1</p>")
                                         .arg(tr("Password copies in the Passwords group also appear in the Recent list, "
@@ -489,7 +489,6 @@ Config SettingsDialog::config() const
     c.latestAfterPaste = m_latest->isChecked();
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
-    c.passwordsInRecent = m_passwordsInRecent->isChecked();
     c.passwordAskNote = m_askNote->isChecked();
     c.passwordUnlockMinutes = m_unlockMinutes->value();
     c.passwordClearSeconds = m_clearSeconds->value();
@@ -498,6 +497,18 @@ Config SettingsDialog::config() const
         c.passwordSearchKeyword = m_keyword->text();
     }
     return c;
+}
+
+void SettingsDialog::accept()
+{
+    if (m_passwordsInRecent->isEnabled()) {
+        try {
+            m_repo.setGroupHiddenFromRecent(PasswordKeeper::passwordsGroup(), !m_passwordsInRecent->isChecked());
+        } catch (const db::DbError& err) {
+            qWarning() << "saving the Recent setting failed:" << err.what();
+        }
+    }
+    QDialog::accept();
 }
 
 void SettingsDialog::updatePasswordDependents()

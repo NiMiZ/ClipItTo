@@ -131,6 +131,9 @@ public:
     QPushButton* setMasterButton() const { return m_setMaster; }
     QPushButton* removeMasterButton() const { return m_removeMaster; }
 
+    // Saves the one setting that lives in the history (whether password copies are in Recent).
+    void accept() override;
+
 private:
     void onShortcutEdited();
     void reloadGroups(const QString& select = {});

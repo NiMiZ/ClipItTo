@@ -102,6 +102,9 @@ public:
 
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
+    QMenu* createFavoritesMenu(QWidget* parent);
+    void addOutOfRecentAction(QMenu* menu, const QString& path); // path "" = Favorites
+    void setGroupOutOfRecent(const QString& path, bool out); // "" = Favorites
 
     SearchBar* searchBar() const { return m_search; }
     HistoryView* view() const { return m_view; }

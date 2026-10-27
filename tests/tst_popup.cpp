@@ -406,15 +406,17 @@ private slots:
         // Cancelled: nothing changes.
         clear->click();
         QCOMPARE(asked.size(), 1);
-        QVERIFY2(asked.last().contains(QLatin1String("Delete 2 copies")), qPrintable(asked.last()));
+        QVERIFY2(asked.last().contains(QLatin1String("Clear Recent (3 copies)")), qPrintable(asked.last()));
         QCOMPARE(f.t.repo->count(), 4);
 
-        // The button: beta and gamma ray go; the pinned and the grouped copy stay.
+        // The button: beta and gamma ray go; the pinned and the grouped copy stay (the grouped
+        // one only leaves Recent).
         answer = true;
         clear->click();
         QCOMPARE(f.t.repo->count(), 2);
         QCOMPARE(f.t.repo->search(QStringLiteral("gamma")).size(), 0u);
         QCOMPARE(QApplication::focusWidget(), f.popup->searchBar());
+        QVERIFY(f.t.repo->recent(10, /*unsavedOnly=*/false).size() == 1); // just the pinned one is left
 
         // The menu's second entry: everything, also in groups.
         const QList<QAction*> actions = clear->menu()->actions();
@@ -430,6 +432,77 @@ private slots:
         clear->click();
         QCOMPARE(messages.size(), 1);
         QCOMPARE(asked.size(), 3);
+    }
+
+    void deleteInRecentKeepsAGroupedCopyInItsGroup()
+    {
+        GroupFixture f; // beta in Work, alpha in Work/Servers; gamma ray and ssh are not grouped
+        QVERIFY(f.show());
+        f.popup->view()->selectIndex(f.model()->findEntry(f.betaId));
+        QCOMPARE(f.currentContent(), QStringLiteral("beta"));
+        QVERIFY(!f.current().parent().isValid()); // the one in the Recent list
+        f.popup->searchBar()->setFocus();
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Delete);
+
+        const auto beta = f.t.repo->get(f.betaId);
+        QVERIFY(beta.has_value()); // not deleted
+        QCOMPARE(beta->group, QStringLiteral("Work"));
+        const QModelIndex now = f.model()->findEntry(f.betaId);
+        QVERIFY(now.isValid());
+        QVERIFY(now.parent().isValid()); // only in its group now
+        QCOMPARE(f.t.repo->recentUnpinned(10).size(), 2u); // alpha is still on Recent
+
+        // An unfiled copy is deleted as before.
+        f.popup->view()->selectIndex(f.model()->findEntry(f.t.repo->search(QStringLiteral("gamma")).front().id));
+        f.popup->searchBar()->setFocus();
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Delete);
+        QVERIFY(f.t.repo->search(QStringLiteral("gamma")).empty());
+    }
+
+    void groupAndFavoritesMenusKeepTheirCopiesOutOfRecent()
+    {
+        GroupFixture f;
+        f.t.repo->setFavorite(f.t.repo->search(QStringLiteral("gamma")).front().id, true);
+        QVERIFY(f.show());
+        const auto recentIds = [&] {
+            QList<qint64> out;
+            for (const Entry& e : f.t.repo->recentUnpinned(10)) {
+                out << e.id;
+            }
+            return out;
+        };
+        QCOMPARE(recentIds().size(), 3u);
+
+        QMenu* group = f.popup->createGroupMenu(QStringLiteral("Work"), f.popup.get());
+        QAction* keepOut = nullptr;
+        for (QAction* a : group->actions()) {
+            if (a->isCheckable()) {
+                keepOut = a;
+            }
+        }
+        QVERIFY(keepOut);
+        QVERIFY(!keepOut->isChecked());
+        keepOut->trigger();
+        QVERIFY(f.t.repo->groupHiddenFromRecent(QStringLiteral("Work")));
+        QCOMPARE(recentIds().size(), 1u); // only the starred gamma ray, in no group
+        delete group;
+
+        QMenu* favorites = f.popup->createFavoritesMenu(f.popup.get());
+        QCOMPARE(favorites->actions().size(), 1);
+        QVERIFY(favorites->actions().first()->isCheckable());
+        favorites->actions().first()->trigger();
+        QVERIFY(f.t.repo->favoritesHiddenFromRecent());
+        QCOMPARE(recentIds().size(), 0u);
+        delete favorites;
+
+        // The group's menu shows the rule as it is now.
+        QMenu* again = f.popup->createGroupMenu(QStringLiteral("Work"), f.popup.get());
+        bool checked = false;
+        for (QAction* a : again->actions()) {
+            checked = checked || (a->isCheckable() && a->isChecked());
+        }
+        QVERIFY(checked);
+        delete again;
     }
 
     void deleteInTheSearchBoxRemovesTheSelectedCopy()
@@ -1172,8 +1245,8 @@ private slots:
         for (const bool inRecent : {false, true}) {
             Config c;
             c.passwordsInGroup = true;
-            c.passwordsInRecent = inRecent;
             PasswordFixture f(c);
+            f.t.repo->setGroupHiddenFromRecent(clipitto::PasswordKeeper::passwordsGroup(), !inRecent);
             const auto& v = f.keeper.vault();
             const qint64 grouped = f.t.repo->ingestSecret(v.seal("g"), v.match("g"), QStringLiteral("Bank"),
                                                           clipitto::PasswordKeeper::passwordsGroup()).id;

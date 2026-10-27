@@ -15,6 +15,15 @@ namespace clipitto::db {
 namespace {
 
 // Column order read by readEntry().
+// The condition for a copy (alias c) to be listed in Recent.
+#define IN_RECENT                                                                                      \
+    "(c.is_saved = 0 OR (c.off_recent = 0 AND NOT CASE "                                                \
+    "WHEN c.group_name IS NOT NULL AND c.group_name <> '' THEN EXISTS (SELECT 1 FROM groups g "         \
+    "WHERE g.hide_from_recent = 1 AND (c.group_name = g.path "                                          \
+    "OR substr(c.group_name, 1, length(g.path) + 1) = g.path || '/')) "                                 \
+    "ELSE c.is_favorite = 1 AND EXISTS (SELECT 1 FROM meta "                                            \
+    "WHERE key = 'favorites_hide_from_recent' AND value = '1') END))"
+
 #define CLIP_COLUMNS                                                                                   \
     "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position, " \
     "c.kind, c.content_hash, c.secret"
@@ -53,30 +62,30 @@ Repository::Repository(Db& db, Clock clock)
     // created_at = last_used only holds right after an insert, which tells us whether the upsert inserted.
     m_ingest = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used) VALUES (?1, ?2, ?3, ?3)
-        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
+        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used, off_recent = 0
         RETURNING id, created_at = last_used)");
     m_ingestImage = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used, kind) VALUES (?1, ?2, ?3, ?3, 'image')
-        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
+        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used, off_recent = 0
         RETURNING id, created_at = last_used)");
     m_ingestSecret = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used, secret) VALUES (?1, ?2, ?3, ?3, 1)
-        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used
+        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used, off_recent = 0
         RETURNING id, created_at = last_used)");
     m_imageDetails = std::make_unique<Stmt>(m_db, "SELECT width, height, thumbnail FROM clip_images WHERE clip_id = ?1");
 
-    // ?2: a group whose password copies are left out of the list (NULL: none).
-    m_recentAll = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
-        WHERE (?2 IS NULL OR c.secret = 0 OR c.group_name IS NOT ?2)
-        ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
+    // Recent shows every unfiled copy, and a filed one unless it was taken off Recent or its
+    // group (Favorites, for a starred copy in none) is kept out of it. A copy in a group is
+    // hidden by that group or any group above it.
+    m_recentAll = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE " IN_RECENT
+                                               " ORDER BY c.last_used DESC, c.id DESC LIMIT ?1");
 
     m_recentUnsaved = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
         WHERE c.is_saved = 0
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
-    m_recentUnpinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
-        WHERE c.pin_position IS NULL AND (?2 IS NULL OR c.secret = 0 OR c.group_name IS NOT ?2)
-        ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
+    m_recentUnpinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.pin_position IS NULL AND " IN_RECENT
+                                                    " ORDER BY c.last_used DESC, c.id DESC LIMIT ?1");
 
     m_pinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
         WHERE c.pin_position IS NOT NULL
@@ -372,23 +381,87 @@ std::vector<Entry> Repository::collect(Stmt& stmt)
     return result;
 }
 
-std::vector<Entry> Repository::recent(int limit, bool unsavedOnly, const QString& hideSecretsIn)
+std::vector<Entry> Repository::recent(int limit, bool unsavedOnly)
 {
     Stmt& s = unsavedOnly ? *m_recentUnsaved : *m_recentAll;
     s.reset();
     s.bindInt(1, limit);
-    if (!unsavedOnly) { // unsaved copies are in no group
-        s.bindTextOrNull(2, hideSecretsIn);
-    }
     return collect(s);
 }
 
-std::vector<Entry> Repository::recentUnpinned(int limit, const QString& hideSecretsIn)
+std::vector<Entry> Repository::recentUnpinned(int limit)
 {
     m_recentUnpinned->reset();
     m_recentUnpinned->bindInt(1, limit);
-    m_recentUnpinned->bindTextOrNull(2, hideSecretsIn);
     return collect(*m_recentUnpinned);
+}
+
+void Repository::takeOffRecent(qint64 id)
+{
+    Stmt s(m_db, "UPDATE clips SET off_recent = 1 WHERE id = ?1 AND is_saved = 1");
+    s.bindInt(1, id).run();
+}
+
+qint64 Repository::countRecent()
+{
+    Stmt s(m_db, "SELECT count(*) FROM clips c WHERE c.pin_position IS NULL AND " IN_RECENT);
+    s.step();
+    return s.colInt(0);
+}
+
+qint64 Repository::clearRecent()
+{
+    qint64 cleared = 0;
+    {
+        Transaction tx(m_db);
+        // Filed copies only leave Recent, unfiled ones are deleted: count what Recent showed.
+        Stmt count(m_db, "SELECT count(*) FROM clips c WHERE c.pin_position IS NULL AND " IN_RECENT);
+        count.step();
+        cleared = count.colInt(0);
+        Stmt off(m_db, "UPDATE clips SET off_recent = 1 WHERE is_saved = 1 AND pin_position IS NULL");
+        off.run();
+        Stmt del(m_db, "DELETE FROM clips WHERE is_saved = 0");
+        del.run();
+        m_db.exec("INSERT INTO clips_fts(clips_fts) VALUES ('optimize');");
+        tx.commit();
+    }
+    if (!checkpoint()) {
+        qWarning() << "Recent cleared, but the write-ahead log is still in use; it is folded in later";
+    }
+    return cleared;
+}
+
+void Repository::setGroupHiddenFromRecent(const QString& path, bool hidden)
+{
+    const QString normalized = groups::normalize(path);
+    if (normalized.isEmpty()) {
+        return;
+    }
+    if (hidden) {
+        createGroup(normalized);
+    }
+    Stmt s(m_db, "UPDATE groups SET hide_from_recent = ?2 WHERE path = ?1");
+    s.bindText(1, normalized).bindInt(2, hidden ? 1 : 0).run();
+}
+
+bool Repository::groupHiddenFromRecent(const QString& path)
+{
+    Stmt s(m_db, "SELECT hide_from_recent FROM groups WHERE path = ?1");
+    s.bindText(1, groups::normalize(path));
+    return s.step() && s.colInt(0) == 1;
+}
+
+void Repository::setFavoritesHiddenFromRecent(bool hidden)
+{
+    Stmt s(m_db, "INSERT INTO meta(key, value) VALUES ('favorites_hide_from_recent', ?1) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    s.bindText(1, hidden ? QStringLiteral("1") : QStringLiteral("0")).run();
+}
+
+bool Repository::favoritesHiddenFromRecent()
+{
+    Stmt s(m_db, "SELECT value FROM meta WHERE key = 'favorites_hide_from_recent'");
+    return s.step() && s.colText(0) == QLatin1String("1");
 }
 
 std::vector<Entry> Repository::pinned(int limit)
