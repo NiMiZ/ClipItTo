@@ -133,6 +133,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_startup(new QCheckBox(tr("Start ClipItTo when I sign in"), this))
     , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
     , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
+    , m_ignoreCase(new QCheckBox(tr("Ignore letter case (ABC = abc)"), this))
+    , m_passwordsPerNote(new QCheckBox(tr("Keep the same password separately when its note differs"), this))
     , m_tabs(new QTabWidget(this))
     , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
     , m_shortcut(new QKeySequenceEdit(this))
@@ -195,6 +197,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_kept->setToolTip(tr("How many copies the history keeps before the oldest are deleted (10-1,000,000). "
                           "Pinned, starred and grouped copies are always kept and don't count."));
     form->addRow(tr("Copies kept in history:"), m_kept);
+    m_ignoreCase->setChecked(config.ignoreCase);
+    m_ignoreCase->setToolTip(tr("Texts that differ only in capital letters are one copy. The wording you copied "
+                                "last is the one kept; turning this on merges the copies already there."));
+    form->addRow(QString(), m_ignoreCase);
 
     m_images->setRange(0, 100'000);
     m_images->setGroupSeparatorShown(true);
@@ -395,6 +401,14 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                                  .arg(config.passwordSearchKeyword.toHtmlEscaped())));
     passwordsForm->addRow(QString(), m_passwordsInRecent);
     connect(m_passwordsInGroup, &QCheckBox::toggled, this, &SettingsDialog::updatePasswordDependents);
+    m_passwordsPerNote->setChecked(config.passwordsPerNote);
+    m_passwordsPerNote->setToolTip(QStringLiteral("<p>%1</p>")
+                                       .arg(tr("Off: copying a password you already have only moves it to the top, "
+                                               "whatever its note. On: the same password with a different note "
+                                               "(for example copied from another app, or under another name) is "
+                                               "kept as a separate copy; the same password with the same note is "
+                                               "still one copy.")));
+    passwordsForm->addRow(QString(), m_passwordsPerNote);
     m_askNote->setChecked(config.passwordAskNote);
     m_askNote->setToolTip(QStringLiteral("<p>%1</p>")
                               .arg(tr("Right after you copy a new password, ClipItTo opens with a box to name it. The "
@@ -554,6 +568,8 @@ Config SettingsDialog::config() const
     c.encryptHistory = m_encrypt->isChecked();
     c.pasteOnEnter = m_paste->isChecked();
     c.latestAfterPaste = m_latest->isChecked();
+    c.ignoreCase = m_ignoreCase->isChecked();
+    c.passwordsPerNote = m_passwordsPerNote->isChecked();
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
     c.passwordAskNote = m_askNote->isChecked();
@@ -751,6 +767,7 @@ void SettingsDialog::updatePasswordPage()
     m_setMaster->setEnabled(keeper && !m_busy);
     m_removeMaster->setEnabled(setUp && !m_busy);
     m_askNote->setEnabled(setUp);
+    m_passwordsPerNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
                        static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),
                        static_cast<QWidget*>(m_keyword)}) {

@@ -129,6 +129,8 @@ public:
     QCheckBox* startupBox() const { return m_startup; }
     QCheckBox* pasteBox() const { return m_paste; }
     QCheckBox* latestBox() const { return m_latest; }
+    QCheckBox* ignoreCaseBox() const { return m_ignoreCase; }
+    QCheckBox* passwordsPerNoteBox() const { return m_passwordsPerNote; }
     QDialogButtonBox* buttons() const { return m_buttons; }
     QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
@@ -180,6 +182,8 @@ private:
     QCheckBox* m_startup;
     QCheckBox* m_paste;
     QCheckBox* m_latest;
+    QCheckBox* m_ignoreCase;
+    QCheckBox* m_passwordsPerNote;
     QTabWidget* m_tabs;
     QDialogButtonBox* m_buttons;
     QKeySequenceEdit* m_shortcut;

@@ -35,6 +35,7 @@ start_focus = "pinned"      # where the selection starts when the popup opens an
                             # pinned (first pinned copy) | grouped (first copy in a group) |
                             # unsaved (first copy that isn't pinned, starred or grouped);
                             # the first copy when there is none of that kind
+ignore_case = false          # "ABC" and "abc" are one copy; the one copied last is kept
 encrypt_history = false     # encrypt history.db; the key is kept in the system keyring
 
 # Password copies: copies a password manager marks as secret (KeePassXC, Bitwarden, KeePass,
@@ -43,6 +44,7 @@ encrypt_history = false     # encrypt history.db; the key is kept in the system 
 keep_passwords = true       # false = skip them, as without a master password
 passwords_in_group = false  # put new password copies in the "Passwords" group
                             # (false: only in the group and in the p[] search)
+passwords_per_note = false  # the same password under a different note is kept as a separate copy
 password_ask_note = false   # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
