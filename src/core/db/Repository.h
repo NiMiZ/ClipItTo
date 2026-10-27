@@ -176,6 +176,22 @@ public:
 
     static QString hashOf(const QString& text);
 
+    // With `ignore`, texts that differ only in letter case are one copy (the wording copied
+    // last is kept). Changing it re-hashes the history once, merging copies that now match
+    // into the most recently used one; the choice is remembered in the history file.
+    void setIgnoreCase(bool ignore);
+    bool ignoreCase() const { return m_ignoreCase; }
+    // The hash that identifies `text` as a copy, under the current choice.
+    QString textHash(const QString& text) const;
+
+    // With `perNote`, the same password under a different note is another copy; otherwise it
+    // is the same copy whatever its note.
+    void setSecretsPerNote(bool perNote) { m_secretsPerNote = perNote; }
+    // Whether a password copy with this match (and, per note, this note) is kept already.
+    bool hasSecret(const QString& match, const QString& note);
+    // Every password copy with this match, newest first.
+    std::vector<Entry> findSecrets(const QString& match);
+
 private:
     QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
@@ -190,6 +206,8 @@ private:
     Db& m_db;
     Clock m_clock;
     Limits m_limits;
+    bool m_ignoreCase = false;
+    bool m_secretsPerNote = false;
     QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;
     std::unique_ptr<Stmt> m_ingestImage;

@@ -33,18 +33,22 @@ private slots:
         QVERIFY(defaults.keepPasswords);
         QVERIFY(!defaults.passwordsInGroup);
         QVERIFY(!defaults.passwordAskNote);
+        QVERIFY(!defaults.passwordsPerNote);
+        QVERIFY(!defaults.ignoreCase);
         QCOMPARE(defaults.passwordUnlockMinutes, 5);
         QCOMPARE(defaults.passwordClearSeconds, 30);
         QVERIFY(!defaults.windowsHello);
         QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
 
         const Config c = Config::fromToml("keep_passwords = false\npasswords_in_group = true\n"
-                                          "password_ask_note = true\n"
+                                          "password_ask_note = true\npasswords_per_note = true\nignore_case = true\n"
                                           "password_unlock_minutes = 15\nwindows_hello = true\n"
                                           "password_search_keyword = \"pw:\"\n");
         QVERIFY(!c.keepPasswords);
         QVERIFY(c.passwordsInGroup);
         QVERIFY(c.passwordAskNote);
+        QVERIFY(c.passwordsPerNote);
+        QVERIFY(c.ignoreCase);
         QCOMPARE(c.passwordUnlockMinutes, 15);
         QVERIFY(c.windowsHello);
         QCOMPARE(c.passwordSearchKeyword, QStringLiteral("pw:"));

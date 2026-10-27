@@ -9,6 +9,7 @@
 #include <QHash>
 
 #include <algorithm>
+#include <map>
 
 namespace clipitto::db {
 
@@ -62,7 +63,8 @@ Repository::Repository(Db& db, Clock clock)
     // created_at = last_used only holds right after an insert, which tells us whether the upsert inserted.
     m_ingest = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used) VALUES (?1, ?2, ?3, ?3)
-        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used, off_recent = 0
+        ON CONFLICT(content_hash) DO UPDATE SET last_used = excluded.last_used, off_recent = 0,
+            content = excluded.content
         RETURNING id, created_at = last_used)");
     m_ingestImage = std::make_unique<Stmt>(m_db, R"(
         INSERT INTO clips(content, content_hash, created_at, last_used, kind) VALUES (?1, ?2, ?3, ?3, 'image')
@@ -114,6 +116,8 @@ Repository::Repository(Db& db, Clock clock)
 
     m_count = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips");
     m_countUnsaved = std::make_unique<Stmt>(m_db, "SELECT count(*) FROM clips WHERE is_saved = 0");
+    Stmt mode(m_db, "SELECT value FROM meta WHERE key = 'ignore_case'");
+    m_ignoreCase = mode.step() && mode.colText(0) == QLatin1String("1");
 }
 
 Repository::~Repository() = default;
@@ -135,11 +139,74 @@ QString Repository::hashOf(const QString& text)
     return QString::fromLatin1(QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
+QString Repository::textHash(const QString& text) const
+{
+    return hashOf(m_ignoreCase ? text.toCaseFolded() : text);
+}
+
+void Repository::setIgnoreCase(bool ignore)
+{
+    if (ignore == m_ignoreCase) {
+        return;
+    }
+    Transaction tx(m_db);
+    // Newest first, so that of copies that now match the most recently used one is kept.
+    struct Row {
+        qint64 id;
+        QString text;
+    };
+    std::vector<Row> rows;
+    {
+        Stmt s(m_db, "SELECT id, content FROM clips WHERE kind = 'text' AND secret = 0 "
+                     "ORDER BY last_used DESC, id DESC");
+        while (s.step()) {
+            rows.push_back({s.colInt(0), s.colText(1)});
+        }
+    }
+    // Free every hash first: a copy's new hash may be the current one of another copy.
+    m_db.exec("UPDATE clips SET content_hash = 'rehash:' || id WHERE kind = 'text' AND secret = 0;");
+    m_ignoreCase = ignore;
+    std::map<QString, qint64> owners; // new hash -> the copy that has it
+    for (const Row& row : rows) {
+        const QString hash = textHash(row.text);
+        const auto owner = owners.find(hash);
+        if (owner == owners.end()) {
+            Stmt set(m_db, "UPDATE clips SET content_hash = ?2 WHERE id = ?1");
+            set.bindInt(1, row.id).bindText(2, hash).run();
+            owners.emplace(hash, row.id);
+            continue;
+        }
+        // An older wording of the same text: its filing moves to the kept copy, which keeps
+        // what it has itself.
+        Stmt pin(m_db, "SELECT pin_position FROM clips WHERE id = ?1");
+        pin.bindInt(1, row.id);
+        const bool pinned = pin.step() && !pin.colIsNull(0);
+        const qint64 pinPosition = pinned ? pin.colInt(0) : 0;
+        pin.reset();
+        Stmt merge(m_db, R"(UPDATE clips SET
+                tag_or_note = COALESCE(tag_or_note, (SELECT tag_or_note FROM clips WHERE id = ?2)),
+                group_name = COALESCE(group_name, (SELECT group_name FROM clips WHERE id = ?2)),
+                is_favorite = MAX(is_favorite, (SELECT is_favorite FROM clips WHERE id = ?2))
+            WHERE id = ?1)");
+        merge.bindInt(1, owner->second).bindInt(2, row.id).run();
+        remove(row.id);
+        if (pinned) {
+            Stmt setPin(m_db, "UPDATE clips SET pin_position = ?2 WHERE id = ?1 AND pin_position IS NULL");
+            setPin.bindInt(1, owner->second).bindInt(2, pinPosition).run();
+        }
+    }
+    Stmt save(m_db, "INSERT INTO meta(key, value) VALUES ('ignore_case', ?1) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    save.bindText(1, ignore ? QStringLiteral("1") : QStringLiteral("0")).run();
+    m_db.exec("INSERT INTO clips_fts(clips_fts) VALUES ('optimize');");
+    tx.commit();
+}
+
 Repository::IngestResult Repository::ingest(const QString& text)
 {
     Stmt& s = *m_ingest;
     s.reset();
-    s.bindText(1, text).bindText(2, hashOf(text)).bindText(3, now());
+    s.bindText(1, text).bindText(2, textHash(text)).bindText(3, now());
     s.step();
     const IngestResult result{s.colInt(0), s.colInt(1) != 0};
     s.run();
@@ -170,11 +237,26 @@ Repository::IngestResult Repository::ingestSecret(const QByteArray& sealed, cons
                                                   const QString& note, const QString& group)
 {
     Transaction tx(m_db);
-    Stmt& s = *m_ingestSecret;
-    s.reset();
-    const QString hash = match.isEmpty()
+    QString hash = match.isEmpty()
         ? QStringLiteral("secret:unmatched:") + QString::fromLatin1(PasswordVault::randomBytes(16).toHex())
         : match;
+    if (!m_secretsPerNote && !match.isEmpty()) {
+        if (const auto existing = findSecret(match)) {
+            hash = existing->contentHash; // the same password, whatever its note
+        }
+    } else if (!match.isEmpty()) {
+        // The same password under another note is another copy: it needs a hash of its own.
+        const auto same = findSecrets(match);
+        for (const Entry& e : same) {
+            if (e.note == note.trimmed()) {
+                hash = e.contentHash; // this one is copied again
+                break;
+            }
+            hash = match + QLatin1Char(':') + QString::fromLatin1(PasswordVault::randomBytes(8).toHex());
+        }
+    }
+    Stmt& s = *m_ingestSecret;
+    s.reset();
     s.bindText(1, secretLabel()).bindText(2, hash).bindText(3, now());
     s.step();
     const IngestResult result{s.colInt(0), s.colInt(1) != 0};
@@ -212,15 +294,34 @@ std::vector<std::pair<qint64, QByteArray>> Repository::allSealedSecrets()
     return result;
 }
 
-std::optional<Entry> Repository::findSecret(const QString& match)
+std::vector<Entry> Repository::findSecrets(const QString& match)
 {
     if (match.isEmpty()) {
-        return std::nullopt;
+        return {};
     }
-    Stmt s(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.content_hash = ?1 AND c.secret = 1");
+    // "secret:<hex>" for the first copy of a password, "secret:<hex>:<random>" for the same
+    // password under another note (passwords_per_note).
+    Stmt s(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.secret = 1 AND "
+                 "(c.content_hash = ?1 OR substr(c.content_hash, 1, length(?1) + 1) = ?1 || ':') "
+                 "ORDER BY c.last_used DESC, c.id DESC");
     s.bindText(1, match);
-    auto rows = collect(s);
+    return collect(s);
+}
+
+std::optional<Entry> Repository::findSecret(const QString& match)
+{
+    auto rows = findSecrets(match);
     return rows.empty() ? std::nullopt : std::optional<Entry>(std::move(rows.front()));
+}
+
+bool Repository::hasSecret(const QString& match, const QString& note)
+{
+    for (const Entry& e : findSecrets(match)) {
+        if (!m_secretsPerNote || e.note == note.trimmed()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 qint64 Repository::convertToSecret(qint64 id, const QByteArray& sealed, const QString& match)
@@ -228,14 +329,24 @@ qint64 Repository::convertToSecret(qint64 id, const QByteArray& sealed, const QS
     qint64 holder = id;
     {
         Transaction tx(m_db);
-        if (const auto existing = findSecret(match); existing && existing->id != id) {
+        const auto self = get(id);
+        std::optional<Entry> existing;
+        for (const Entry& e : findSecrets(match)) {
+            if (e.id != id && (!m_secretsPerNote || (self && e.note == self->note))) {
+                existing = e;
+                break;
+            }
+        }
+        if (existing) {
             remove(id); // the same password is already kept
             holder = existing->id;
         } else {
             Stmt update(m_db, "UPDATE clips SET content = ?2, content_hash = ?3, secret = 1, kind = 'text' WHERE id = ?1");
-            const QString hash = match.isEmpty()
-                ? QStringLiteral("secret:unmatched:") + QString::fromLatin1(PasswordVault::randomBytes(16).toHex())
-                : match;
+            // The same password under another note (passwords_per_note) needs a hash of its own.
+            const bool taken = !match.isEmpty() && !findSecrets(match).empty();
+            const QString hash = match.isEmpty() ? QStringLiteral("secret:unmatched:") + QString::fromLatin1(PasswordVault::randomBytes(16).toHex())
+                : taken ? match + QLatin1Char(':') + QString::fromLatin1(PasswordVault::randomBytes(8).toHex())
+                        : match;
             update.bindInt(1, id).bindText(2, secretLabel()).bindText(3, hash);
             update.run();
             Stmt store(m_db, "INSERT OR REPLACE INTO clip_secrets(clip_id, sealed) VALUES (?1, ?2)");
@@ -253,7 +364,7 @@ qint64 Repository::convertToText(qint64 id, const QString& text)
     qint64 holder = id;
     Transaction tx(m_db);
     Stmt find(m_db, "SELECT id FROM clips WHERE content_hash = ?1");
-    find.bindText(1, hashOf(text));
+    find.bindText(1, textHash(text));
     if (find.step() && find.colInt(0) != id) {
         holder = find.colInt(0);
         find.reset();
@@ -261,7 +372,7 @@ qint64 Repository::convertToText(qint64 id, const QString& text)
     } else {
         find.reset();
         Stmt update(m_db, "UPDATE clips SET content = ?2, content_hash = ?3, secret = 0 WHERE id = ?1");
-        update.bindInt(1, id).bindText(2, text).bindText(3, hashOf(text));
+        update.bindInt(1, id).bindText(2, text).bindText(3, textHash(text));
         update.run();
         Stmt drop(m_db, "DELETE FROM clip_secrets WHERE clip_id = ?1");
         drop.bindInt(1, id);

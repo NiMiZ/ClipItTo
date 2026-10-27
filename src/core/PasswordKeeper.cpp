@@ -353,8 +353,8 @@ std::vector<qint64> PasswordKeeper::search(const QString& typed) const
             QByteArray plain = typed.toUtf8();
             const QString match = m_vault.match(plain);
             PasswordVault::wipe(plain);
-            if (const auto entry = m_repo.findSecret(match)) {
-                found.push_back(entry->id);
+            for (const Entry& entry : m_repo.findSecrets(match)) {
+                found.push_back(entry.id);
             }
         }
     } catch (const db::DbError& e) {

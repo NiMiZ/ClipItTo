@@ -303,7 +303,7 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
             if (content.isEmpty()) {
                 continue;
             }
-            if (repo.findByHash(db::Repository::hashOf(content))) {
+            if (repo.findByHash(repo.textHash(content))) {
                 ++report.alreadyThere;
                 continue;
             }
@@ -331,10 +331,10 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
                     continue;
                 }
                 const QString match = vault.match(*plain);
-                if (!match.isEmpty() && repo.findByHash(match)) {
+                if (!match.isEmpty() && repo.hasSecret(match, o.value(QStringLiteral("note")).toString())) {
                     ++report.alreadyThere;
                 } else {
-                    restore(repo.ingestSecret(vault.seal(*plain), match, QString(), QString()).id, o);
+                    restore(repo.ingestSecret(vault.seal(*plain), match, o.value(QStringLiteral("note")).toString(), QString()).id, o);
                     ++report.passwordsAdded;
                 }
                 PasswordVault::wipe(*plain);
