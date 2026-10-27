@@ -732,6 +732,82 @@ private slots:
         QCOMPARE(t.repo->clearRecent(), 0);
     }
 
+    void ignoringCaseMakesDifferentWordingsOneCopyAndKeepsTheLatest()
+    {
+        TestDb t;
+        const auto first = t.repo->ingest(QStringLiteral("Hello World")).id;
+        QVERIFY(t.repo->ingest(QStringLiteral("hello world")).inserted); // case matters by default
+        QCOMPARE(t.repo->count(), 2);
+
+        t.repo->setIgnoreCase(true);
+        QCOMPARE(t.repo->count(), 1); // merged into the one used last
+        QCOMPARE(t.repo->search(QStringLiteral("hello")).front().content, QStringLiteral("hello world"));
+        QVERIFY(!t.repo->get(first).has_value());
+
+        const auto again = t.repo->ingest(QStringLiteral("HELLO WORLD"));
+        QVERIFY(!again.inserted);
+        QCOMPARE(t.repo->count(), 1);
+        QCOMPARE(t.repo->get(again.id)->content, QStringLiteral("HELLO WORLD")); // the latest wording
+        QCOMPARE(t.repo->recentUnpinned(5).size(), 1u);
+
+        // Off again: wordings that differ in case are different copies from now on.
+        t.repo->setIgnoreCase(false);
+        QVERIFY(t.repo->ingest(QStringLiteral("hello world")).inserted);
+        QCOMPARE(t.repo->count(), 2);
+    }
+
+    void turningIgnoreCaseOnKeepsTheFilingOfMergedCopies()
+    {
+        TestDb t;
+        const auto older = t.repo->ingest(QStringLiteral("Kubectl Get Pods")).id;
+        t.repo->setNote(older, QStringLiteral("pods"));
+        t.repo->setGroup(older, QStringLiteral("Work"));
+        t.repo->setFavorite(older, true);
+        const auto newer = t.repo->ingest(QStringLiteral("kubectl get pods")).id;
+
+        t.repo->setIgnoreCase(true);
+        QCOMPARE(t.repo->count(), 1);
+        const auto kept = t.repo->get(newer);
+        QVERIFY(kept);
+        QCOMPARE(kept->content, QStringLiteral("kubectl get pods"));
+        QCOMPARE(kept->note, QStringLiteral("pods"));
+        QCOMPARE(kept->group, QStringLiteral("Work"));
+        QVERIFY(kept->favorite);
+
+        // Remembered in the history file: a new Repository on it starts in the same mode.
+        clipitto::db::Repository again(t.db);
+        QVERIFY(again.ignoreCase());
+    }
+
+    void thePasswordUnderAnotherNoteIsAnotherCopyOnlyWhenAsked()
+    {
+        TestDb t;
+        const QString match = QStringLiteral("secret:abc");
+        const auto first = t.repo->ingestSecret("S1", match, QStringLiteral("KeePassXC"), QString());
+        QVERIFY(first.inserted);
+        // Default: the same password is one copy whatever the note.
+        QVERIFY(!t.repo->ingestSecret("S2", match, QStringLiteral("Bitwarden"), QString()).inserted);
+        QCOMPARE(t.repo->countSecrets(), 1);
+
+        t.repo->setSecretsPerNote(true);
+        const auto other = t.repo->ingestSecret("S3", match, QStringLiteral("Bitwarden"), QString());
+        QVERIFY(other.inserted);
+        QCOMPARE(t.repo->countSecrets(), 2);
+        QCOMPARE(t.repo->get(other.id)->note, QStringLiteral("Bitwarden"));
+        // Same password, same note: still one.
+        QVERIFY(!t.repo->ingestSecret("S4", match, QStringLiteral("Bitwarden"), QString()).inserted);
+        QVERIFY(!t.repo->ingestSecret("S5", match, QStringLiteral("KeePassXC"), QString()).inserted);
+        QCOMPARE(t.repo->countSecrets(), 2);
+        QCOMPARE(t.repo->findSecrets(match).size(), 2u); // a whole-password search finds both
+        QVERIFY(t.repo->hasSecret(match, QStringLiteral("Bitwarden")));
+        QVERIFY(!t.repo->hasSecret(match, QStringLiteral("Other")));
+
+        // Back to the default: the next copy is the same as the newest one, not a third.
+        t.repo->setSecretsPerNote(false);
+        QVERIFY(!t.repo->ingestSecret("S6", match, QStringLiteral("Third"), QString()).inserted);
+        QCOMPARE(t.repo->countSecrets(), 2);
+    }
+
     void groupPathsAreNormalized()
     {
         TestDb t;

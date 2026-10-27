@@ -155,6 +155,14 @@ pinned and grouped copies, which stay where they are.
   its sub-groups, don't appear in Recent. The Passwords group has this as the *Also show them in
   Recent* setting.
 
+**Duplicates:** each text is one copy; copying it again moves it to the top. With *Ignore letter
+case* (General, `ignore_case`, off by default) "ABC" and "abc" are the same copy and the wording you
+copied last is the one kept; turning it on merges the copies already there (notes, groups and stars
+move to the one that stays). A password is one copy too, whatever its note; with *Keep the same
+password separately when its note differs* (Passwords, `passwords_per_note`, off by default) the
+same password under another note (say, copied from another app) is its own copy, and only the same
+password with the same note is merged.
+
 **Backup** (Settings › Backup): *Export…* writes your copies (with notes, stars, pins, groups and
 pictures) and/or your settings to one JSON file; *Import…* adds a file's contents to what is here
 (copies already in the history are left alone). Tick *Copies* and/or *Settings* when exporting;

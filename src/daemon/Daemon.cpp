@@ -138,6 +138,8 @@ Daemon::StartResult Daemon::start(QString* error)
         db::migrate(*m_db);
         m_repo = std::make_unique<db::Repository>(*m_db);
         m_repo->setLimits(repositoryLimits(m_config));
+        m_repo->setIgnoreCase(m_config.ignoreCase);
+        m_repo->setSecretsPerNote(m_config.passwordsPerNote);
         m_repo->prune(m_config.maxHistory); // the limits may have been lowered since last run
         m_repo->pruneImages(m_config.maxImages);
     } catch (const db::DbError& e) {
@@ -782,6 +784,12 @@ void Daemon::reload(bool forceShortcut)
         m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
     }
     m_repo->setLimits(repositoryLimits(m_config));
+    try {
+        m_repo->setIgnoreCase(m_config.ignoreCase);
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "changing the case rule failed:" << e.what();
+    }
+    m_repo->setSecretsPerNote(m_config.passwordsPerNote);
     applyPasswordSettings();
     if (m_config.theme != previous.theme) {
         ui::applyTheme(m_config.theme);
