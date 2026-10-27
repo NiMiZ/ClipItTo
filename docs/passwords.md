@@ -1,0 +1,88 @@
+# Encrypted history and password copies
+
+Back to the [README](../README.md).
+
+## Encrypted history
+
+Settings › *Encrypt the history on disk* encrypts `history.db` (copies, notes, groups, the
+search index) with 256-bit ChaCha20-Poly1305 via the bundled
+[SQLite3 Multiple Ciphers](https://github.com/utelle/SQLite3MultipleCiphers). The random key
+is kept in the system keyring (GNOME Keyring / KWallet through Secret Service, or the
+Windows Credential Manager), so there is no password to type; without a reachable keyring
+the option says why it is unavailable. Turning it on or off converts the history once, in
+the background. It protects the file at rest (backups, other accounts, a stolen disk
+without full-disk encryption), not against programs running as you, which can read the
+clipboard and the keyring anyway. Copies made before turning it on may still be
+recoverable from free disk space (old journal blocks); only full-disk encryption covers
+that. If the keyring entry is lost, the history cannot be read. History files are created
+readable by your account only.
+
+Measured cost (`build/debug/tests/bench_encryption`, debug build, 1000 copies):
+
+| | plain | encrypted |
+|---|---|---|
+| open + first read | 0.6 ms | 27 ms |
+| store one copy | 0.37 ms | 0.88 ms |
+| search | 4.0 ms | 4.2 ms |
+| one-time conversion | | ~50 ms |
+
+The build downloads the SQLite3 Multiple Ciphers amalgamation (pinned version and SHA-256);
+offline builds can set `FETCHCONTENT_SOURCE_DIR_SQLITE3MC` to an unpacked copy, or
+configure with `-DCLIPITTO_ENCRYPTION=OFF` to use the system SQLite.
+
+## Password copies
+
+Password managers (KeePassXC, Bitwarden, KeePass, 1Password, ...) mark what they copy as
+secret. Without a master password ClipItTo skips those copies, as before; the popup says once
+how to keep them. Once you set a master password in Settings › *Passwords*:
+
+- **Kept encrypted.** A marked copy is encrypted the moment it arrives (X25519 + XChaCha20-Poly1305,
+  via the built-in [Monocypher](https://monocypher.org)) and only that is stored. It works while
+  locked: copies are encrypted to a public key, and only unlocking can open them.
+- **Hidden.** It is listed as `●●●●` with a padlock, its note set to the app it came from
+  (Windows, X11, GNOME; not with wl-paste). Ordinary search finds it by note or group only.
+- **Unlocked with the master password.** Choosing one (Enter), *Show password* (10 s in its row)
+  and *Not a password* ask for it first. An unlock lasts 5 minutes (`password_unlock_minutes`);
+  `clipitto --lock` or *Lock passwords* ends it. Unlocking takes about 0.1 s (Argon2id, 64 MiB).
+  On Windows, *Unlock with Windows Hello too* lets your face, fingerprint or PIN do it.
+- **Pasted marked, then cleared.** A password pasted back carries the password-manager markers,
+  so other clipboard managers and Windows' clipboard history skip it too (not through the GNOME
+  extension, which can put only one format on the clipboard). It leaves the clipboard after
+  30 s (`password_clear_seconds`; 0 = never) unless you copied something else meanwhile.
+- **Searched with a keyword.** Type `p[] ` (the keyword and a space; Settings can change it):
+  what follows shows as asterisks and searches inside your passwords while unlocked, or for a
+  whole password while locked. Locked searching needs the system keyring, which keeps the key
+  for it; the history file alone can't be used to test guesses, and with the keyring each guess
+  still costs a memory-hard hash (Argon2id, 16 MiB).
+- Right-click *Mark as password* turns any copy into one (its text is wiped from the file);
+  *Put new password copies in the "Passwords" group* files them there (off by default). With
+  that on, *Also show them in Recent* chooses whether they also appear in the Recent list
+  (as `●●●●`) or only in the group and the `p[]` search.
+- *After copying a password, ask for a name* (off by default): when a **new** password is
+  copied, ClipItTo opens with a box to name it. The app it came from is suggested as grey
+  text that goes away when you type; leave the box empty (or cancel) to keep that name. The
+  window closes again afterwards if it wasn't open. (On Windows the window may not take the
+  focus when it opens by itself.)
+
+The master password is never stored or shown; only a key derived from it unlocks. Changing it
+also changes the key every password copy is sealed with. **If you forget it, the password
+copies can't be recovered**: *Remove…* deletes them and starts over.
+
+This protects them in the history file and from people using your computer while they are
+locked. It doesn't protect them from programs running as you: those can read the clipboard
+when a password is copied, and on GNOME a copied password travels from the shell extension to
+the daemon over your session's D-Bus. Passwords don't lock by themselves when the screen locks
+yet; use `clipitto --lock` (e.g. from your screen-lock hook) or a short unlock time.
+
+```bash
+clipitto --toggle | --show | --hide     # what the shortcut runs
+clipitto --lock                         # lock the password copies now
+clipitto --status                       # backend, item counts, extension state
+clipitto --reload                       # after editing ~/.config/clipitto/config.toml
+```
+
+Settings: see [config.example.toml](../data/config.example.toml) (installed under
+`/usr/share/doc/clipitto/`). History lives in `~/.local/share/clipitto/history.db`.
+Choosing a copy also pastes it into the window you came from; turn that off in Settings
+(*After choosing a copy: Paste it into the window I came from*) or with `paste_on_enter = false` to only copy it. On GNOME Wayland
+pasting needs the bundled extension.
