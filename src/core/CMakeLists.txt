@@ -11,6 +11,7 @@ add_library(clipitto_core STATIC
     Hotkey.cpp Hotkey.h
     KeyStore.h
     PasswordKeeper.cpp PasswordKeeper.h
+    PasswordPolicy.cpp PasswordPolicy.h
     PasswordVault.cpp PasswordVault.h
     Paths.cpp Paths.h
     SessionEnv.cpp SessionEnv.h

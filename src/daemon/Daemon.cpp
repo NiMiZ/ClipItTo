@@ -853,6 +853,8 @@ QVariantMap Daemon::status() const
             passwords = QStringLiteral("off (no master password)");
         } else if (!m_config.keepPasswords) {
             passwords = QStringLiteral("not kept (turned off in the settings)");
+        } else if (m_passwords->isOpen()) {
+            passwords = QStringLiteral("open (no master password: not secure)");
         } else if (m_passwords->isUnlocked()) {
             passwords = QStringLiteral("unlocked (%1 min left)").arg((m_passwords->secondsLeft() + 59) / 60);
         } else {

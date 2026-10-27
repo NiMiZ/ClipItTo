@@ -62,8 +62,16 @@ void PasswordKeeper::reload()
     ++m_generation;
     m_lockTimer.stop();
     m_vault.setMatchKey(isSetUp() ? matchKey(false) : QByteArray());
+    try {
+        m_open = isSetUp() && m_repo.vaultOpen();
+    } catch (const db::DbError&) {
+        m_open = false;
+    }
     if (wasUnlocked) {
         emit lockChanged(false);
+    }
+    if (m_open) {
+        unlock(openPassword(), [](bool) {});
     }
 }
 
@@ -108,6 +116,9 @@ void PasswordKeeper::setUnlockMinutes(int minutes)
 
 void PasswordKeeper::startLockTimer()
 {
+    if (m_open) {
+        return; // never locks
+    }
     m_lockTimer.start(m_unlockMinutes * 60 * 1000);
 }
 
@@ -139,6 +150,13 @@ void PasswordKeeper::unlock(QByteArray masterPassword, Done done)
 }
 
 void PasswordKeeper::lock()
+{
+    if (!m_open) {
+        lockNow();
+    }
+}
+
+void PasswordKeeper::lockNow()
 {
     m_lockTimer.stop();
     ++m_generation;
@@ -175,6 +193,23 @@ void PasswordKeeper::setMasterPassword(QByteArray masterPassword, Done done)
             emit vaultChanged();
             done(true);
         });
+}
+
+void PasswordKeeper::useWithoutMasterPassword(Done done)
+{
+    setMasterPassword(openPassword(), [this, done = std::move(done)](bool ok) {
+        if (!ok) {
+            done(false);
+            return;
+        }
+        try {
+            m_repo.setVaultOpen(true);
+        } catch (const db::DbError& e) {
+            qCWarning(lcPasswords) << "could not save the vault mode:" << e.what();
+        }
+        m_open = true;
+        unlock(openPassword(), done);
+    });
 }
 
 void PasswordKeeper::changeMasterPassword(QByteArray oldPassword, QByteArray newPassword, Done done)
@@ -225,7 +260,14 @@ void PasswordKeeper::changeMasterPassword(QByteArray oldPassword, QByteArray new
                 return;
             }
             const QByteArray match = m_vault.canMatch() ? matchKey(false) : QByteArray();
-            lock();
+            if (m_open) {
+                m_open = false; // a real master password from now on
+                try {
+                    m_repo.setVaultOpen(false);
+                } catch (const db::DbError&) {
+                }
+            }
+            lockNow();
             m_vault.load(rekeyed->stored);
             m_vault.setMatchKey(match);
             emit vaultChanged();
@@ -235,7 +277,8 @@ void PasswordKeeper::changeMasterPassword(QByteArray oldPassword, QByteArray new
 
 void PasswordKeeper::reset()
 {
-    lock();
+    m_open = false;
+    lockNow();
     try {
         m_repo.resetVault();
     } catch (const db::DbError& e) {

@@ -83,6 +83,9 @@ public:
     void rekeyVault(const std::vector<std::pair<qint64, QByteArray>>& resealed, const PasswordVault::Stored& stored);
     // Removes the vault and every password copy (a forgotten or removed master password).
     void resetVault();
+    // The vault was set up without a master password (a fixed key, so nothing is protected).
+    bool vaultOpen();
+    void setVaultOpen(bool open);
 
     static QString secretLabel() { return QStringLiteral("Password"); }
 

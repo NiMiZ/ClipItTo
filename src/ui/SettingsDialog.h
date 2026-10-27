@@ -104,6 +104,7 @@ public:
     void setMasterPassword();
     void changeMasterPassword();
     void removeMasterPassword();
+    void useWithoutMasterPassword();
 
     // Group actions (the buttons on the Groups tab).
     void newGroup();
@@ -148,6 +149,7 @@ public:
     QLabel* masterStatus() const { return m_masterStatus; }
     QPushButton* setMasterButton() const { return m_setMaster; }
     QPushButton* removeMasterButton() const { return m_removeMaster; }
+    QPushButton* useOpenButton() const { return m_useOpen; }
 
     // Saves the one setting that lives in the history (whether password copies are in Recent).
     void accept() override;
@@ -210,6 +212,8 @@ private:
     QLabel* m_masterStatus;
     QPushButton* m_setMaster; // "Set…" or "Change…"
     QPushButton* m_removeMaster;
+    QPushButton* m_useOpen; // keep passwords without a master password
+    QLabel* m_openWarning;
     bool m_busy = false; // a master password is being derived
     QCheckBox* m_backupCopies;
     QCheckBox* m_backupSettings;

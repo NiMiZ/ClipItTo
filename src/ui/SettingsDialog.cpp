@@ -161,6 +161,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_masterStatus(new QLabel(this))
     , m_setMaster(new QPushButton(this))
     , m_removeMaster(new QPushButton(tr("Remove…"), this))
+    , m_useOpen(new QPushButton(tr("Use without one…"), this))
+    , m_openWarning(new QLabel(this))
     , m_backupCopies(new QCheckBox(tr("Copies, groups and passwords"), this))
     , m_backupSettings(new QCheckBox(tr("Settings"), this))
     , m_export(new QPushButton(tr("Export…"), this))
@@ -374,7 +376,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     masterRow->addWidget(m_masterStatus, 1);
     masterRow->addWidget(m_setMaster);
     masterRow->addWidget(m_removeMaster);
-    for (QPushButton* b : {m_setMaster, m_removeMaster}) {
+    masterRow->addWidget(m_useOpen);
+    for (QPushButton* b : {m_setMaster, m_removeMaster, m_useOpen}) {
         b->setAutoDefault(false);
     }
     auto* masterInfo = makeInfoButton(this);
@@ -388,6 +391,12 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                             .toHtmlEscaped());
     masterRow->addWidget(masterInfo);
     passwordsForm->addRow(tr("Master password:"), masterRow);
+    m_openWarning->setWordWrap(true);
+    m_openWarning->setTextFormat(Qt::RichText);
+    m_openWarning->setText(tr("<b style=\"color:#d03b3b\">Not secure.</b> Without a master password, password "
+                              "copies are only hidden: anyone who can read your history file, or use your account, "
+                              "can read them. Set a master password to protect them."));
+    passwordsForm->addRow(QString(), m_openWarning);
     m_keepPasswords->setChecked(config.keepPasswords);
     passwordsForm->addRow(tr("Password copies:"), m_keepPasswords);
     m_passwordsInGroup->setChecked(config.passwordsInGroup);
@@ -447,13 +456,14 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                              "copies; what you type next is shown as asterisks."));
     passwordsForm->addRow(tr("Password search keyword:"), m_keyword);
     connect(m_setMaster, &QPushButton::clicked, this, [this] {
-        if (m_passwordSupport.keeper && m_passwordSupport.keeper->isSetUp()) {
+        if (m_passwordSupport.keeper && m_passwordSupport.keeper->isSetUp() && !m_passwordSupport.keeper->isOpen()) {
             changeMasterPassword();
         } else {
             setMasterPassword();
         }
     });
     connect(m_removeMaster, &QPushButton::clicked, this, &SettingsDialog::removeMasterPassword);
+    connect(m_useOpen, &QPushButton::clicked, this, &SettingsDialog::useWithoutMasterPassword);
     connect(m_hello, &QCheckBox::toggled, this, &SettingsDialog::onHelloToggled);
     updatePasswordPage();
 
@@ -585,7 +595,7 @@ Config SettingsDialog::config() const
 void SettingsDialog::withMasterPassword(const QString& purpose, std::function<void(QByteArray password)> proceed)
 {
     PasswordKeeper* keeper = m_passwordSupport.keeper;
-    if (!keeper || !keeper->isSetUp()) {
+    if (!keeper || !keeper->isSetUp() || keeper->isOpen()) {
         proceed({});
         return;
     }
@@ -629,8 +639,17 @@ void SettingsDialog::exportBackup()
             return;
         }
         QString error;
+        backup::PasswordExport mode = backup::PasswordExport::Encrypted;
+        PasswordKeeper* keeper = m_passwordSupport.keeper;
+        if (keeper && keeper->isOpen() && parts.copies && m_repo.countSecrets() > 0) {
+            mode = m_confirm(this, tr("There is no master password, so password copies can only be exported as "
+                                      "PLAIN TEXT: anyone who gets the file can read them.\n\nInclude the "
+                                      "password copies in clear text? (No: export without them.)"))
+                ? backup::PasswordExport::Clear
+                : backup::PasswordExport::Omit;
+        }
         // The settings to export are the ones in the dialog now.
-        if (!backup::exportTo(path, m_repo, config(), m_passwordSupport.keeper, parts, password, &error)) {
+        if (!backup::exportTo(path, m_repo, config(), keeper, parts, password, &error, mode)) {
             m_notify(this, error);
             return;
         }
@@ -674,7 +693,7 @@ void SettingsDialog::finishImport(const QString& path, const backup::Info& info,
                                     "they can't be imported. Import the rest?", nullptr, info.passwords))) {
                 return;
             }
-        } else if (backupPassword.isEmpty() || !backup::passwordOpens(path, backupPassword)) {
+        } else if (!info.passwordsClear && (backupPassword.isEmpty() || !backup::passwordOpens(path, backupPassword))) {
             PasswordVault::wipe(backupPassword);
             std::optional<QString> typed =
                 m_passwordPrompt(this, tr("The backup's password copies use another master password. Enter it:"));
@@ -751,10 +770,18 @@ void SettingsDialog::updatePasswordPage()
 {
     PasswordKeeper* keeper = m_passwordSupport.keeper;
     const bool setUp = keeper && keeper->isSetUp();
+    const bool open = setUp && keeper->isOpen();
     if (!keeper) {
         m_masterStatus->setText(tr("Not available here."));
     } else if (!setUp) {
         m_masterStatus->setText(tr("Not set: password copies are not kept."));
+    } else if (open) {
+        qint64 count = 0;
+        try {
+            count = m_repo.countSecrets();
+        } catch (const db::DbError&) {
+        }
+        m_masterStatus->setText(tr("None (not secure). %n password copies kept.", nullptr, int(count)));
     } else {
         qint64 count = 0;
         try {
@@ -763,9 +790,13 @@ void SettingsDialog::updatePasswordPage()
         }
         m_masterStatus->setText(tr("Set. %n password copies kept.", nullptr, int(count)));
     }
-    m_setMaster->setText(setUp ? tr("Change…") : tr("Set…"));
+    m_setMaster->setText(setUp && !open ? tr("Change…") : tr("Set…"));
     m_setMaster->setEnabled(keeper && !m_busy);
+    m_removeMaster->setText(open ? tr("Turn off…") : tr("Remove…"));
     m_removeMaster->setEnabled(setUp && !m_busy);
+    m_useOpen->setVisible(!setUp);
+    m_useOpen->setEnabled(keeper && !m_busy);
+    m_openWarning->setVisible(open);
     m_askNote->setEnabled(setUp);
     m_passwordsPerNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
@@ -776,15 +807,42 @@ void SettingsDialog::updatePasswordPage()
     updatePasswordDependents();
     const QSignalBlocker block(m_hello);
     m_hello->setChecked(setUp && keeper->helloEnabled());
-    m_hello->setEnabled(setUp && m_passwordSupport.helloAvailable && m_passwordSupport.setHello && !m_busy);
+    m_hello->setEnabled(setUp && !open && m_passwordSupport.helloAvailable && m_passwordSupport.setHello && !m_busy);
 }
 
-void SettingsDialog::setMasterPassword()
+void SettingsDialog::useWithoutMasterPassword()
 {
     PasswordKeeper* keeper = m_passwordSupport.keeper;
     if (!keeper || keeper->isSetUp() || m_busy) {
         return;
     }
+    if (!m_confirm(this, tr("NOT SECURE. Without a master password your password copies are only hidden in the "
+                            "list. Anyone who can read your history file or use your account can read them, and "
+                            "an export can contain them as plain text.\n\nKeep password copies without a master "
+                            "password anyway? You can set a master password later."))) {
+        return;
+    }
+    m_busy = true;
+    updatePasswordPage();
+    keeper->useWithoutMasterPassword([this, self = QPointer<SettingsDialog>(this)](bool ok) {
+        if (!self) {
+            return;
+        }
+        m_busy = false;
+        updatePasswordPage();
+        if (!ok) {
+            m_notify(this, tr("Could not turn this on."));
+        }
+    });
+}
+
+void SettingsDialog::setMasterPassword()
+{
+    PasswordKeeper* keeper = m_passwordSupport.keeper;
+    if (!keeper || (keeper->isSetUp() && !keeper->isOpen()) || m_busy) {
+        return;
+    }
+    const bool fromOpen = keeper->isOpen();
     std::optional<MasterPasswordAnswer> answer = m_masterPrompt(this, /*change=*/false);
     if (!answer) {
         return;
@@ -792,7 +850,7 @@ void SettingsDialog::setMasterPassword()
     QByteArray chosen = PasswordVault::passwordBytes(answer->chosen);
     m_busy = true;
     updatePasswordPage();
-    keeper->setMasterPassword(std::move(chosen), [this, self = QPointer<SettingsDialog>(this)](bool ok) {
+    const auto finished = [this, self = QPointer<SettingsDialog>(this)](bool ok) {
         if (!self) {
             return;
         }
@@ -804,7 +862,12 @@ void SettingsDialog::setMasterPassword()
         } else {
             m_notify(this, tr("Could not set the master password."));
         }
-    });
+    };
+    if (fromOpen) { // the existing password copies move to the new password
+        keeper->changeMasterPassword(PasswordKeeper::openPassword(), std::move(chosen), finished);
+    } else {
+        keeper->setMasterPassword(std::move(chosen), finished);
+    }
 }
 
 void SettingsDialog::changeMasterPassword()
@@ -848,8 +911,10 @@ void SettingsDialog::removeMasterPassword()
         count = m_repo.countSecrets();
     } catch (const db::DbError&) {
     }
-    if (!m_confirm(this, tr("Remove the master password and delete all %n password copies? This can't be undone.",
-                            nullptr, int(count)))) {
+    const QString question = keeper->isOpen()
+        ? tr("Stop keeping password copies and delete all %n of them? This can't be undone.", nullptr, int(count))
+        : tr("Remove the master password and delete all %n password copies? This can't be undone.", nullptr, int(count));
+    if (!m_confirm(this, question)) {
         return;
     }
     if (keeper->helloEnabled() && m_passwordSupport.setHello) {

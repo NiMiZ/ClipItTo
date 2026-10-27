@@ -37,6 +37,11 @@ public:
     static QString passwordsGroup() { return QStringLiteral("Passwords"); }
 
     bool isSetUp() const { return m_vault.isSetUp(); }
+    // Set up without a master password: the vault opens with a fixed key at every start and
+    // never locks. Nothing is protected from anyone who can read the history file; it only
+    // keeps password copies out of plain sight.
+    bool isOpen() const { return m_open; }
+    static QByteArray openPassword() { return QByteArrayLiteral("clipitto-no-master-password"); }
     bool isUnlocked() const { return m_vault.isUnlocked(); }
     bool canMatch() const { return m_vault.canMatch(); } // false without a keyring
     QString matchProblem() const { return m_matchProblem; }
@@ -58,6 +63,8 @@ public:
 
     // Creates the vault for a first master password (and the keyring's match key).
     void setMasterPassword(QByteArray masterPassword, Done done);
+    // Like setMasterPassword(), but without one (see isOpen()). Unlocked once `done(true)` runs.
+    void useWithoutMasterPassword(Done done);
     // A new master password, and a new key pair: every password copy is re-sealed. `done(false)`
     // when `oldPassword` is wrong. Windows Hello has to be turned on again afterwards.
     void changeMasterPassword(QByteArray oldPassword, QByteArray newPassword, Done done);
@@ -86,6 +93,7 @@ signals:
 
 private:
     void startLockTimer();
+    void lockNow();
     QByteArray matchKey(bool create);
 
     db::Repository& m_repo;
@@ -94,6 +102,7 @@ private:
     VaultKdfCost m_cost;
     QTimer m_lockTimer;
     int m_unlockMinutes = 5;
+    bool m_open = false;
     QString m_matchProblem;
     quint64 m_generation = 0; // an unlock that finishes after a lock/reset is dropped
 };

@@ -86,7 +86,7 @@ std::optional<QJsonObject> readFile(const QString& path, QString* error)
 } // namespace
 
 bool exportTo(const QString& path, db::Repository& repo, const Config& config, PasswordKeeper* keeper, Parts parts,
-              const QByteArray& password, QString* error)
+              const QByteArray& password, QString* error, PasswordExport passwordMode)
 {
     if (!parts.any()) {
         return fail(error, QObject::tr("Nothing is chosen to export."));
@@ -111,16 +111,26 @@ bool exportTo(const QString& path, db::Repository& repo, const Config& config, P
         copies[QStringLiteral("groups")] = groups;
         copies[QStringLiteral("favorites_hide_from_recent")] = repo.favoritesHiddenFromRecent();
 
-        const std::vector<Entry> entries = repo.allEntries();
+        std::vector<Entry> entries = repo.allEntries();
+        if (passwordMode == PasswordExport::Omit) {
+            entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& e) { return e.secret; }),
+                          entries.end());
+        }
         const QSet<qint64> offRecent = repo.offRecentIds();
+        const bool clearPasswords = passwordMode == PasswordExport::Clear;
         const bool hasPasswords = std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.secret; });
         QByteArray key;
         QJsonObject passwords;
         QJsonArray passwordItems;
         if (hasPasswords) {
-            if (!keeper || !keeper->isUnlocked() || password.isEmpty()) {
+            if (!keeper || !keeper->isUnlocked() || (!clearPasswords && password.isEmpty())) {
                 return fail(error, QObject::tr("Password copies can only be exported while unlocked."));
             }
+            if (clearPasswords) {
+                passwords[QStringLiteral("clear")] = true;
+            }
+        }
+        if (hasPasswords && !clearPasswords) {
             const QByteArray salt = PasswordVault::randomBytes(16);
             key = PasswordVault::deriveBackupKey(password, salt, kCost);
             if (key.isEmpty()) {
@@ -145,7 +155,7 @@ bool exportTo(const QString& path, db::Repository& repo, const Config& config, P
                     PasswordVault::wipe(key);
                     return fail(error, QObject::tr("A password copy could not be opened."));
                 }
-                o[QStringLiteral("data")] = b64(PasswordVault::boxWithBackupKey(key, *plain));
+                o[QStringLiteral("data")] = b64(clearPasswords ? *plain : PasswordVault::boxWithBackupKey(key, *plain));
                 PasswordVault::wipe(*plain);
                 passwordItems.append(o);
                 continue;
@@ -197,7 +207,9 @@ Info inspect(const QString& path)
         info.parts.copies = true;
         info.copies = int(copies.value(QStringLiteral("items")).toArray().size());
         info.groups = int(copies.value(QStringLiteral("groups")).toArray().size());
-        info.passwords = int(copies.value(QStringLiteral("passwords")).toObject().value(QStringLiteral("items")).toArray().size());
+        const QJsonObject pw = copies.value(QStringLiteral("passwords")).toObject();
+        info.passwords = int(pw.value(QStringLiteral("items")).toArray().size());
+        info.passwordsClear = pw.value(QStringLiteral("clear")).toBool();
     }
     info.valid = info.parts.any();
     if (!info.valid) {
@@ -233,7 +245,7 @@ bool passwordOpens(const QString& path, const QByteArray& password)
     }
     const QJsonObject passwords =
         root->value(QStringLiteral("copies")).toObject().value(QStringLiteral("passwords")).toObject();
-    if (passwords.isEmpty()) {
+    if (passwords.isEmpty() || passwords.value(QStringLiteral("clear")).toBool()) {
         return true;
     }
     QByteArray key = passwordsKey(passwords, password);
@@ -322,17 +334,19 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
     const QJsonObject passwords = copies.value(QStringLiteral("passwords")).toObject();
     const QJsonArray sealedItems = passwords.value(QStringLiteral("items")).toArray();
     if (!sealedItems.isEmpty()) {
+        const bool clear = passwords.value(QStringLiteral("clear")).toBool();
         QByteArray key;
-        if (keeper && keeper->isSetUp() && !password.isEmpty()) {
+        if (!clear && keeper && keeper->isSetUp() && !password.isEmpty()) {
             key = passwordsKey(passwords, password);
         }
-        if (key.isEmpty()) {
+        if (!keeper || !keeper->isSetUp() || (!clear && key.isEmpty())) {
             report.passwordsSkipped = int(sealedItems.size());
         } else {
             const PasswordVault& vault = keeper->vault();
             for (const QJsonValue& v : sealedItems) {
                 const QJsonObject o = v.toObject();
-                auto plain = PasswordVault::unboxWithBackupKey(key, unb64(o.value(QStringLiteral("data"))));
+                const QByteArray data = unb64(o.value(QStringLiteral("data")));
+                auto plain = clear ? std::optional<QByteArray>(data) : PasswordVault::unboxWithBackupKey(key, data);
                 if (!plain) {
                     ++report.passwordsSkipped;
                     continue;

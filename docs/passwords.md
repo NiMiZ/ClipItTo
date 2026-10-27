@@ -64,6 +64,18 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   window closes again afterwards if it wasn't open. (On Windows the window may not take the
   focus when it opens by itself.)
 
+**Choosing a master password.** The dialog lists the rules and ticks them as you type: at least 8
+characters with an uppercase letter, a lowercase letter and a digit; no form of "password", "admin" or
+"root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row
+counting up or down (`123`, `654`; `12` is fine). A few unrelated words with a number make a strong one.
+
+**Without a master password.** *Use without one…* (Settings › Passwords) keeps password copies hidden
+(`●●●●`) but **not protected**: they are only obscured, so anyone who can read your history file or use
+your account can read them. ClipItTo asks you to confirm, and says "Not secure" on that page. There is
+nothing to unlock, and Windows Hello is off. An export then asks whether to write the password copies as
+**plain text** into the file; answer *No* to export without them. *Set…* later moves the existing copies
+to a real master password; *Turn off…* deletes them.
+
 The master password is never stored or shown; only a key derived from it unlocks. Changing it
 also changes the key every password copy is sealed with. **If you forget it, the password
 copies can't be recovered**: *Remove…* deletes them and starts over.
