@@ -91,13 +91,27 @@ public:
     void setLimits(const Limits& limits) { m_limits = limits; }
     const Limits& limits() const { return m_limits; }
 
-    // Newest first. With unsavedOnly, pinned, starred and grouped items are excluded.
-    // `hideSecretsIn`: password copies in that group are left out (the Passwords group, when
-    // the user keeps them out of Recent); empty: nothing is left out.
-    std::vector<Entry> recent(int limit, bool unsavedOnly, const QString& hideSecretsIn = {});
-    // The copy history: newest (last copied or pasted) first, each text once, leaving out
-    // pinned copies (the popup lists those above). Starred and grouped copies are included.
-    std::vector<Entry> recentUnpinned(int limit, const QString& hideSecretsIn = {});
+    // Newest first. With unsavedOnly, pinned, starred and grouped items are excluded; else the
+    // filed copies that are on Recent (see takeOffRecent and the hidden-from-Recent groups).
+    std::vector<Entry> recent(int limit, bool unsavedOnly);
+    // The copy history: newest (last copied) first, each text once, leaving out pinned copies
+    // (the popup lists those above). Filed copies that are on Recent are included.
+    std::vector<Entry> recentUnpinned(int limit);
+    // Takes a filed (starred, pinned or grouped) copy off Recent without unfiling it; copying
+    // it again brings it back. Does nothing for an unfiled copy.
+    void takeOffRecent(qint64 id);
+    // What Recent lists now (unfiled copies, and filed ones that are on it), pinned ones aside:
+    // those have their own list.
+    qint64 countRecent();
+    // Empties Recent: unfiled copies are deleted, starred and grouped ones only leave Recent
+    // (pinned copies stay pinned). Returns the number of copies it listed.
+    qint64 clearRecent();
+    // Copies in a group (and its sub-groups) stay out of Recent. The same for starred copies
+    // in no group (Favorites).
+    void setGroupHiddenFromRecent(const QString& path, bool hidden);
+    bool groupHiddenFromRecent(const QString& path);
+    void setFavoritesHiddenFromRecent(bool hidden);
+    bool favoritesHiddenFromRecent();
     // Pinned copies in their pinned order.
     std::vector<Entry> pinned(int limit);
     // Starred copies without a group (the Favorites group), newest first.

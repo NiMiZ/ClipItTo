@@ -352,7 +352,8 @@ private slots:
     void searchPasteAndReopenShowsTheHistoryRight()
     {
         // try0, try1, try2 copied (try0 also in a group); search "try0", Enter (copy + paste),
-        // reopen: try0 is the latest, listed once, and the history holds three copies.
+        // reopen: try0, being in a group, was not moved to the top by the paste (Recent is not
+        // reshuffled by using a filed copy), is listed once, and the history holds three copies.
         Daemon d(options(), std::make_unique<FakeControl>());
         QVERIFY(d.start() == Daemon::StartResult::Ok);
         for (const char* text : {"try0", "try1", "try2"}) {
@@ -377,8 +378,7 @@ private slots:
                 rows << e->content;
             }
         }
-        QCOMPARE(rows, (QStringList{"try0", "try2", "try1"}));
-        QCOMPARE(popup->model()->entryAt(popup->view()->currentIndex())->content, QStringLiteral("try0"));
+        QCOMPARE(rows, (QStringList{"try2", "try1", "try0"}));
         QCOMPARE(d.repository()->count(), 3);
 
         // Copying try0 again (another app, later than our paste's echo) keeps one entry and

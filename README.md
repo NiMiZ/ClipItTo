@@ -143,13 +143,22 @@ of one, takes its star along; ClipItTo tells you when the target is full.
 **Pinned** (`Ctrl+P`): up to 10 copies listed at the top, above *Recent*, in the order you
 pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are never pruned.
 
-**Recent** is your copy history: each text once, the one you last copied or pasted first
-(pasting a copy from ClipItTo counts as copying it), starred and grouped copies included.
-Only pinned copies are left out, as they are listed right above.
+**Recent** is your copy history: each text once, the one you last copied first, starred and
+grouped copies included. Only pinned copies are left out, as they are listed right above.
+Pasting a copy from ClipItTo moves it to the top of Recent (`latest_after_paste`), except starred,
+pinned and grouped copies, which stay where they are.
 
-**Clear** (the button next to ⚙) deletes the history but keeps starred, pinned and grouped
-copies; its menu (the arrow) also offers *Clear everything, also in groups*, which deletes those
-as well and leaves the groups empty. Both ask first and can't be undone.
+- *Delete* on a starred or grouped copy in Recent only takes it off Recent: it stays in its
+  group (and comes back to Recent when you copy it again). In a group, or on an unfiled copy,
+  Delete deletes it.
+- Right-click a group (or the *Favorites* row) › *Keep out of Recent*: its copies, and those of
+  its sub-groups, don't appear in Recent. The Passwords group has this as the *Also show them in
+  Recent* setting.
+
+**Clear** (the button next to ⚙) empties Recent: unfiled copies are deleted, starred and grouped
+ones only leave Recent and stay in their groups; pinned ones stay pinned. Its menu (the arrow)
+also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups
+empty. Both ask first and can't be undone.
 
 **Pictures:** copied images (screenshots, "Copy Image" in a browser, ...) are kept too, shown
 as a thumbnail with their size; hover a row for a larger preview, and choose it to put the

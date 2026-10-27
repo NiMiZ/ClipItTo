@@ -203,8 +203,8 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     auto* settingsShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma), this);
     connect(settingsShortcut, &QShortcut::activated, this, &PopupWindow::settingsRequested);
 
-    // Clear: the button clears the history and keeps starred, pinned and grouped copies; its
-    // menu also offers clearing those. Both ask first.
+    // Clear: the button empties Recent (copies in no group are deleted, filed ones only leave
+    // Recent); its menu also offers deleting everything. Both ask first.
     const QIcon clearIcon = QIcon::fromTheme(QStringLiteral("edit-clear-history"),
                                              QIcon::fromTheme(QStringLiteral("edit-clear-all"),
                                                               QIcon::fromTheme(QStringLiteral("edit-clear"))));
@@ -215,10 +215,10 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     }
     m_clearButton->setAutoRaise(true);
     m_clearButton->setFocusPolicy(Qt::NoFocus);
-    m_clearButton->setToolTip(tr("Clear the history (starred, pinned and grouped copies are kept)"));
+    m_clearButton->setToolTip(tr("Clear Recent (starred, pinned and grouped copies stay in their groups)"));
     m_clearButton->setPopupMode(QToolButton::MenuButtonPopup);
     auto* clearMenu = new QMenu(m_clearButton);
-    clearMenu->addAction(tr("Clear history (keep starred, pinned and grouped)"), this, [this] { clearHistory(false); });
+    clearMenu->addAction(tr("Clear Recent (copies in groups stay in them)"), this, [this] { clearHistory(false); });
     clearMenu->addAction(tr("Clear everything, also in groups…"), this, [this] { clearHistory(true); });
     connect(clearMenu, &QMenu::aboutToShow, this, [this] { ++m_modalDepth; });
     connect(clearMenu, &QMenu::aboutToHide, this, [this] { --m_modalDepth; });
@@ -876,14 +876,13 @@ void PopupWindow::clearHistory(bool everything)
     }
     qint64 count = 0;
     try {
-        count = everything ? m_repo.count() : m_repo.countUnsaved();
+        count = everything ? m_repo.count() : m_repo.countRecent();
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "counting copies failed:" << err.what();
         return;
     }
     if (count == 0) {
-        showMessage(everything ? tr("The history is already empty.")
-                               : tr("Nothing to clear: only starred, pinned and grouped copies are left."));
+        showMessage(everything ? tr("The history is already empty.") : tr("Recent is already empty."));
         return;
     }
     bool confirmed = false;
@@ -894,8 +893,9 @@ void PopupWindow::clearHistory(bool everything)
                                         ? tr("Delete all %1, including starred, pinned and grouped ones?\n"
                                              "Your groups stay, empty. This can't be undone.")
                                               .arg(copies)
-                                        : tr("Delete %1 from the history?\n"
-                                             "Starred, pinned and grouped copies are kept.")
+                                        : tr("Clear Recent (%1)?\n"
+                                             "Starred, pinned and grouped copies stay in their groups; "
+                                             "the others are deleted.")
                                               .arg(copies));
     }
     if (!confirmed) {
@@ -903,7 +903,11 @@ void PopupWindow::clearHistory(bool everything)
         return;
     }
     try {
-        m_repo.clearHistory(everything);
+        if (everything) {
+            m_repo.clearHistory(true);
+        } else {
+            m_repo.clearRecent();
+        }
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "clearing the history failed:" << err.what();
     }
@@ -939,7 +943,14 @@ void PopupWindow::remove(const QModelIndex& index, bool focusList)
         }
     }
     try {
-        m_repo.remove(id);
+        // Delete on a starred or grouped copy in the Recent list only takes it off Recent: it
+        // stays in its group. Anywhere else (a group, Pinned, or an unfiled copy) it deletes.
+        const bool inRecentList = !index.parent().isValid() && !e->pinned() && (e->favorite || !e->group.isEmpty());
+        if (inRecentList) {
+            m_repo.takeOffRecent(id);
+        } else {
+            m_repo.remove(id);
+        }
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "delete failed:" << err.what();
     }
@@ -1151,6 +1162,42 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     return menu;
 }
 
+void PopupWindow::addOutOfRecentAction(QMenu* menu, const QString& path)
+{
+    bool out = false;
+    try {
+        out = path.isEmpty() ? m_repo.favoritesHiddenFromRecent() : m_repo.groupHiddenFromRecent(path);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "reading the Recent rule failed:" << err.what();
+    }
+    QAction* action = menu->addAction(tr("Keep out of Recent"), this,
+                                      [this, path](bool checked) { setGroupOutOfRecent(path, checked); });
+    action->setCheckable(true);
+    action->setChecked(out);
+    action->setToolTip(tr("Copies in this group don't appear in the Recent list (they stay here)."));
+}
+
+void PopupWindow::setGroupOutOfRecent(const QString& path, bool out)
+{
+    try {
+        if (path.isEmpty()) {
+            m_repo.setFavoritesHiddenFromRecent(out);
+        } else {
+            m_repo.setGroupHiddenFromRecent(path, out);
+        }
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "saving the Recent rule failed:" << err.what();
+    }
+    refreshSelecting(selectionOf(m_view->currentIndex()));
+}
+
+QMenu* PopupWindow::createFavoritesMenu(QWidget* parent)
+{
+    auto* menu = new QMenu(parent);
+    addOutOfRecentAction(menu, QString());
+    return menu;
+}
+
 QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
 {
     auto* menu = new QMenu(parent);
@@ -1162,6 +1209,7 @@ QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
     menu->addAction(tr("Rename or move…"), this, [this, path] { renameGroup(path); });
     menu->addAction(tr("Move up (Alt+↑)"), this, [this, path] { moveGroup(path, -1); });
     menu->addAction(tr("Move down (Alt+↓)"), this, [this, path] { moveGroup(path, 1); });
+    addOutOfRecentAction(menu, path);
     menu->addSeparator();
     menu->addAction(tr("Delete group"), this, [this, path] { deleteGroup(path); });
     return menu;
@@ -1174,6 +1222,8 @@ void PopupWindow::showContextMenu(const QModelIndex& index, const QPoint& global
         menu = createContextMenu(*e, this);
     } else if (m_model->kindAt(index) == Kind::Group || m_model->kindAt(index) == Kind::GroupsRoot) {
         menu = createGroupMenu(expandKey(*m_model, index), this);
+    } else if (m_model->kindAt(index) == Kind::Favorites) {
+        menu = createFavoritesMenu(this);
     }
     if (!menu) {
         return;

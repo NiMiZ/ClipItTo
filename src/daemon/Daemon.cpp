@@ -342,8 +342,9 @@ void Daemon::onEntryActivated(const Entry& entry)
     } else {
         m_writer->setText(entry.content);
     }
-    if (m_config.latestAfterPaste) {
-        // As if it had been copied again: the latest in the history. (The clipboard's echo
+    if (m_config.latestAfterPaste && !entry.isSaved()) {
+        // As if it had been copied again: the latest in the history. A filed copy (starred,
+        // pinned or in a group) stays where it is: Recent is not reshuffled by using it. (The clipboard's echo
         // of our own write is ignored by the capture filter either way.)
         try {
             m_repo->touch(entry.id);

@@ -477,33 +477,6 @@ private slots:
         QVERIFY(t.repo->sealedSecret(r.id).isEmpty()); // went with its row
     }
 
-    void recentCanLeaveOutThePasswordsOfOneGroup()
-    {
-        TestDb t;
-        const auto plain = t.repo->ingest(QStringLiteral("plain")).id;
-        const auto inGroup = t.repo->ingestSecret("S1", QStringLiteral("secret:a"), QString(), QStringLiteral("Passwords")).id;
-        const auto elsewhere = t.repo->ingestSecret("S2", QStringLiteral("secret:b"), QString(), QStringLiteral("Other")).id;
-        const auto free = t.repo->ingestSecret("S3", QStringLiteral("secret:c"), QString(), QString()).id;
-        const auto idsOf = [](const std::vector<Entry>& entries) {
-            QSet<qint64> ids;
-            for (const Entry& e : entries) {
-                ids << e.id;
-            }
-            return ids;
-        };
-
-        QCOMPARE(idsOf(t.repo->recent(10, false)), (QSet<qint64>{plain, inGroup, elsewhere, free}));
-        QCOMPARE(idsOf(t.repo->recentUnpinned(10)), (QSet<qint64>{plain, inGroup, elsewhere, free}));
-        // Only the password copies of that group are left out: not plain copies, not passwords elsewhere.
-        const QString hide = QStringLiteral("Passwords");
-        QCOMPARE(idsOf(t.repo->recent(10, false, hide)), (QSet<qint64>{plain, elsewhere, free}));
-        QCOMPARE(idsOf(t.repo->recentUnpinned(10, hide)), (QSet<qint64>{plain, elsewhere, free}));
-        QCOMPARE(idsOf(t.repo->recent(10, true, hide)), (QSet<qint64>{plain, free})); // unsaved copies
-        // They are still in the group, and found by a search of their note or group.
-        QVERIFY(idsOf(t.repo->groupedEntries()).contains(inGroup));
-        QVERIFY(idsOf(t.repo->search(QStringLiteral("Passwords"))).contains(inGroup));
-    }
-
     void markingAsPasswordWipesTheText()
     {
         QTemporaryDir dir;
@@ -656,6 +629,107 @@ private slots:
         QCOMPARE(e->displayTitle(), QStringLiteral("kubectl get pods"));
         QVERIFY(!e->isSaved());
         QCOMPARE(t.repo->countUnsaved(), 1);
+    }
+
+    void recentRulesForFiledCopies()
+    {
+        TestDb t;
+        const auto ids = [&](const std::vector<Entry>& list) {
+            QList<qint64> out;
+            for (const Entry& e : list) {
+                out << e.id;
+            }
+            return out;
+        };
+        const auto plain = t.repo->ingest(QStringLiteral("plain")).id;
+        const auto grouped = t.repo->ingest(QStringLiteral("grouped")).id;
+        const auto deep = t.repo->ingest(QStringLiteral("deep")).id;
+        const auto starred = t.repo->ingest(QStringLiteral("starred")).id;
+        t.repo->setGroup(grouped, QStringLiteral("Work"));
+        t.repo->setGroup(deep, QStringLiteral("Work/Servers"));
+        t.repo->setFavorite(starred, true);
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 4u); // everything is on Recent by default
+
+        // A group keeps its copies, and those of its sub-groups, out of Recent.
+        t.repo->setGroupHiddenFromRecent(QStringLiteral("Work"), true);
+        QVERIFY(t.repo->groupHiddenFromRecent(QStringLiteral("Work")));
+        QVERIFY(!t.repo->groupHiddenFromRecent(QStringLiteral("Work/Servers")));
+        QCOMPARE(ids(t.repo->recentUnpinned(10)), (QList<qint64>{starred, plain}));
+        QCOMPARE(ids(t.repo->recent(10, /*unsavedOnly=*/false)), (QList<qint64>{starred, plain}));
+        QCOMPARE(t.repo->countRecent(), 2);
+        QCOMPARE(t.repo->get(grouped)->group, QStringLiteral("Work")); // still filed
+        // A group that starts with the same letters is not below it.
+        const auto sibling = t.repo->ingest(QStringLiteral("sibling")).id;
+        t.repo->setGroup(sibling, QStringLiteral("Workshop"));
+        QVERIFY(ids(t.repo->recentUnpinned(10)).contains(sibling));
+
+        // Favorites is a rule of its own, for starred copies in no group.
+        t.repo->setFavoritesHiddenFromRecent(true);
+        QVERIFY(t.repo->favoritesHiddenFromRecent());
+        QVERIFY(!ids(t.repo->recentUnpinned(10)).contains(starred));
+        t.repo->setFavoritesHiddenFromRecent(false);
+        QVERIFY(ids(t.repo->recentUnpinned(10)).contains(starred));
+
+        t.repo->setGroupHiddenFromRecent(QStringLiteral("Work"), false);
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 5u);
+
+        // A group keeps its rule when renamed, and loses it when deleted.
+        t.repo->setGroupHiddenFromRecent(QStringLiteral("Work"), true);
+        QVERIFY(t.repo->renameGroup(QStringLiteral("Work"), QStringLiteral("Jobs")));
+        QVERIFY(t.repo->groupHiddenFromRecent(QStringLiteral("Jobs")));
+        QVERIFY(!ids(t.repo->recentUnpinned(10)).contains(deep));
+        t.repo->deleteGroup(QStringLiteral("Jobs"));
+        QVERIFY(!t.repo->groupHiddenFromRecent(QStringLiteral("Jobs")));
+        QVERIFY(ids(t.repo->recentUnpinned(10)).contains(deep));
+    }
+
+    void takingACopyOffRecentKeepsItFiledUntilCopiedAgain()
+    {
+        TestDb t;
+        const auto plain = t.repo->ingest(QStringLiteral("plain")).id;
+        const auto grouped = t.repo->ingest(QStringLiteral("grouped")).id;
+        t.repo->setGroup(grouped, QStringLiteral("Work"));
+
+        t.repo->takeOffRecent(plain); // not filed: nothing to take off
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 2u);
+
+        t.repo->takeOffRecent(grouped);
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 1u);
+        QCOMPARE(t.repo->get(grouped)->group, QStringLiteral("Work"));
+        QCOMPARE(t.repo->groupedEntries().size(), 1u);
+
+        t.repo->touch(grouped); // using it does not bring it back...
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 1u);
+        t.repo->ingest(QStringLiteral("grouped")); // ...copying it again does
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 2u);
+
+        // Unfiled, it is an ordinary copy again, whatever was set before.
+        t.repo->takeOffRecent(grouped);
+        t.repo->setGroup(grouped, QString());
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 2u);
+    }
+
+    void clearRecentDeletesUnfiledCopiesAndOnlyUnlistsFiledOnes()
+    {
+        TestDb t;
+        const auto grouped = t.repo->ingest(QStringLiteral("grouped")).id;
+        const auto starred = t.repo->ingest(QStringLiteral("starred")).id;
+        const auto pinned = t.repo->ingest(QStringLiteral("pinned")).id;
+        t.repo->ingest(QStringLiteral("one"));
+        t.repo->ingest(QStringLiteral("two"));
+        t.repo->setGroup(grouped, QStringLiteral("Work"));
+        t.repo->setFavorite(starred, true);
+        t.repo->setPinned(pinned, true);
+
+        QCOMPARE(t.repo->countRecent(), 4); // the pinned copy is listed above Recent
+        QCOMPARE(t.repo->clearRecent(), 4);
+        QCOMPARE(t.repo->countRecent(), 0);
+        QCOMPARE(t.repo->recentUnpinned(10).size(), 0u);
+        QCOMPARE(t.repo->count(), 3);
+        QCOMPARE(t.repo->get(grouped)->group, QStringLiteral("Work"));
+        QVERIFY(t.repo->get(starred)->favorite);
+        QVERIFY(t.repo->get(pinned)->pinned());
+        QCOMPARE(t.repo->clearRecent(), 0);
     }
 
     void groupPathsAreNormalized()

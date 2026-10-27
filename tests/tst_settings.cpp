@@ -458,9 +458,11 @@ private slots:
         d.passwordsInGroupBox()->setChecked(true);
         QVERIFY(d.passwordsInRecentBox()->isEnabled());
         d.passwordsInRecentBox()->setChecked(false);
-        Config c = d.config();
-        QVERIFY(c.passwordsInGroup);
-        QVERIFY(!c.passwordsInRecent);
+        QVERIFY(d.config().passwordsInGroup);
+        // The Recent choice is a rule of the Passwords group: saved when the dialog is accepted.
+        QVERIFY(!t.repo->groupHiddenFromRecent(clipitto::PasswordKeeper::passwordsGroup()));
+        d.accept();
+        QVERIFY(t.repo->groupHiddenFromRecent(clipitto::PasswordKeeper::passwordsGroup()));
         d.passwordsInGroupBox()->setChecked(false);
         QVERIFY(!d.passwordsInRecentBox()->isEnabled());
 
@@ -474,12 +476,11 @@ private slots:
         // Loaded from the config.
         Config saved;
         saved.passwordsInGroup = true;
-        saved.passwordsInRecent = false;
         saved.passwordAskNote = true;
         SettingsDialog again(saved, *t.repo, ShortcutSupport{}, {}, nullptr, support);
         QVERIFY(again.passwordsInGroupBox()->isChecked());
         QVERIFY(again.passwordsInRecentBox()->isEnabled());
-        QVERIFY(!again.passwordsInRecentBox()->isChecked());
+        QVERIFY(!again.passwordsInRecentBox()->isChecked()); // the group's rule, from the history
         QVERIFY(again.askNoteBox()->isChecked());
     }
 

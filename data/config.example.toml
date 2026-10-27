@@ -16,7 +16,8 @@ capture_primary = false     # also record the primary (mouse-selection) clipboar
 paste_on_enter = true       # choosing a copy (Enter or click) also pastes it into the window
                             # you came from; false = only put it on the clipboard
 latest_after_paste = true   # a copy chosen in ClipItTo becomes the latest in the history,
-                            # as if you had copied it again; false = it keeps its place
+                            # as if you had copied it again; false = it keeps its place.
+                            # Starred, pinned and grouped copies always keep their place
 paste_keys = "ctrl+v"       # ctrl+v | shift+insert (terminals)
 click_to_copy = "single"    # single | double
 hide_on_focus_loss = true
@@ -41,7 +42,6 @@ encrypt_history = false     # encrypt history.db; the key is kept in the system 
 # shown as ●●●● and opened only after an unlock. The master password itself is never stored.
 keep_passwords = true       # false = skip them, as without a master password
 passwords_in_group = false  # put new password copies in the "Passwords" group
-passwords_in_recent = true  # with passwords_in_group: also list them in Recent, as asterisks
                             # (false: only in the group and in the p[] search)
 password_ask_note = false   # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
