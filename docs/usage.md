@@ -86,7 +86,10 @@ service: Windows uses its built-in text recognition (languages installed in Sett
 uses the Vision framework, and Linux uses Tesseract (the `.deb` recommends `tesseract-ocr-eng`; the AppImage
 and snap carry English). For other languages on Linux install `tesseract-ocr-<language>` (for Hebrew,
 `tesseract-ocr-heb`; ClipItTo adds the language of your locale to English), or put `*.traineddata` files in
-`~/.local/share/clipitto/tessdata`. Where it isn't available the entry is greyed out and says why.
+`~/.local/share/clipitto/tessdata`. Choose the languages in Settings › General › *Read pictures in* (`ocr_languages`, e.g. `en, he`; empty is
+automatic: Windows uses the languages installed for your account and the first you list that it has, macOS
+detects the language by itself, Linux reads English plus your locale's language). A language that isn't
+installed is reported by name. Where text recognition isn't available the entry is greyed out and says why.
 
 **Pictures:** copied images (screenshots, "Copy Image" in a browser, ...) are kept too, shown
 as a thumbnail with their size; hover a row for a larger preview, and choose it to put the

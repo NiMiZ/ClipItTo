@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
 
 #include <optional>
 
@@ -16,8 +17,14 @@ namespace clipitto::ocr {
 // Whether text can be read here; the reason (and what to install) when not.
 bool available(QString* why = nullptr);
 
-// The text in `png` (a PNG picture), lines joined by "\n"; empty when there is none. nullopt
-// with `error` set when it couldn't be read at all.
-std::optional<QString> recognize(const QByteArray& png, QString* error = nullptr);
+// "en, he", "eng+heb", "zh-Hans": the language codes in a user's setting, as a list (ISO 639-1 or -2,
+// optionally with a region or script). Empty text: an empty list, meaning automatic.
+QStringList parseLanguages(const QString& text);
+
+// The text in `png` (a PNG picture), lines joined by "\n"; empty when there is none. `languages` (see
+// parseLanguages) names the languages to read, empty for the platform's automatic choice; one that
+// is not installed or supported is reported in `error`. nullopt with `error` set when it couldn't
+// be read at all.
+std::optional<QString> recognize(const QByteArray& png, const QStringList& languages = {}, QString* error = nullptr);
 
 } // namespace clipitto::ocr

@@ -7,7 +7,7 @@ add_library(clipitto_capture STATIC
     NativeClipboard.h
     SourceApp.h
     ImageCodec.cpp ImageCodec.h
-    Ocr.h
+    Ocr.h OcrLanguages.cpp
 )
 # Per platform: the native clipboard reader and the app a password copy came from.
 #   Windows: Win32 (clipboard owner's process); macOS: AppKit (NSPasteboard, frontmost app);

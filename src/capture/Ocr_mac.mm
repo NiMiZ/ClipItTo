@@ -14,14 +14,40 @@ bool available(QString*)
     return true; // Vision's text recognition is part of macOS 10.15 and later (the app needs 11)
 }
 
-std::optional<QString> recognize(const QByteArray& png, QString* error)
+namespace {
+
+// Vision wants region tags: "he" stays, "en" -> "en-US", "pt" -> "pt-BR", "zh" -> "zh-Hans" ...
+NSString* visionTag(const QString& tag)
+{
+    static NSDictionary<NSString*, NSString*>* map = @{
+        @"en" : @"en-US", @"fr" : @"fr-FR", @"de" : @"de-DE", @"es" : @"es-ES", @"it" : @"it-IT", @"pt" : @"pt-BR",
+        @"zh" : @"zh-Hans", @"ja" : @"ja-JP", @"ko" : @"ko-KR", @"ru" : @"ru-RU", @"uk" : @"uk-UA",
+        @"eng" : @"en-US", @"fra" : @"fr-FR", @"deu" : @"de-DE", @"spa" : @"es-ES", @"ita" : @"it-IT",
+        @"por" : @"pt-BR", @"jpn" : @"ja-JP", @"kor" : @"ko-KR", @"rus" : @"ru-RU", @"ukr" : @"uk-UA"
+    };
+    NSString* mapped = map[tag.toLower().toNSString()];
+    return mapped ? mapped : tag.toNSString();
+}
+
+} // namespace
+
+std::optional<QString> recognize(const QByteArray& png, const QStringList& languages, QString* error)
 {
     @autoreleasepool {
         NSData* data = [NSData dataWithBytes:png.constData() length:NSUInteger(png.size())];
         VNRecognizeTextRequest* request = [[VNRecognizeTextRequest alloc] init];
         request.recognitionLevel = VNRequestTextRecognitionLevelAccurate;
         request.usesLanguageCorrection = YES;
-        if (@available(macOS 13.0, *)) {
+        if (!languages.isEmpty()) {
+            NSMutableArray<NSString*>* tags = [NSMutableArray array];
+            for (const QString& tag : languages) {
+                [tags addObject:visionTag(tag)];
+            }
+            request.recognitionLanguages = tags;
+            if (@available(macOS 13.0, *)) {
+                request.automaticallyDetectsLanguage = NO;
+            }
+        } else if (@available(macOS 13.0, *)) {
             request.automaticallyDetectsLanguage = YES;
         }
         VNImageRequestHandler* handler = [[VNImageRequestHandler alloc] initWithData:data options:@{}];

@@ -3,6 +3,7 @@
 // first: Qt's headers define macros its code doesn't expect.
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Globalization.h>
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Media.Ocr.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -16,6 +17,7 @@ namespace clipitto::ocr {
 
 namespace {
 
+using winrt::Windows::Globalization::Language;
 using winrt::Windows::Graphics::Imaging::BitmapAlphaMode;
 using winrt::Windows::Graphics::Imaging::BitmapDecoder;
 using winrt::Windows::Graphics::Imaging::BitmapPixelFormat;
@@ -64,7 +66,7 @@ bool available(QString* why)
     return false;
 }
 
-std::optional<QString> recognize(const QByteArray& png, QString* error)
+std::optional<QString> recognize(const QByteArray& png, const QStringList& languages, QString* error)
 {
     const auto fail = [error](const QString& text) {
         if (error) {
@@ -74,7 +76,25 @@ std::optional<QString> recognize(const QByteArray& png, QString* error)
     };
     try {
         const Apartment apartment;
-        const OcrEngine engine = OcrEngine::TryCreateFromUserProfileLanguages();
+        // The first of the user's languages Windows can read; without any, the languages of the account.
+        OcrEngine engine{nullptr};
+        for (const QString& tag : languages) {
+            const Language language(winrt::hstring(reinterpret_cast<const wchar_t*>(tag.utf16())));
+            if (OcrEngine::IsLanguageSupported(language)) {
+                engine = OcrEngine::TryCreateFromLanguage(language);
+                if (engine) {
+                    break;
+                }
+            }
+        }
+        if (!engine && !languages.isEmpty()) {
+            return fail(tr("Windows has no text recognition for \"%1\" (Settings > Time & language > Language: "
+                           "add the language and its optional text recognition feature).")
+                            .arg(languages.join(QStringLiteral(", "))));
+        }
+        if (!engine) {
+            engine = OcrEngine::TryCreateFromUserProfileLanguages();
+        }
         if (!engine) {
             return fail(noLanguage());
         }

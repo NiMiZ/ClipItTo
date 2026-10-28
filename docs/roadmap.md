@@ -52,8 +52,9 @@ Ordered by how much they would likely help, not by effort.
    instead of one global setting.
 9. **Clean links:** strip tracking parameters (`utm_*`, `fbclid`) from copied URLs, optionally.
 10. **Text from pictures (OCR):** **DONE: copy the text out of a picture** (right-click › Paste text from picture;
-    offline: Windows.Media.Ocr, Vision, Tesseract). Still open: search inside screenshots (read the text when a
-    picture is copied and index it; needs a database change and a setting), and an OCR language chooser.
+    offline: Windows.Media.Ocr, Vision, Tesseract). Languages: a setting (`ocr_languages`). Still open: search inside screenshots (read the text when a
+    picture is copied and index it; needs a database change and a setting), and picking the Tesseract language
+    from the picture itself (script detection with `osd` data).
 11. **Command line for scripts:** `clipitto --list`, `--get N`, `--add`, `--paste N`, JSON output, so
     other tools and shell scripts can use the history.
 12. **Undo delete / Clear** for a few seconds (a toast with "Undo") instead of only asking first.

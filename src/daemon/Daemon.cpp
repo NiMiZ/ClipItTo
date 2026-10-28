@@ -744,11 +744,12 @@ void Daemon::setUpOcr()
                         done(QString(), tr("The picture could not be read."));
                         return;
                     }
+                    const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
                     runOn<std::pair<QString, QString>>(
                         &m_ocrPool, this,
-                        [png] {
+                        [png, languages] {
                             QString error;
-                            const std::optional<QString> text = ocr::recognize(png, &error);
+                            const std::optional<QString> text = ocr::recognize(png, languages, &error);
                             if (!text) {
                                 return std::pair<QString, QString>(
                                     QString(), error.isEmpty() ? QStringLiteral("Text recognition failed.") : error);

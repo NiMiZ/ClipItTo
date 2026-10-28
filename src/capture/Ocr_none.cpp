@@ -12,7 +12,7 @@ bool available(QString* why)
     return false;
 }
 
-std::optional<QString> recognize(const QByteArray&, QString* error)
+std::optional<QString> recognize(const QByteArray&, const QStringList&, QString* error)
 {
     available(error);
     return std::nullopt;
