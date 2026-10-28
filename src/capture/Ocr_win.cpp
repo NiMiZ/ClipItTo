@@ -23,11 +23,15 @@ using winrt::Windows::Media::Ocr::OcrEngine;
 using winrt::Windows::Storage::Streams::DataWriter;
 using winrt::Windows::Storage::Streams::InMemoryRandomAccessStream;
 
-// No winrt::clear_factory_cache() here: it is process-wide and not safe while another thread (Windows
-// Hello's) is using WinRT, which crashed tst_daemon when both ran at once.
+// As in WindowsHello_win.cpp: the factory cache is cleared before the apartment goes, and since that is
+// process-wide, text recognition runs on the same single thread as Windows Hello (Daemon::m_helloPool).
 struct Apartment {
     Apartment() { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
-    ~Apartment() { winrt::uninit_apartment(); }
+    ~Apartment()
+    {
+        winrt::clear_factory_cache();
+        winrt::uninit_apartment();
+    }
 };
 
 QString tr(const char* text)

@@ -81,7 +81,6 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
         }
     });
     m_helloPool.setMaxThreadCount(1);
-    m_ocrPool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
@@ -742,7 +741,7 @@ void Daemon::setUpOcr()
                 return;
             }
             runOn<std::pair<QString, QString>>(
-                &m_ocrPool, this,
+                &m_helloPool, this, // the one WinRT thread (see WindowsHello_win.cpp)
                 [png] {
                     QString error;
                     const std::optional<QString> text = ocr::recognize(png, &error);
