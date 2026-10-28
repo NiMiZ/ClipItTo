@@ -46,10 +46,44 @@ private slots:
         QVERIFY(!apply(Kind::Base64Decode, QStringLiteral("/w=="), &why)); // 0xFF: not UTF-8
     }
 
+    void keyboardLayouts()
+    {
+        // The standard example: typed on English keys while the Hebrew layout was meant, and back.
+        QCOMPARE(*apply(Kind::HebrewKeyboard, QStringLiteral("xccv")), QStringLiteral("סבבה"));
+        QCOMPARE(*apply(Kind::EnglishKeyboard, QStringLiteral("סבבה")), QStringLiteral("xccv"));
+        QCOMPARE(*apply(Kind::HebrewKeyboard, QStringLiteral("akuo")), QStringLiteral("שלום"));
+        QCOMPARE(*apply(Kind::HebrewKeyboard, QStringLiteral("XCCV 12")), QStringLiteral("סבבה 12")); // case, digits
+        // Final letters have their own keys.
+        QCOMPARE(*apply(Kind::HebrewKeyboard, QStringLiteral("iop;.l")), QStringLiteral("ןםפףץך"));
+        // Punctuation on the same keys, brackets mirrored.
+        QCOMPARE(*apply(Kind::HebrewKeyboard, QStringLiteral("t/e,")), QStringLiteral("א.קת"));
+        QCOMPARE(*apply(Kind::HebrewKeyboard, QStringLiteral("(a)")), QStringLiteral(")ש("));
+        // Every key of the table round-trips (lower case, since Hebrew has none).
+        const QString keys = QStringLiteral("qwertyuiopasdfghjklzxcvbnm;,./`[]'(){}<>");
+        const QString hebrew = *apply(Kind::HebrewKeyboard, keys);
+        QCOMPARE(hebrew.size(), keys.size());
+        QCOMPARE(*apply(Kind::EnglishKeyboard, hebrew), keys);
+        // Nothing to convert is said, not silently pasted.
+        QString why;
+        QVERIFY(!apply(Kind::HebrewKeyboard, QStringLiteral("123 456"), &why));
+        QVERIFY(!why.isEmpty());
+    }
+
+    void keyboardConversionsAreOfferedWhereTheyFit()
+    {
+        QVERIFY(fits(Kind::HebrewKeyboard, QStringLiteral("xccv")));
+        QVERIFY(!fits(Kind::EnglishKeyboard, QStringLiteral("xccv")));
+        QVERIFY(fits(Kind::EnglishKeyboard, QStringLiteral("סבבה")));
+        QVERIFY(!fits(Kind::HebrewKeyboard, QStringLiteral("סבבה")));
+        QVERIFY(fits(Kind::HebrewKeyboard, QStringLiteral("hello שלום")) && fits(Kind::EnglishKeyboard, QStringLiteral("hello שלום")));
+        QVERIFY(fits(Kind::HebrewKeyboard, QStringLiteral("123"))); // no letters at all: either may be tried
+        QVERIFY(fits(Kind::Upper, QStringLiteral("סבבה")));
+    }
+
     void everyTransformHasAMnemonicLabel()
     {
         const auto list = all();
-        QCOMPARE(list.size(), 12);
+        QCOMPARE(list.size(), 14);
         QSet<QChar> keys;
         for (const Info& i : list) {
             const int at = i.label.indexOf(QLatin1Char('&'));

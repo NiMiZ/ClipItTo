@@ -1178,6 +1178,9 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
     const QString text = entry.content;
     for (const texttransform::Info& info : texttransform::all()) {
         const texttransform::Kind kind = info.kind;
+        if (!texttransform::fits(kind, text)) {
+            continue; // e.g. "English keyboard" for a text that is already English
+        }
         menu->addAction(info.label, this, [this, text, kind] {
             QString why;
             const std::optional<QString> out = texttransform::apply(kind, text, &why);

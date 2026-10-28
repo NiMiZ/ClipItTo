@@ -23,6 +23,8 @@ enum class Kind {
     UrlDecode,
     Base64Encode,
     Base64Decode,
+    HebrewKeyboard, // text typed on an English keyboard, as the same keys give on a Hebrew one: xccv -> סבבה
+    EnglishKeyboard, // text typed on a Hebrew keyboard, as the same keys give on an English one: סבבה -> xccv
 };
 
 struct Info {
@@ -32,6 +34,10 @@ struct Info {
 
 // All transforms in menu order.
 QList<Info> all();
+
+// Whether `kind` makes sense for `text`: the keyboard conversions only for text that has letters of the
+// layout they convert from (the menu hides the others); every other transform fits any text.
+bool fits(Kind kind, const QString& text);
 
 // The transformed text, or nullopt when `text` can't be (not JSON, not Base64, not valid UTF-8 after
 // decoding); `why` says so in words.
