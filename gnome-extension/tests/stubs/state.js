@@ -61,6 +61,10 @@ class FakeDisplay extends Signals {
     get_current_monitor() {
         return state.currentMonitor;
     }
+
+    get_monitor_index_for_rect(rect) {
+        return state.monitorOf ? state.monitorOf(rect) : state.currentMonitor;
+    }
 }
 
 class FakeSettings extends Signals {
@@ -84,8 +88,10 @@ class FakeSettings extends Signals {
 }
 
 class FakeWindow extends Signals {
-    constructor({wmClass = '', instance = '', app = null, frame = {x: 0, y: 0, width: 560, height: 480}}) {
+    constructor({wmClass = '', instance = '', app = null, frame = {x: 0, y: 0, width: 560, height: 480},
+        transientFor = null}) {
         super();
+        this.transientFor = transientFor;
         this.wmClass = wmClass;
         this.instance = instance;
         this.app = app;
@@ -98,6 +104,10 @@ class FakeWindow extends Signals {
 
     get_wm_class_instance() {
         return this.instance;
+    }
+
+    get_transient_for() {
+        return this.transientFor;
     }
 
     get_frame_rect() {
@@ -127,6 +137,8 @@ export function resetState() {
     state.keybindings = new Map();
     state.windows = [];
     state.currentMonitor = 1;
+    state.pointer = [1920 + 1000, 300];
+    state.monitorOf = null;
     state.content = {};
     state.selection = new FakeSelection();
     state.display = new FakeDisplay();
@@ -134,5 +146,6 @@ export function resetState() {
     globalThis.global = {
         display: state.display,
         get_window_actors: () => state.windows.map(w => ({meta_window: w})),
+        get_pointer: () => [...state.pointer, 0],
     };
 }

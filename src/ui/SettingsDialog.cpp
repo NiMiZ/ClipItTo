@@ -248,9 +248,10 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     form->addRow(tr("Open the popup:"), m_position);
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         // A choice that silently does nothing is worse than none: say so where it is chosen.
-        auto* waylandNote = new QLabel(tr("<b>Not available on Wayland.</b> Applications cannot place their own "
-                                          "windows there, so your desktop decides where the popup opens, whatever "
-                                          "is chosen here. It works on X11, Windows and macOS."),
+        auto* waylandNote = new QLabel(tr("<b>Wayland:</b> applications cannot place their own windows, so on most "
+                                          "desktops the desktop decides where the popup opens, whatever is chosen "
+                                          "here. On GNOME the ClipItTo extension places it (log out and back in "
+                                          "after an update). X11, Windows and macOS need nothing extra."),
                                        this);
         waylandNote->setWordWrap(true);
         waylandNote->setTextFormat(Qt::RichText);

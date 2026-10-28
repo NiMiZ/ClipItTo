@@ -442,4 +442,9 @@ bool Config::save(const QString& path, QString* error) const
     return true;
 }
 
+QString popupPositionName(PopupPosition position)
+{
+    return QString::fromLatin1(nameOf(kPopupPositions, position));
+}
+
 } // namespace clipitto

@@ -20,6 +20,13 @@ public:
     virtual bool isAvailable() const = 0;
 
     virtual void activatePopup() = 0; // focus the (just shown) popup window
+    // The same, and place it as popup_position says where the window system lets the shell (a Wayland
+    // client cannot place its own window). Integrations that can't place it just focus it.
+    virtual void activatePopup(PopupPosition position)
+    {
+        Q_UNUSED(position)
+        activatePopup();
+    }
     virtual void setClipboard(const QString& text) = 0;
     virtual void setClipboardImage(const QByteArray& png) = 0; // a PNG picture
     virtual void paste(PasteKeys keys) = 0;

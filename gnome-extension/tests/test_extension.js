@@ -5,7 +5,7 @@ import System from 'system';
 import {CLIPBOARD, PRIMARY, makeWindow, resetState, state} from './stubs/state.js';
 import GLib from 'gi://GLib';
 
-import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupWindow, isSensitive, sourceAppName} from './extension.js';
+import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupMain, isPopupWindow, isSensitive, popupPlacement, sourceAppName} from './extension.js';
 
 const NO_AUTO_START = 1;
 let passed = 0;
@@ -225,15 +225,15 @@ test('ActivateWindow waits for a popup that is not mapped yet', () => {
     assertEq(state.activated.length, 0, 'not before it is shown');
     win.emit('shown');
     assert(state.activated[0] === win, 'activated once shown');
-    assertEq(state.display.handlerCount(), 0, 'stopped waiting');
-    assertEq(win.handlerCount(), 0, 'shown handler removed');
+    assertEq(state.display.handlerCount(), 1, 'stopped waiting (only the dialog watcher is left)');
+    assertEq(win.handlerCount(), 1, 'shown handler removed (position-changed stays, to remember "last")');
     ext.disable();
 });
 
 test('disable cancels a pending activation', () => {
     const ext = enabled();
     state.service.ActivateWindow();
-    assertEq(state.display.handlerCount(), 1);
+    assertEq(state.display.handlerCount(), 2); // the dialog watcher and the pending activation
     ext.disable();
     assertEq(state.display.handlerCount(), 0);
 });
@@ -268,6 +268,100 @@ test('toggle shortcut follows the setting and auto-starts the daemon', () => {
     state.settings.set('toggle-shortcut', ['<Super>v']);
     ext.disable();
     assertEq(state.keybindings.size, 0, 'removed on disable');
+});
+
+const AREA = {x: 1920, y: 32, width: 1920, height: 1048};
+const SIZE = {width: 560, height: 480};
+
+test('popupPlacement mirrors the X11 positions', () => {
+    const at = (position, pointer = {x: 2920, y: 300}, last = null) => {
+        const p = popupPlacement(position, AREA, SIZE, pointer, last);
+        return [p.x, p.y];
+    };
+    // 5% margins: 96 x 52 (floor of 52.4).
+    assertEq(at('top-left'), [1920 + 96, 32 + 52]);
+    assertEq(at('top-right'), [1920 + 1920 - 96 - 560, 32 + 52]);
+    assertEq(at('bottom-left'), [1920 + 96, 32 + 1048 - 52 - 480]);
+    assertEq(at('bottom-right'), [1920 + 1920 - 96 - 560, 32 + 1048 - 52 - 480]);
+    assertEq(at('center'), [1920 + 680, 32 + 189]);
+    // Near the pointer: centered on it horizontally, 24 px above it; kept on the screen.
+    assertEq(at('cursor'), [2920 - 280, 276]);
+    assertEq(at('cursor', {x: 1925, y: 40}), [1920, 32]);
+    assertEq(at('cursor', {x: 3830, y: 1070}), [1920 + 1920 - 560, 32 + 1048 - 480]);
+    // "last" with a place, without one (the pointer), and an unknown value (the pointer).
+    assertEq(at('last', {x: 0, y: 0}, {x: 2000, y: 100}), [2000, 100]);
+    assertEq(at('last'), at('cursor'));
+    assertEq(at('nonsense'), at('cursor'));
+});
+
+test('ActivateWindowAt places the popup where the setting says', () => {
+    const ext = enabled();
+    assert(state.serviceXml.includes('<method name="ActivateWindowAt">'));
+    const win = popup();
+    state.windows = [win];
+    state.service.ActivateWindowAt('top-left');
+    assertEq([state.moved[0].x, state.moved[0].y], [1920 + 96, 32 + 52]);
+    state.service.ActivateWindowAt('cursor');
+    assertEq([state.moved[1].x, state.moved[1].y], [2920 - 280, 276]);
+    assertEq(state.activated.length, 2);
+    ext.disable();
+});
+
+test('"last" returns to where the popup was dragged to', () => {
+    const ext = enabled();
+    const first = popup();
+    state.windows = [first];
+    state.service.ActivateWindowAt('last'); // nothing remembered: near the pointer
+    assertEq([state.moved[0].x, state.moved[0].y], [2920 - 280, 276]);
+    first.frame = {x: 2400, y: 500, width: 560, height: 480}; // dragged by its name
+    first.emit('position-changed');
+    const second = popup(); // the next time it opens it is a new window
+    state.windows = [second];
+    state.service.ActivateWindowAt('last');
+    assertEq([state.moved[1].x, state.moved[1].y], [2400, 500]);
+    ext.disable();
+});
+
+test('the popup is found among ClipItTo windows, not a dialog of its own', () => {
+    const main = popup();
+    const dialog = makeWindow({wmClass: 'io.github.nimiz.ClipItTo', transientFor: main});
+    assert(isPopupMain(main));
+    assert(!isPopupMain(dialog), 'a dialog has the popup as its parent');
+    const ext = enabled();
+    state.windows = [dialog, main];
+    state.service.ActivateWindowAt('center');
+    assert(state.activated[0] === main, 'the popup, not the dialog');
+    ext.disable();
+});
+
+test('Settings opens centered over the popup, on its monitor', () => {
+    const ext = enabled();
+    const main = makeWindow({wmClass: 'io.github.nimiz.ClipItTo', frame: {x: 2000, y: 100, width: 560, height: 480}});
+    const dialog = makeWindow({wmClass: 'io.github.nimiz.ClipItTo', transientFor: main,
+        frame: {x: 0, y: 0, width: 700, height: 600}});
+    state.display.emit('window-created', dialog);
+    assertEq(state.moved.length, 0, 'not before it is shown');
+    dialog.emit('shown');
+    // centered on the popup: x 2000 + (560-700)/2, y 100 + (480-600)/2
+    assertEq([state.moved[0].x, state.moved[0].y], [1930, 40]);
+    assertEq(dialog.handlerCount(), 0, 'shown handler removed');
+
+    // Kept inside the monitor's work area (x from 1920, y from 32).
+    const edge = makeWindow({wmClass: 'io.github.nimiz.ClipItTo', frame: {x: 1920, y: 32, width: 300, height: 200}});
+    const wide = makeWindow({wmClass: 'io.github.nimiz.ClipItTo', transientFor: edge,
+        frame: {x: 0, y: 0, width: 700, height: 600}});
+    state.display.emit('window-created', wide);
+    wide.emit('shown');
+    assertEq([state.moved[1].x, state.moved[1].y], [1920, 32]);
+
+    // A window that is not ClipItTo's, or has no parent, is left alone.
+    const other = makeWindow({wmClass: 'org.gnome.Terminal', transientFor: main});
+    state.display.emit('window-created', other);
+    assertEq(other.handlerCount(), 0);
+    const toplevel = popup();
+    state.display.emit('window-created', toplevel);
+    assertEq(toplevel.handlerCount(), 0);
+    ext.disable();
 });
 
 print(`\n${passed} passed, ${failed} failed`);

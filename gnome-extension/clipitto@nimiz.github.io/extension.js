@@ -6,8 +6,11 @@
 //   - reports every clipboard change to the daemon (io.github.nimiz.ClipItTo.Ingest, or
 //     IngestImage for a copied picture); a copy marked by a password manager only when the
 //     daemon keeps password copies (WantsPasswords), with the app it came from;
-//   - exports io.github.nimiz.ClipItTo.Shell so the daemon can focus its popup, set the
-//     clipboard and paste;
+//   - exports io.github.nimiz.ClipItTo.Shell so the daemon can focus its popup (placing it
+//     where the user's popup_position says: a Wayland client cannot place its own window),
+//     set the clipboard and paste;
+//   - centers ClipItTo's dialogs (Settings) over the popup instead of leaving them wherever
+//     the shell would put them, e.g. across two monitors;
 //   - optionally binds a shortcut that toggles the popup.
 
 import Clutter from 'gi://Clutter';
@@ -30,6 +33,9 @@ const SHELL_IFACE_XML = `
 <node>
   <interface name="io.github.nimiz.ClipItTo.Shell">
     <method name="ActivateWindow"/>
+    <method name="ActivateWindowAt">
+      <arg type="s" direction="in"/>
+    </method>
     <method name="SetClipboard">
       <arg name="text" type="s" direction="in"/>
     </method>
@@ -92,6 +98,44 @@ export function sourceAppName(win) {
     return name.trim().slice(0, 64);
 }
 
+// Where the popup goes (its top-left, in screen coordinates), mirroring PopupWindow::placeOnScreen
+// for X11: `area` is the work area of the monitor, `size` the popup's {width, height}, `pointer`
+// {x, y}, `last` {x, y} or null. Unknown values and "last" without a last place fall back to
+// the pointer; "center" is horizontally centered in the upper third.
+export function popupPlacement(position, area, size, pointer, last) {
+    const marginX = Math.floor(area.width * 5 / 100);
+    const marginY = Math.floor(area.height * 5 / 100);
+    const keep = (x, y) => ({
+        x: Math.max(area.x, Math.min(x, area.x + area.width - size.width)),
+        y: Math.max(area.y, Math.min(y, area.y + area.height - size.height)),
+    });
+    switch (position) {
+    case 'last':
+        if (last)
+            return keep(last.x, last.y);
+        break;
+    case 'center':
+        return keep(area.x + Math.round((area.width - size.width) / 2),
+            area.y + Math.round((area.height - size.height) / 3));
+    case 'top-left':
+        return keep(area.x + marginX, area.y + marginY);
+    case 'top-right':
+        return keep(area.x + area.width - marginX - size.width, area.y + marginY);
+    case 'bottom-left':
+        return keep(area.x + marginX, area.y + area.height - marginY - size.height);
+    case 'bottom-right':
+        return keep(area.x + area.width - marginX - size.width, area.y + area.height - marginY - size.height);
+    default:
+        break;
+    }
+    return keep(pointer.x - Math.round(size.width / 2), pointer.y - 24);
+}
+
+// The popup itself, not a dialog of ClipItTo's (those have the popup as their parent).
+export function isPopupMain(win) {
+    return isPopupWindow(win) && !win.get_transient_for?.();
+}
+
 export function isPopupWindow(win) {
     const wmClass = (win.get_wm_class() ?? '').toLowerCase();
     const instance = (win.get_wm_class_instance() ?? '').toLowerCase();
@@ -110,7 +154,8 @@ export default class ClipItToExtension extends Extension {
             (_selection, type) => this._onOwnerChanged(type));
 
         this._dbus = Gio.DBusExportedObject.wrapJSObject(SHELL_IFACE_XML, {
-            ActivateWindow: () => this._activatePopup(),
+            ActivateWindow: () => this._activatePopup('center'),
+            ActivateWindowAt: position => this._activatePopup(position),
             SetClipboard: text => St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text),
             SetClipboardContent: (data, mimeType) => {
                 if (mimeType === 'image/png') // the daemon only ever sends PNG pictures
@@ -126,10 +171,14 @@ export default class ClipItToExtension extends Extension {
         this._shortcutChangedId = this._settings.connect('changed::toggle-shortcut',
             () => this._updateKeybinding());
         this._updateKeybinding();
+
+        this._dialogWatchId = global.display.connect('window-created',
+            (_display, created) => this._onWindowCreated(created));
     }
 
     disable() {
         this._cancelPendingActivation();
+        global.display.disconnect(this._dialogWatchId);
         this._removeKeybinding();
         this._settings.disconnect(this._shortcutChangedId);
         this._selection.disconnect(this._ownerChangedId);
@@ -231,22 +280,22 @@ export default class ClipItToExtension extends Extension {
             });
     }
 
-    _activatePopup() {
+    _activatePopup(position) {
         this._cancelPendingActivation();
-        const win = global.get_window_actors().map(actor => actor.meta_window).find(isPopupWindow);
+        const win = global.get_window_actors().map(actor => actor.meta_window).find(isPopupMain);
         if (win) {
-            this._focus(win);
+            this._focus(win, position);
             return;
         }
 
         // The daemon calls us right after showing the popup, which may not be mapped yet.
         this._windowCreatedId = global.display.connect('window-created', (_display, created) => {
-            if (!isPopupWindow(created))
+            if (!isPopupMain(created))
                 return;
             this._cancelPendingActivation();
             const shownId = created.connect('shown', () => {
                 created.disconnect(shownId);
-                this._focus(created);
+                this._focus(created, position);
             });
         });
         this._activationTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVATION_WAIT_MS, () => {
@@ -267,15 +316,51 @@ export default class ClipItToExtension extends Extension {
         }
     }
 
-    // Centers the popup in the upper part of the monitor under the pointer, then focuses it.
-    _focus(win) {
-        const monitor = global.display.get_current_monitor();
+    // Places the popup as `position` says (see popupPlacement), then focuses it. "last" is where
+    // it was last put or dragged during this shell session.
+    _focus(win, position) {
+        let monitor = global.display.get_current_monitor();
+        let last = null;
+        if (position === 'last' && this._lastPlace) {
+            last = this._lastPlace;
+            monitor = global.display.get_monitor_index_for_rect?.(
+                {x: last.x, y: last.y, width: 1, height: 1}) ?? monitor;
+            if (monitor < 0)
+                monitor = global.display.get_current_monitor();
+        }
         const area = Main.layoutManager.getWorkAreaForMonitor(monitor);
         const frame = win.get_frame_rect();
-        const x = area.x + Math.round((area.width - frame.width) / 2);
-        const y = area.y + Math.round((area.height - frame.height) / 3);
-        win.move_frame(true, x, y);
+        const [px, py] = global.get_pointer?.() ?? [area.x + area.width / 2, area.y];
+        const place = popupPlacement(position, area, {width: frame.width, height: frame.height},
+            {x: px, y: py}, last);
+        win.move_frame(true, place.x, place.y);
+        // Remember where the user leaves it (dragging it by its name moves it).
+        win.connect('position-changed', () => {
+            const f = win.get_frame_rect();
+            this._lastPlace = {x: f.x, y: f.y};
+        });
         Main.activateWindow(win);
+    }
+
+    // A dialog of ClipItTo's (Settings) opens centered over the popup, on the popup's monitor.
+    _onWindowCreated(win) {
+        if (!isPopupWindow(win) || !win.get_transient_for?.())
+            return;
+        const shownId = win.connect('shown', () => {
+            win.disconnect(shownId);
+            const parent = win.get_transient_for();
+            if (!parent)
+                return;
+            const p = parent.get_frame_rect();
+            const f = win.get_frame_rect();
+            const monitor = global.display.get_monitor_index_for_rect?.(p) ?? global.display.get_current_monitor();
+            const area = Main.layoutManager.getWorkAreaForMonitor(monitor);
+            const x = Math.max(area.x, Math.min(p.x + Math.round((p.width - f.width) / 2),
+                area.x + area.width - f.width));
+            const y = Math.max(area.y, Math.min(p.y + Math.round((p.height - f.height) / 2),
+                area.y + area.height - f.height));
+            win.move_frame(true, x, y);
+        });
     }
 
     _paste(keys) {
