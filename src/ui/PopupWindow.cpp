@@ -1155,7 +1155,15 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
         if (m_passwords && m_passwords->isUnlocked()) {
             menu->addAction(tr("Lock passwords"), m_passwords, &PasswordKeeper::lock);
         }
-    } else if (!entry.image) {
+    } else if (entry.image) {
+        QAction* read = menu->addAction(tr("Paste text from picture"), this, [this, id] { pasteTextFromPicture(id); });
+        if (!m_textFromPicture || !m_textFromPictureAvailable) {
+            read->setEnabled(false);
+            read->setToolTip(m_textFromPictureReason.isEmpty() ? tr("Text recognition is not available here.")
+                                                               : m_textFromPictureReason);
+            menu->setToolTipsVisible(true);
+        }
+    } else {
         menu->addMenu(createPasteAsMenu(entry, menu));
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
         if (!m_passwords || !m_passwords->isSetUp()) {
@@ -1208,6 +1216,28 @@ void PopupWindow::pasteAs(const QModelIndex& index)
     if (isVisible()) {
         m_search->setFocus();
     }
+}
+
+void PopupWindow::pasteTextFromPicture(qint64 id)
+{
+    if (!m_textFromPicture || !m_textFromPictureAvailable) {
+        return;
+    }
+    setBusy(tr("Reading the text in the picture…")); // not a message box: that would wait for a click
+    m_textFromPicture(id, [this, self = QPointer<PopupWindow>(this)](const QString& text, const QString& error) {
+        if (!self) {
+            return;
+        }
+        setBusy(QString());
+        if (!error.isEmpty()) {
+            showMessage(error);
+        } else if (text.trimmed().isEmpty()) {
+            showMessage(tr("No text found in the picture."));
+        } else {
+            emit textActivated(text); // on the clipboard, and pasted like any copy
+            hidePopup();
+        }
+    });
 }
 
 void PopupWindow::addOutOfRecentAction(QMenu* menu, const QString& path)

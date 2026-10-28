@@ -94,6 +94,17 @@ public:
     // for when it didn't. Unset: master password only.
     using HelloUnlock = std::function<void(std::function<void(bool unlocked)> done)>;
     void setHelloUnlock(HelloUnlock hello) { m_helloUnlock = std::move(hello); }
+
+    // "Paste text from picture": reads the text in a stored picture (off the GUI thread, offline) and
+    // calls `done(text, error)`; `available`/`reason` say whether this computer can (the menu entry is
+    // shown disabled, with the reason, when not).
+    using TextFromPicture = std::function<void(qint64 id, std::function<void(const QString& text, const QString& error)> done)>;
+    void setTextFromPicture(TextFromPicture read, bool available, const QString& reason)
+    {
+        m_textFromPicture = std::move(read);
+        m_textFromPictureAvailable = available;
+        m_textFromPictureReason = reason;
+    }
     // Runs `then` once passwords are unlocked (asking for that); not at all if cancelled.
     void withPasswordsUnlocked(std::function<void()> then);
     // Shows a password copy's text in its row for kRevealMs (asks to unlock first).
@@ -104,6 +115,7 @@ public:
     // The transforms for a text copy (Shift+Enter, and a submenu of the right-click menu).
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
     void pasteAs(const QModelIndex& index);
+    void pasteTextFromPicture(qint64 id);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
     QMenu* createFavoritesMenu(QWidget* parent);
     void addOutOfRecentAction(QMenu* menu, const QString& path); // path "" = Favorites
@@ -203,6 +215,9 @@ private:
     bool m_namingPassword = false; // a name box is open or about to open: one at a time
     PasswordKeeper* m_passwords = nullptr;
     HelloUnlock m_helloUnlock;
+    TextFromPicture m_textFromPicture;
+    bool m_textFromPictureAvailable = false;
+    QString m_textFromPictureReason;
     QTimer* m_revealTimer = nullptr; // hides revealed passwords again
     bool m_unlocking = false; // an unlock is running: don't start another
     bool m_hideOnFocusLoss = true;

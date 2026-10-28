@@ -11,6 +11,8 @@ self=${APPIMAGE:-$here/AppRun}
 uuid=clipitto@nimiz.github.io
 data=${XDG_DATA_HOME:-$HOME/.local/share}
 config=${XDG_CONFIG_HOME:-$HOME/.config}
+# Text recognition reads the English data bundled here (more languages: ~/.local/share/clipitto/tessdata).
+export TESSDATA_PREFIX="${TESSDATA_PREFIX:-$here/usr/share/tessdata}"
 
 install_user() {
     echo "== Files for $self"

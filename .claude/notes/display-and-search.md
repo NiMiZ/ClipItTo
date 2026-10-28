@@ -40,6 +40,17 @@ the window's position-changed, and centers any transient ClipItTo dialog (Settin
 `gnome-extension/tests/test_extension.js` (fake shell, run by `ctest -R gnome_extension`) and `tst_dbus`.
 Not verified on a real GNOME session. KDE / wlroots: no placement.
 
+## Text from pictures (OCR)
+Right-click a picture › "Paste text from picture". `src/capture/Ocr.h`: `available()` / `recognize(png)`, blocking,
+one file per platform (`Ocr_win.cpp` Windows.Media.Ocr via C++/WinRT, `Ocr_mac.mm` Vision, `Ocr_tesseract.cpp` on
+Linux when pkg-config finds tesseract+lept, else `Ocr_none.cpp`). The Daemon injects it into the popup
+(`setTextFromPicture`, runs on `m_ocrPool`, DB read on the GUI thread) and the result goes out like "Paste as…"
+(`textActivated`). Linux data: system tessdata, or `~/.local/share/clipitto/tessdata`; AppImage bundles
+`eng.traineddata` (tessdata_fast 4.1.0, sha pinned in build-appimage.sh) and sets TESSDATA_PREFIX; snap stages
+libtesseract5 + tesseract-ocr-eng; .deb Depends libtesseract5, Recommends tesseract-ocr-eng. Never use
+showMessage() for progress (it is a modal box and hangs tests): use setBusy(). Only the Linux build without
+Tesseract was compiled locally; Windows, macOS and the Tesseract path are compiled by CI only, never run.
+
 ## Tests
 `tests/tst_popup.cpp` (menus, Delete keeps group, Clear counts: "Clear Recent (N copies)", N excludes
 pinned), `tst_repository.cpp` (recent rules), `tst_settings.cpp`. Run: `ctest --preset debug`.

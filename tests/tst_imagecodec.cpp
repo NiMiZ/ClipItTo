@@ -1,4 +1,5 @@
 #include "ImageCodec.h"
+#include "Ocr.h"
 
 #include <QGuiApplication>
 #include <QImage>
@@ -31,6 +32,16 @@ class TestImageCodec : public QObject {
     Q_OBJECT
 
 private slots:
+    void ocrLanguageLists()
+    {
+        using clipitto::ocr::parseLanguages;
+        QCOMPARE(parseLanguages(QString()), QStringList());
+        QCOMPARE(parseLanguages(QStringLiteral("en")), QStringList{QStringLiteral("en")});
+        QCOMPARE(parseLanguages(QStringLiteral(" en, he ")), (QStringList{QStringLiteral("en"), QStringLiteral("he")}));
+        QCOMPARE(parseLanguages(QStringLiteral("eng+heb  zh-Hans")),
+                 (QStringList{QStringLiteral("eng"), QStringLiteral("heb"), QStringLiteral("zh-Hans")}));
+    }
+
     void encodesPngThumbnailAndLabel()
     {
         const auto clip = capture::encodeImage(picture(1600, 900), 50'000'000);

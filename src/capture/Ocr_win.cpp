@@ -1,0 +1,136 @@
+// Text recognition with Windows.Media.Ocr (C++/WinRT): built into Windows 10 and later, offline,
+// reads the languages the user has installed (Settings > Time & language). C++/WinRT headers come
+// first: Qt's headers define macros its code doesn't expect.
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Globalization.h>
+#include <winrt/Windows.Graphics.Imaging.h>
+#include <winrt/Windows.Media.Ocr.h>
+#include <winrt/Windows.Storage.Streams.h>
+
+#include "Ocr.h"
+
+#include <QCoreApplication>
+#include <QStringList>
+
+namespace clipitto::ocr {
+
+namespace {
+
+using winrt::Windows::Globalization::Language;
+using winrt::Windows::Graphics::Imaging::BitmapAlphaMode;
+using winrt::Windows::Graphics::Imaging::BitmapDecoder;
+using winrt::Windows::Graphics::Imaging::BitmapPixelFormat;
+using winrt::Windows::Media::Ocr::OcrEngine;
+using winrt::Windows::Storage::Streams::DataWriter;
+using winrt::Windows::Storage::Streams::InMemoryRandomAccessStream;
+
+// As in WindowsHello_win.cpp: the factory cache is cleared before the apartment goes, and since that is
+// process-wide, text recognition runs on the same single thread as Windows Hello (Daemon::m_helloPool).
+struct Apartment {
+    Apartment() { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
+    ~Apartment()
+    {
+        winrt::clear_factory_cache();
+        winrt::uninit_apartment();
+    }
+};
+
+QString tr(const char* text)
+{
+    return QCoreApplication::translate("clipitto::ocr", text);
+}
+
+QString noLanguage()
+{
+    return tr("Windows has no text-recognition language installed (Settings > Time & language > Language).");
+}
+
+} // namespace
+
+bool builtIn()
+{
+    return true;
+}
+
+bool available(QString* why)
+{
+    try {
+        const Apartment apartment;
+        if (OcrEngine::TryCreateFromUserProfileLanguages()) {
+            return true;
+        }
+        if (why) {
+            *why = noLanguage();
+        }
+    } catch (const winrt::hresult_error& e) {
+        if (why) {
+            *why = QString::fromWCharArray(e.message().c_str());
+        }
+    } catch (...) {
+        if (why) {
+            *why = tr("Text recognition could not be checked.");
+        }
+    }
+    return false;
+}
+
+std::optional<QString> recognize(const QByteArray& png, const QStringList& languages, QString* error)
+{
+    const auto fail = [error](const QString& text) {
+        if (error) {
+            *error = text;
+        }
+        return std::optional<QString>();
+    };
+    try {
+        const Apartment apartment;
+        // The first of the user's languages Windows can read; without any, the languages of the account.
+        OcrEngine engine{nullptr};
+        for (const QString& tag : languages) {
+            const Language language(winrt::hstring(reinterpret_cast<const wchar_t*>(tag.utf16())));
+            if (OcrEngine::IsLanguageSupported(language)) {
+                engine = OcrEngine::TryCreateFromLanguage(language);
+                if (engine) {
+                    break;
+                }
+            }
+        }
+        if (!engine && !languages.isEmpty()) {
+            return fail(tr("Windows has no text recognition for \"%1\" (Settings > Time & language > Language: "
+                           "add the language and its optional text recognition feature).")
+                            .arg(languages.join(QStringLiteral(", "))));
+        }
+        if (!engine) {
+            engine = OcrEngine::TryCreateFromUserProfileLanguages();
+        }
+        if (!engine) {
+            return fail(noLanguage());
+        }
+        // The PNG bytes into a stream Windows can decode.
+        InMemoryRandomAccessStream stream;
+        DataWriter writer(stream);
+        writer.WriteBytes(winrt::array_view<const uint8_t>(reinterpret_cast<const uint8_t*>(png.constData()),
+                                                           reinterpret_cast<const uint8_t*>(png.constData()) + png.size()));
+        writer.StoreAsync().get();
+        writer.DetachStream();
+        stream.Seek(0);
+        const BitmapDecoder decoder = BitmapDecoder::CreateAsync(stream).get();
+        if (decoder.PixelWidth() > OcrEngine::MaxImageDimension() || decoder.PixelHeight() > OcrEngine::MaxImageDimension()) {
+            return fail(tr("The picture is too large to read."));
+        }
+        const auto bitmap = decoder.GetSoftwareBitmapAsync(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied).get();
+        const auto result = engine.RecognizeAsync(bitmap).get();
+        QStringList lines;
+        for (const auto& line : result.Lines()) {
+            lines << QString::fromWCharArray(line.Text().c_str());
+        }
+        return lines.join(QLatin1Char('\n')).trimmed();
+    } catch (const winrt::hresult_error& e) {
+        return fail(QString::fromWCharArray(e.message().c_str()));
+    } catch (...) {
+        return fail(tr("Text recognition failed."));
+    }
+}
+
+} // namespace clipitto::ocr

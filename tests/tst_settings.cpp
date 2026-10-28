@@ -474,6 +474,9 @@ private slots:
         QVERIFY(d.askNoteBox()->toolTip().contains(QLatin1String("name")));
         d.askNoteBox()->setChecked(true);
         QVERIFY(d.config().passwordAskNote);
+        QVERIFY(d.ocrLanguagesEdit()->text().isEmpty());
+        d.ocrLanguagesEdit()->setText(QStringLiteral(" en, he "));
+        QCOMPARE(d.config().ocrLanguages, QStringLiteral("en, he"));
         QVERIFY(d.detectSecretsBox()->isEnabled());
         QVERIFY(d.config().detectSecrets);
         d.detectSecretsBox()->setChecked(false);

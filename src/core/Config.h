@@ -31,6 +31,7 @@ struct Config {
     int savedCap = 15; // at most this many pinned copies listed (pins themselves are capped at 10)
     int favoritesLimit = 10; // starred copies without a group (1..20); 10 per group otherwise
     qint64 maxItemBytes = 1024 * 1024;
+    QString ocrLanguages; // languages to read in pictures, e.g. "en, he"; empty = automatic
     int maxImages = 100; // unsaved pictures kept, apart from maxHistory; 0 = don't record pictures
     qint64 maxImageBytes = 50LL * 1024 * 1024; // larger pictures (PNG-encoded) are skipped
     bool capturePrimary = false;
