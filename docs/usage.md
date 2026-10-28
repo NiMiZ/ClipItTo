@@ -97,6 +97,10 @@ finds them by note, group or "image".
 - **Start on:** where the selection starts when the popup opens and after a search (the first
   pinned copy, the first copy in a group, or the first unsaved one).
 - **Popup position:** near the pointer, centered, a corner, or where it was last (drag it by its name).
+  **Wayland:** applications cannot place their own windows there. On GNOME the ClipItTo extension does it for
+  the popup (all positions, and "where it was last" while the session lasts) and centers Settings over the popup;
+  log out and back in after an update so the shell loads the new extension. On KDE, Sway and other Wayland
+  desktops the desktop decides, and the setting has no effect.
 - **Groups:** new, sub-group, rename/move, delete, move up/down; saved immediately.
 - **History encryption**, **Backup** and [password copies](passwords.md#password-copies) have
   their own sections.

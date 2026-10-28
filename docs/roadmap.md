@@ -24,6 +24,10 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   sudo password). Wanted: say before touching the keyring why ("ClipItTo needs the key that protects your
   history / password copies"), touch it only when a feature needs it, and show in `--status` when a keyring
   call is waiting. Test and driver runs already use a private D-Bus without a keyring.
+- **Popup position on Wayland, outside GNOME.** Wayland has no standard way for an app to place its window.
+  On GNOME the extension now places the popup and centers Settings over it (issue #40; needs a real GNOME
+  session to try). KDE could do it through KWin scripting, wlroots compositors through layer-shell (corners
+  and centre, not "near the pointer"). Elsewhere the setting does nothing and Settings says so.
 - **Optional:** normalize CRLF when deduplicating.
 - **Open question:** "search doesn't find custom groups" was reported once and could not be reproduced.
 

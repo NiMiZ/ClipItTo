@@ -309,7 +309,7 @@ void Daemon::onPopupVisibilityChanged(bool visible)
 {
     if (visible && integrationAvailable()) {
         // Wayland compositors won't let us take focus ourselves; the shell can.
-        m_integration->activatePopup();
+        m_integration->activatePopup(m_config.popupPosition);
     }
     emit m_control->visibilityChanged(visible);
 }

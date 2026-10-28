@@ -33,6 +33,7 @@ public:
 
 public slots:
     Q_SCRIPTABLE void ActivateWindow() { calls << QStringLiteral("ActivateWindow"); }
+    Q_SCRIPTABLE void ActivateWindowAt(const QString& position) { calls << QStringLiteral("ActivateWindowAt:") + position; }
     Q_SCRIPTABLE void SetClipboard(const QString& text) { calls << QStringLiteral("SetClipboard:") + text; }
     Q_SCRIPTABLE void Paste(const QString& keys) { calls << QStringLiteral("Paste:") + keys; }
     Q_SCRIPTABLE void SetClipboardContent(const QByteArray& data, const QString& mimeType)
@@ -213,10 +214,12 @@ private slots:
         QCOMPARE(availability.size(), 1);
 
         integration.activatePopup();
+        integration.activatePopup(clipitto::PopupPosition::TopLeft);
         integration.setClipboard(QStringLiteral("from history"));
         integration.paste(clipitto::PasteKeys::CtrlV);
         integration.setClipboardImage(QByteArray(10, 'p'));
         QTRY_COMPARE(extension.calls, (QStringList{QStringLiteral("ActivateWindow"),
+                                                    QStringLiteral("ActivateWindowAt:top-left"),
                                                     QStringLiteral("SetClipboard:from history"),
                                                     QStringLiteral("Paste:ctrl+v"),
                                                     QStringLiteral("SetClipboardContent:image/png:10")}));

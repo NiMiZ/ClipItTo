@@ -32,6 +32,14 @@ or (no group) it is starred and meta `favorites_hide_from_recent = 1`.
   "Unlock to search inside passwords" hint.
 - `ignore_case` only changes the *dedupe hash* (`Repository::textHash`, case-folded), not FTS.
 
+## Popup placement on Wayland
+Wayland clients can't place windows; the GNOME extension does it: the daemon calls `ActivateWindowAt(position)`
+(falls back to `ActivateWindow` = "center" for an older extension, which stays loaded until re-login), the
+extension computes the spot (`popupPlacement`, mirrors `PopupWindow::placeOnScreen`), remembers "last" itself from
+the window's position-changed, and centers any transient ClipItTo dialog (Settings) over the popup. Tests:
+`gnome-extension/tests/test_extension.js` (fake shell, run by `ctest -R gnome_extension`) and `tst_dbus`.
+Not verified on a real GNOME session. KDE / wlroots: no placement.
+
 ## Tests
 `tests/tst_popup.cpp` (menus, Delete keeps group, Clear counts: "Clear Recent (N copies)", N excludes
 pinned), `tst_repository.cpp` (recent rules), `tst_settings.cpp`. Run: `ctest --preset debug`.

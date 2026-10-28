@@ -30,7 +30,7 @@ hotkey = "Ctrl+Alt+V"       # shortcut that opens the popup, e.g. "Ctrl+`". Wind
 theme = "system"            # system | light | dark
 popup_position = "cursor"   # cursor | center | top-left | top-right | bottom-left |
                             # bottom-right | last (where it last closed, e.g. after dragging
-                            # it by its name). X11 and Windows; Wayland desktops place it
+                            # it by its name). X11, Windows and macOS; on Wayland the desktop places it
 start_focus = "pinned"      # where the selection starts when the popup opens and after a search:
                             # pinned (first pinned copy) | grouped (first copy in a group) |
                             # unsaved (first copy that isn't pinned, starred or grouped);

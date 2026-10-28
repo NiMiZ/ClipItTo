@@ -34,7 +34,8 @@ void GnomeShellIntegration::setAvailable(bool available)
     }
 }
 
-void GnomeShellIntegration::call(const QString& method, const QVariantList& args)
+void GnomeShellIntegration::call(const QString& method, const QVariantList& args,
+                                  const std::function<void()>& ifUnknown)
 {
     if (!m_available) {
         return;
@@ -45,8 +46,10 @@ void GnomeShellIntegration::call(const QString& method, const QVariantList& args
     msg.setArguments(args);
     msg.setAutoStartService(false);
     auto* watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(msg), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [method](QDBusPendingCallWatcher* w) {
-        if (w->isError()) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [method, ifUnknown](QDBusPendingCallWatcher* w) {
+        if (w->isError() && ifUnknown && w->error().type() == QDBusError::UnknownMethod) {
+            ifUnknown(); // an older extension, still loaded in the shell until the next login
+        } else if (w->isError()) {
             qCWarning(lcShell).noquote() << "extension call" << method << "failed:" << w->error().message();
         }
         w->deleteLater();
@@ -56,6 +59,12 @@ void GnomeShellIntegration::call(const QString& method, const QVariantList& args
 void GnomeShellIntegration::activatePopup()
 {
     call(QStringLiteral("ActivateWindow"));
+}
+
+void GnomeShellIntegration::activatePopup(PopupPosition position)
+{
+    call(QStringLiteral("ActivateWindowAt"), {popupPositionName(position)},
+         [this] { call(QStringLiteral("ActivateWindow")); });
 }
 
 void GnomeShellIntegration::setClipboard(const QString& text)

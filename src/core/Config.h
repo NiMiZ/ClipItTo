@@ -16,6 +16,8 @@ enum class Theme { System, Light, Dark };
 // Where the popup opens (X11 and Windows; Wayland compositors place windows themselves).
 // Last: where it was when it last closed, e.g. after dragging it by its name.
 enum class PopupPosition { Cursor, Center, TopLeft, TopRight, BottomLeft, BottomRight, Last };
+// "cursor", "center", "top-left", ... as written in the config file.
+QString popupPositionName(PopupPosition position);
 // Where the selection starts when the popup opens and after each search: on the first copy
 // of that kind in the list (the first copy, when there is none).
 enum class StartFocus { Pinned, Grouped, Unsaved };

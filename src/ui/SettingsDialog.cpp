@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHash>
 #include <QHeaderView>
@@ -245,6 +246,17 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_position->setCurrentIndex(m_position->findData(int(config.popupPosition)));
     m_position->setToolTip(tr("On Wayland desktops the desktop decides where the popup opens"));
     form->addRow(tr("Open the popup:"), m_position);
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        // A choice that silently does nothing is worse than none: say so where it is chosen.
+        auto* waylandNote = new QLabel(tr("<b>Wayland:</b> applications cannot place their own windows, so on most "
+                                          "desktops the desktop decides where the popup opens, whatever is chosen "
+                                          "here. On GNOME the ClipItTo extension places it (log out and back in "
+                                          "after an update). X11, Windows and macOS need nothing extra."),
+                                       this);
+        waylandNote->setWordWrap(true);
+        waylandNote->setTextFormat(Qt::RichText);
+        form->addRow(QString(), waylandNote);
+    }
 
     m_startFocus->addItem(tr("Pinned copies"), int(StartFocus::Pinned));
     m_startFocus->addItem(tr("Group copies"), int(StartFocus::Grouped));
