@@ -11,6 +11,7 @@
 #include "PopupWindow.h"
 #include "WlPasteBackend.h"
 #include "ImageCodec.h"
+#include "Ocr.h"
 #include "SyntheticPaste.h"
 #include "WindowsHello.h"
 #include "Paths.h"
@@ -80,6 +81,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
         }
     });
     m_helloPool.setMaxThreadCount(1);
+    m_ocrPool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
@@ -188,6 +190,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
     m_popup->setPasswords(m_passwords.get());
     setUpWindowsHello();
+    setUpOcr();
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
         if (!ok) {
@@ -715,6 +718,50 @@ void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, st
 }
 
 } // namespace
+
+void Daemon::setUpOcr()
+{
+    runOn<std::pair<bool, QString>>(
+        &m_ocrPool, this,
+        [] {
+            QString why;
+            const bool ok = ocr::available(&why);
+            return std::pair<bool, QString>(ok, why);
+        },
+        [this](std::pair<bool, QString> state) {
+            if (!m_popup) {
+                return;
+            }
+            m_popup->setTextFromPicture(
+                [this](qint64 id, std::function<void(const QString&, const QString&)> done) {
+                    QByteArray png;
+                    try {
+                        png = m_repo->imageData(id); // the database stays on this thread
+                    } catch (const db::DbError& e) {
+                        qCWarning(lcDaemon) << "failed to read the picture:" << e.what();
+                    }
+                    if (png.isEmpty()) {
+                        done(QString(), tr("The picture could not be read."));
+                        return;
+                    }
+                    runOn<std::pair<QString, QString>>(
+                        &m_ocrPool, this,
+                        [png] {
+                            QString error;
+                            const std::optional<QString> text = ocr::recognize(png, &error);
+                            if (!text) {
+                                return std::pair<QString, QString>(
+                                    QString(), error.isEmpty() ? QStringLiteral("Text recognition failed.") : error);
+                            }
+                            return std::pair<QString, QString>(*text, QString());
+                        },
+                        [done = std::move(done)](std::pair<QString, QString> result) {
+                            done(result.first, result.second);
+                        });
+                },
+                state.first, state.second);
+        });
+}
 
 void Daemon::setUpWindowsHello()
 {

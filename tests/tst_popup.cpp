@@ -784,6 +784,64 @@ private slots:
         QVERIFY(!f.t.repo->get(beta.id));
     }
 
+    void pasteTextFromPictureReadsAndPastesTheText()
+    {
+        Fixture f;
+        QImage thumb(40, 20, QImage::Format_RGB32);
+        thumb.fill(Qt::white);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        thumb.save(&buffer, "PNG");
+        clipitto::ImageClip clip;
+        clip.png = png;
+        clip.thumbnail = png;
+        clip.width = 40;
+        clip.height = 20;
+        clip.pixelHash = QStringLiteral("ocr");
+        const qint64 id = f.t.repo->ingestImage(clip).id;
+        QVERIFY(f.show());
+        const Entry picture = *f.model()->entryAt(f.model()->findEntry(id));
+        // Finds the menu entry (found, enabled) and clicks it when asked.
+        const auto entry = [&](bool click) {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(picture, f.popup.get()));
+            for (QAction* a : menu->actions()) {
+                if (a->text() == QLatin1String("Paste text from picture")) {
+                    const std::pair<bool, bool> state(true, a->isEnabled());
+                    if (click) {
+                        a->trigger();
+                    }
+                    return state;
+                }
+            }
+            return std::pair<bool, bool>(false, false);
+        };
+        // No text recognition on this computer: the entry is there, disabled.
+        QCOMPARE(entry(false), (std::pair<bool, bool>(true, false)));
+
+        qint64 askedFor = 0;
+        QString reply = QStringLiteral("hello from a screenshot");
+        f.popup->setTextFromPicture(
+            [&](qint64 pid, std::function<void(const QString&, const QString&)> done) {
+                askedFor = pid;
+                done(reply, QString());
+            },
+            true, QString());
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        QCOMPARE(entry(true), (std::pair<bool, bool>(true, true)));
+        QCOMPARE(askedFor, id);
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), reply);
+
+        // A picture without text: nothing is pasted, and the user is told.
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        reply = QStringLiteral("  \n ");
+        entry(true);
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(messages, QStringList{QStringLiteral("No text found in the picture.")});
+    }
+
     void pasteAsTransformsTheTextAndLeavesTheCopyAlone()
     {
         Fixture f;

@@ -34,7 +34,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev qt6-qpa-plugins libgl-dev \
-            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dbus gjs
+            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dbus gjs \
+            libtesseract-dev libleptonica-dev tesseract-ocr-eng
 
       # CMake downloads SQLite3MC, Monocypher (and toml++ on macOS) from github.com at configure
       # time; GitHub's release downloads fail now and then (504, "egress over the limit").
@@ -98,7 +99,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev \
-            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dpkg-dev desktop-file-utils
+            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dpkg-dev desktop-file-utils \
+            libtesseract-dev libleptonica-dev
 
       # CMake downloads SQLite3MC, Monocypher (and toml++ on macOS) from github.com at configure
       # time; GitHub's release downloads fail now and then (504, "egress over the limit").
@@ -504,7 +506,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev qt6-wayland libgl-dev libsqlite3-dev libtomlplusplus-dev \
-            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev file dbus
+            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev file dbus \
+            libtesseract-dev libleptonica-dev
       - name: Cache the AppImage tools and the dependency sources
         uses: actions/cache@v4
         with:

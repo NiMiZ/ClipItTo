@@ -46,6 +46,8 @@ apps:
   clipitto-daemon:
     command: usr/bin/clipitto-daemon
     autostart: clipitto-daemon.desktop
+    environment:
+      TESSDATA_PREFIX: $SNAP/usr/share/tesseract-ocr/5/tessdata
     slots:
       - dbus-clipitto
     plugs:
@@ -81,6 +83,8 @@ parts:
       - g++
       - libgl-dev
       - libglib2.0-bin
+      - libleptonica-dev
+      - libtesseract-dev
       - libtomlplusplus-dev
       - libx11-dev
       - libxtst-dev
@@ -90,6 +94,8 @@ parts:
       - qtkeychain-qt6-dev
     stage-packages:
       - libqt6keychain1
+      - libtesseract5
+      - tesseract-ocr-eng
       - libqt6waylandclient6
       - libqt6widgets6
       - libtomlplusplus3t64

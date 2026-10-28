@@ -80,6 +80,14 @@ ones only leave Recent and stay in their groups; pinned ones stay pinned. Its me
 also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups
 empty. Both ask first and can't be undone.
 
+**Text from a picture:** right-click a picture › *Paste text from picture* reads the text in it and puts it
+on the clipboard and into the window you came from. It runs on your computer only, with no network or cloud
+service: Windows uses its built-in text recognition (languages installed in Settings › Time & language), macOS
+uses the Vision framework, and Linux uses Tesseract (the `.deb` recommends `tesseract-ocr-eng`; the AppImage
+and snap carry English). For other languages on Linux install `tesseract-ocr-<language>` (for Hebrew,
+`tesseract-ocr-heb`; ClipItTo adds the language of your locale to English), or put `*.traineddata` files in
+`~/.local/share/clipitto/tessdata`. Where it isn't available the entry is greyed out and says why.
+
 **Pictures:** copied images (screenshots, "Copy Image" in a browser, ...) are kept too, shown
 as a thumbnail with their size; hover a row for a larger preview, and choose it to put the
 picture back on the clipboard. A copy that has both text and a picture is kept as text.
