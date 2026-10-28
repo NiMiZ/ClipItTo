@@ -42,6 +42,11 @@ QString noLanguage()
 
 } // namespace
 
+bool builtIn()
+{
+    return true;
+}
+
 bool available(QString* why)
 {
     try {

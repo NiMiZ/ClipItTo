@@ -86,6 +86,11 @@ struct Engine {
 
 } // namespace
 
+bool builtIn()
+{
+    return true;
+}
+
 bool available(QString* why)
 {
     Engine engine;

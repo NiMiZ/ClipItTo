@@ -9,6 +9,11 @@
 
 namespace clipitto::ocr {
 
+bool builtIn()
+{
+    return true;
+}
+
 bool available(QString*)
 {
     return true; // Vision's text recognition is part of macOS 10.15 and later (the app needs 11)
