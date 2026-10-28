@@ -397,8 +397,17 @@ jobs:
               pb.setStringForType($(""), $("'"$1"'"));'
           }
           [ "$(items)" = 0 ]
-          printf 'copied with pbcopy %s' "$RANDOM" | pbcopy
-          for i in $(seq 80); do [ "$(items)" = 1 ] && break; sleep 0.25; done
+          # The daemon notices a copy by comparing the pasteboard's change count with the one it saw last; a copy
+          # made before that first look is never seen as a change, and the check failed now and then for that
+          # reason. So wait a moment first, and copy the same text again every 2 s until it is captured (the
+          # same text is one item however often it is copied).
+          text="copied with pbcopy $RANDOM"
+          sleep 1
+          for i in $(seq 80); do
+            [ $((i % 8)) = 1 ] && printf '%s' "$text" | pbcopy
+            [ "$(items)" = 1 ] && break
+            sleep 0.25
+          done
           [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a pbcopy copy was not captured"; cat daemon.log; exit 1; }
           mark org.nspasteboard.ConcealedType 'a-password-1'
           sleep 1.5
