@@ -25,17 +25,17 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   history / password copies"), touch it only when a feature needs it, and show in `--status` when a keyring
   call is waiting. Test and driver runs already use a private D-Bus without a keyring.
 - **Popup position on Wayland, outside GNOME.** Wayland has no standard way for an app to place its window.
-  On GNOME the extension now places the popup and centers Settings over it (issue #40; needs a real GNOME
-  session to try). KDE could do it through KWin scripting, wlroots compositors through layer-shell (corners
+  **DONE on GNOME:** the extension places the popup and centers Settings over it (issue #40; still to be tried
+  on a real GNOME session). KDE could do it through KWin scripting, wlroots compositors through layer-shell (corners
   and centre, not "near the pointer"). Elsewhere the setting does nothing and Settings says so.
 - **Optional:** normalize CRLF when deduplicating.
 - **Open question:** "search doesn't find custom groups" was reported once and could not be reproduced.
 
 ## Ideas for productivity
 
-Ordered by how much they would likely help, not by effort.
+Ordered by how much they would likely help, not by effort. Items marked **DONE** are in 0.7.0.
 
-1. **Transform on paste** (ClipItTo stores plain text only, so formatting is never pasted anyway): UPPER / lower / Title case, trim, collapse whitespace, JSON pretty/minify, URL decode/encode.
+1. **DONE: Transform on paste** (ClipItTo stores plain text only, so formatting is never pasted anyway): UPPER / lower / Title case, trim, collapse whitespace, JSON pretty/minify, URL decode/encode.
 2. **Quick paste keys** (`Ctrl+1`…`9` in the popup, or a global chord) for the pinned copies, so a
    frequent snippet is one chord away without opening the list.
 3. **Snippets with placeholders:** pinned copies that expand `{date}`, `{time}`, `{clipboard}` or ask for a
@@ -44,10 +44,11 @@ Ordered by how much they would likely help, not by effort.
    form, moving rows between apps). Also **join**: merge selected copies into one with a separator.
 5. **Ignore apps:** a list of programs whose copies are never recorded (banking, remote desktop), on top of
    the password-manager rule. Related: **auto-forget** copies after N minutes for chosen apps or patterns.
-6. **Sensitive-pattern guard:** copies that look like API keys, tokens, card numbers or private keys are
+6. **DONE: Sensitive-pattern guard:** copies that look like API keys, tokens, card numbers or private keys are
    offered as password copies (or skipped) automatically instead of sitting in plain history.
-7. **Search filters:** `img:`, `pin:`, `app:chrome`, `today:` / `since:`, `group:Work`; and show the
-   source app and time on a row. (The source app is already captured for password copies.)
+7. **DONE (except `app:`): Search filters:** `img:`, `text:`, `pin:`, `star:`, `group:`, `note:`, `today:`, `since:`.
+   Still open: `app:chrome` and showing the source app and time on a row; both need the source app stored for
+   every copy (it is captured only for password copies today).
 8. **Smart paste keys per app:** pick Ctrl+V / Shift+Insert / Ctrl+Shift+V automatically for terminals
    instead of one global setting.
 9. **Clean links:** strip tracking parameters (`utm_*`, `fbclid`) from copied URLs, optionally.
