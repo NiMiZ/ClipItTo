@@ -137,8 +137,7 @@ private:
     QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
-    QThreadPool m_ocrPool; // one thread: reading the text in a picture can take a second or two
-    QThreadPool m_helloPool; // one thread: Windows Hello calls (blocking WinRT, never on the GUI thread)
+    QThreadPool m_helloPool; // one thread: Windows Hello and text-recognition calls (blocking, WinRT; never on the GUI thread)
     bool m_helloAvailable = false;
     QString m_helloReason;
     quint64 m_shortcutRequest = 0; // results of older requests don't overwrite the status
