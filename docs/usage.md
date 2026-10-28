@@ -6,9 +6,7 @@ Back to the [README](../README.md).
 |---|---|
 | type | filter history (note, group and text) |
 | `↓` / `↑` | move the selection (it starts on the latest copy: `↓` next copy, `↑` the Groups row); `↑` on the top row returns to the search bar |
-| `Shift+Enter` | **Paste as…** a menu of changes to the text for this paste only: UPPER, lower, Title Case, trim, collapse spaces, one line, JSON pretty / minified, URL and Base64 encode / decode, and **keyboard layout**: text typed with the wrong layout
-becomes the other language on the same keys (`xccv` → `סבבה`, `סבבה` → `xccv`; only the direction that fits the
-text is offered). Press the underlined letter. The stored copy is not changed |
+| `Shift+Enter` | **Paste as…** a menu of changes to the text for this paste only: UPPER, lower, Title Case, trim, collapse spaces, one line, JSON pretty / minified, URL and Base64 encode / decode, and **keyboard layout** (below). Press the underlined letter. The stored copy is not changed |
 | `Enter` / click | copy the entry back to the clipboard and close (on a group: open/close it) |
 | `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
 | `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
@@ -18,6 +16,13 @@ text is offered). Press the underlined letter. The stored copy is not changed |
 | right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |
 | `Ctrl+,` or ⚙ | settings |
 | `Esc` | close |
+
+**Keyboard layout (Paste as…).** Text typed with the wrong layout becomes the other language on the same keys:
+copy `xccv`, press Shift+Enter, and *As Hebrew keyboard: סבבה* pastes `סבבה` (and `סבבה` → `xccv`). Choose the
+languages you type in at Settings › General › *Keyboard layouts for Paste as…* (Hebrew, Russian, Greek; empty
+means the language of your system). With one language the menu offers the opposite of the text's language
+(English ⇄ that language); with several it shows a submenu of them, each with a preview of the result. Russian
+and Greek keep capital letters. It works key for key, with no dictionary and no network.
 
 **Search filters.** Type these next to your words to narrow the list (a filter alone works too):
 

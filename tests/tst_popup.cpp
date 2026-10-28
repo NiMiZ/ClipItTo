@@ -784,6 +784,72 @@ private slots:
         QVERIFY(!f.t.repo->get(beta.id));
     }
 
+    void pasteAsKeyboardLayoutFollowsTheSetting()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        const Entry beta = *f.model()->entryAt(f.model()->index(4, 0));
+        Entry typed = beta;
+        typed.content = QStringLiteral("xccv");
+        Entry hebrew = beta;
+        hebrew.content = QStringLiteral("סבבה");
+        const auto texts = [&](const Entry& e) {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(e, f.popup.get()));
+            QMenu* paste = nullptr;
+            for (QAction* a : menu->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    paste = a->menu();
+                }
+            }
+            QStringList out;
+            if (paste) {
+                for (QAction* a : paste->actions()) {
+                    out << a->text().remove(QLatin1Char('&'));
+                }
+            }
+            return out;
+        };
+        const auto layouts = [&](const char* setting) {
+            clipitto::Config c;
+            c.keyboardLayouts = QString::fromLatin1(setting);
+            f.popup->applyConfig(c);
+        };
+        const auto hasKeyboard = [](const QStringList& t) {
+            return std::any_of(t.begin(), t.end(), [](const QString& s) { return s.contains(QLatin1String("keyboard")); });
+        };
+
+        layouts("none");
+        QVERIFY(!hasKeyboard(texts(typed)));
+
+        // One layout: a single entry, the opposite of the text's language, with a preview of the result.
+        layouts("he");
+        QVERIFY(texts(typed).last().contains(QStringLiteral("As Hebrew keyboard: סבבה")));
+        QVERIFY(texts(hebrew).last().contains(QStringLiteral("As English keyboard: xccv")));
+
+        // Several: a submenu of them.
+        layouts("he, ru");
+        std::unique_ptr<QMenu> menu(f.popup->createContextMenu(typed, f.popup.get()));
+        QMenu* paste = nullptr;
+        for (QAction* a : menu->actions()) {
+            if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                paste = a->menu();
+            }
+        }
+        QVERIFY(paste);
+        QMenu* more = nullptr;
+        for (QAction* a : paste->actions()) {
+            if (a->menu()) {
+                more = a->menu();
+            }
+        }
+        QVERIFY(more);
+        QCOMPARE(more->actions().size(), 2);
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        more->actions().first()->trigger();
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("סבבה"));
+    }
+
     void pasteAsTransformsTheTextAndLeavesTheCopyAlone()
     {
         Fixture f;

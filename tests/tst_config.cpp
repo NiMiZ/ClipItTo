@@ -27,6 +27,18 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void keyboardLayouts()
+    {
+        QVERIFY(Config().keyboardLayouts.isEmpty());
+        QStringList warnings;
+        const Config c = Config::fromToml("keyboard_layouts = \"he, ru\"\n", &warnings);
+        QCOMPARE(c.keyboardLayouts, QStringLiteral("he, ru"));
+        QVERIFY(warnings.isEmpty());
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        Config::fromToml("keyboard_layouts = \"he; rm\"\n", &warnings);
+        QCOMPARE(warnings.size(), 1);
+    }
+
     void passwordSettings()
     {
         const Config defaults;

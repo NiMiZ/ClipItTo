@@ -103,6 +103,7 @@ public:
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
     // The transforms for a text copy (Shift+Enter, and a submenu of the right-click menu).
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
+    void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
     void pasteAs(const QModelIndex& index);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
     QMenu* createFavoritesMenu(QWidget* parent);
@@ -202,6 +203,7 @@ private:
     NamePrompt m_namePrompt;
     bool m_namingPassword = false; // a name box is open or about to open: one at a time
     PasswordKeeper* m_passwords = nullptr;
+    QStringList m_keyboardLayouts; // layouts besides English that Paste as… converts to and from
     HelloUnlock m_helloUnlock;
     QTimer* m_revealTimer = nullptr; // hides revealed passwords again
     bool m_unlocking = false; // an unlock is running: don't start another

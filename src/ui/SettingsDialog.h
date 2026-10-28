@@ -125,6 +125,7 @@ public:
     QSpinBox* copiesBox() const { return m_copies; }
     QSpinBox* keptBox() const { return m_kept; }
     QSpinBox* imagesBox() const { return m_images; }
+    QCheckBox* layoutBox(const QString& id) const;
     QToolButton* encryptionInfo() const { return m_encryptionInfo; }
     QToolButton* shortcutInfo() const { return m_shortcutInfo; }
     QLabel* encryptionStatus() const { return m_encryptionStatus; }
@@ -183,6 +184,8 @@ private:
     QSpinBox* m_copies;
     QSpinBox* m_kept;
     QSpinBox* m_images;
+    QList<QCheckBox*> m_layoutBoxes; // keyboard layouts for Paste as…, in texttransform::layouts() order
+    QString m_layoutsSetting; // keyboard_layouts as loaded
     QSpinBox* m_lines;
     QSpinBox* m_favorites;
     QComboBox* m_position;

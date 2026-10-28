@@ -4,6 +4,7 @@
 #include "Hotkey.h"
 #include "PasswordKeeper.h"
 #include "PlatformKeys.h"
+#include "TextTransform.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -216,6 +217,29 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                             "Pictures larger than %1 MB are not recorded.")
                              .arg(config.maxImageBytes / (1024 * 1024)));
     form->addRow(tr("Pictures kept in history:"), m_images);
+
+    // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
+    m_layoutsSetting = config.keyboardLayouts;
+    const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
+    auto* layoutRow = new QHBoxLayout;
+    for (const texttransform::Layout& layout : texttransform::layouts()) {
+        auto* box = new QCheckBox(texttransform::layoutName(layout.id), this);
+        box->setProperty("layout", layout.id);
+        box->setChecked(chosenLayouts.contains(layout.id));
+        m_layoutBoxes.append(box);
+        layoutRow->addWidget(box);
+    }
+    layoutRow->addStretch(1);
+    auto* layoutWidget = new QWidget(this);
+    layoutWidget->setLayout(layoutRow);
+    layoutRow->setContentsMargins(0, 0, 0, 0);
+    layoutWidget->setToolTip(QStringLiteral("<p>%1</p>")
+                                 .arg(tr("Paste as… (Shift+Enter) can fix text that was typed with the wrong keyboard "
+                                         "layout: copy <b>xccv</b> and paste it as the Hebrew keyboard, <b>סבבה</b>. "
+                                         "Tick the languages you type in. With one, the menu offers the opposite of the "
+                                         "text's language (English ⇄ that language); with several it offers a submenu "
+                                         "of them. Empty: the language of your system.")));
+    form->addRow(tr("Keyboard layouts for Paste as…:"), layoutWidget);
 
     m_lines->setRange(1, 10);
     m_lines->setValue(config.previewLines);
@@ -599,6 +623,17 @@ Config SettingsDialog::config() const
     c.recentCount = m_copies->value();
     c.maxHistory = m_kept->value();
     c.maxImages = m_images->value();
+    {
+        QStringList ids;
+        for (const QCheckBox* box : m_layoutBoxes) {
+            if (box->isChecked()) {
+                ids << box->property("layout").toString();
+            }
+        }
+        // Unchanged from what the setting meant: keep it as it was (empty stays "the system language's").
+        const QStringList before = texttransform::enabledLayouts(m_layoutsSetting, QLocale::system().bcp47Name());
+        c.keyboardLayouts = ids == before ? m_layoutsSetting : (ids.isEmpty() ? QStringLiteral("none") : ids.join(QStringLiteral(", ")));
+    }
     c.previewLines = m_lines->value();
     c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;
@@ -1217,4 +1252,15 @@ void SettingsDialog::deleteSelectedGroup()
     }
 }
 
+QCheckBox* SettingsDialog::layoutBox(const QString& id) const
+{
+    for (QCheckBox* box : m_layoutBoxes) {
+        if (box->property("layout").toString() == id) {
+            return box;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace clipitto::ui
+

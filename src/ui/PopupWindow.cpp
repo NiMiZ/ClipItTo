@@ -396,6 +396,7 @@ PopupWindow::~PopupWindow() = default;
 
 void PopupWindow::applyConfig(const Config& config)
 {
+    m_keyboardLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
     m_controller->applyConfig(config);
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
@@ -1178,9 +1179,6 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
     const QString text = entry.content;
     for (const texttransform::Info& info : texttransform::all()) {
         const texttransform::Kind kind = info.kind;
-        if (!texttransform::fits(kind, text)) {
-            continue; // e.g. "English keyboard" for a text that is already English
-        }
         menu->addAction(info.label, this, [this, text, kind] {
             QString why;
             const std::optional<QString> out = texttransform::apply(kind, text, &why);
@@ -1192,7 +1190,50 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
             hidePopup();
         });
     }
+    addKeyboardLayoutEntries(menu, text);
     return menu;
+}
+
+// Text typed with the wrong keyboard layout, converted key for key. One layout to go to (the opposite of the
+// text's language): one entry. Several: a submenu with each.
+void PopupWindow::addKeyboardLayoutEntries(QMenu* menu, const QString& text)
+{
+    const QString from = texttransform::layoutOf(text, m_keyboardLayouts);
+    const QStringList targets = texttransform::convertibleTo(text, m_keyboardLayouts);
+    if (m_keyboardLayouts.isEmpty() || targets.isEmpty()) {
+        return;
+    }
+    const auto add = [this, text, from](QMenu* into, const QString& to, const QString& label) {
+        into->addAction(label, this, [this, text, from, to] {
+            QString why;
+            const std::optional<QString> out = texttransform::convertLayout(text, from, to, &why);
+            if (!out) {
+                showMessage(why);
+                return;
+            }
+            emit textActivated(*out);
+            hidePopup();
+        });
+    };
+    // A short preview of the result in the label, so the right layout is easy to pick.
+    const auto preview = [&text, &from](const QString& to) {
+        const std::optional<QString> out = texttransform::convertLayout(text, from, to);
+        QString shown = out.value_or(QString()).simplified();
+        if (shown.size() > 24) {
+            shown = shown.left(24) + QStringLiteral("…");
+        }
+        return shown;
+    };
+    menu->addSeparator();
+    if (targets.size() == 1) {
+        add(menu, targets.first(),
+            tr("As %1 &keyboard: %2").arg(texttransform::layoutName(targets.first()), preview(targets.first())));
+        return;
+    }
+    QMenu* sub = menu->addMenu(tr("Another &keyboard layout"));
+    for (const QString& to : targets) {
+        add(sub, to, tr("%1: %2").arg(texttransform::layoutName(to), preview(to)));
+    }
 }
 
 void PopupWindow::pasteAs(const QModelIndex& index)
