@@ -46,6 +46,77 @@ private slots:
         QVERIFY(!apply(Kind::Base64Decode, QStringLiteral("/w=="), &why)); // 0xFF: not UTF-8
     }
 
+    void hebrewKeyboard()
+    {
+        const auto toHebrew = [](const char* text) { return *convertLayout(QString::fromUtf8(text), QStringLiteral("en"), QStringLiteral("he")); };
+        QCOMPARE(toHebrew("xccv"), QStringLiteral("סבבה"));
+        QCOMPARE(toHebrew("akuo"), QStringLiteral("שלום"));
+        QCOMPARE(toHebrew("XCCV 12"), QStringLiteral("סבבה 12")); // case is lost (Hebrew has none), digits stay
+        QCOMPARE(toHebrew("iop;.l"), QStringLiteral("ןםפףץך")); // final letters have their own keys
+        QCOMPARE(toHebrew("t/e,"), QStringLiteral("א.קת"));
+        QCOMPARE(toHebrew("(a)"), QStringLiteral(")ש(")); // Hebrew keyboards mirror the brackets
+        QCOMPARE(*convertLayout(QStringLiteral("סבבה"), QStringLiteral("he"), QStringLiteral("en")), QStringLiteral("xccv"));
+        QString why;
+        QVERIFY(!convertLayout(QStringLiteral("123 456"), QStringLiteral("en"), QStringLiteral("he"), &why));
+        QVERIFY(!why.isEmpty());
+    }
+
+    void russianAndGreekKeepCapitals()
+    {
+        QCOMPARE(*convertLayout(QStringLiteral("ghbdtn"), QStringLiteral("en"), QStringLiteral("ru")), QStringLiteral("привет"));
+        QCOMPARE(*convertLayout(QStringLiteral("Ghbdtn"), QStringLiteral("en"), QStringLiteral("ru")), QStringLiteral("Привет"));
+        QCOMPARE(*convertLayout(QStringLiteral("Привет"), QStringLiteral("ru"), QStringLiteral("en")), QStringLiteral("Ghbdtn"));
+        QCOMPARE(*convertLayout(QStringLiteral("gjrf"), QStringLiteral("en"), QStringLiteral("ru")), QStringLiteral("пока"));
+        QCOMPARE(*convertLayout(QStringLiteral("nesting"), QStringLiteral("en"), QStringLiteral("el")), QStringLiteral("νεστινγ"));
+        QCOMPARE(*convertLayout(QStringLiteral("Wsa"), QStringLiteral("en"), QStringLiteral("el")), QStringLiteral("Σσα"));
+        // From one non-English layout to another, through the keys.
+        QCOMPARE(*convertLayout(QStringLiteral("סבבה"), QStringLiteral("he"), QStringLiteral("ru")), QStringLiteral("чссм"));
+    }
+
+    void everyKeyOfEveryLayoutRoundTrips()
+    {
+        const QString keys = QStringLiteral("qwertyuiopasdfghjklzxcvbnm");
+        for (const char* id : {"he", "ru", "el"}) {
+            const QString own = *convertLayout(keys, QStringLiteral("en"), QString::fromLatin1(id));
+            QCOMPARE(own.size(), keys.size());
+            QCOMPARE(*convertLayout(own, QString::fromLatin1(id), QStringLiteral("en")), keys);
+        }
+        const QString punctuation = QStringLiteral(",./;'`[]");
+        const QString hebrew = *convertLayout(punctuation, QStringLiteral("en"), QStringLiteral("he"));
+        QCOMPARE(*convertLayout(hebrew, QStringLiteral("he"), QStringLiteral("en")), punctuation);
+    }
+
+    void whichLayoutsAreOffered()
+    {
+        const QStringList he{QStringLiteral("he")};
+        const QStringList heRu{QStringLiteral("he"), QStringLiteral("ru")};
+        QCOMPARE(layoutOf(QStringLiteral("xccv"), he), QStringLiteral("en"));
+        QCOMPARE(layoutOf(QStringLiteral("סבבה"), he), QStringLiteral("he"));
+        QCOMPARE(layoutOf(QStringLiteral("hello שלום עולם"), he), QStringLiteral("he")); // the most letters
+        QCOMPARE(layoutOf(QStringLiteral("123"), he), QStringLiteral("en"));
+        QCOMPARE(layoutOf(QStringLiteral("Привет"), he), QStringLiteral("en")); // Russian is not switched on
+        // One layout: the opposite of the text's language.
+        QCOMPARE(convertibleTo(QStringLiteral("xccv"), he), QStringList{QStringLiteral("he")});
+        QCOMPARE(convertibleTo(QStringLiteral("סבבה"), he), QStringList{QStringLiteral("en")});
+        // Several: each other one (English first when the text is not English).
+        QCOMPARE(convertibleTo(QStringLiteral("xccv"), heRu), heRu);
+        QCOMPARE(convertibleTo(QStringLiteral("סבבה"), heRu), (QStringList{QStringLiteral("en"), QStringLiteral("ru")}));
+        QVERIFY(convertibleTo(QStringLiteral("xccv"), {}).isEmpty()); // English alone: nothing to convert to
+    }
+
+    void theSettingChoosesTheLayouts()
+    {
+        QCOMPARE(enabledLayouts(QString(), QStringLiteral("he-IL")), QStringList{QStringLiteral("he")}); // automatic
+        QCOMPARE(enabledLayouts(QString(), QStringLiteral("iw")), QStringList{QStringLiteral("he")});
+        QVERIFY(enabledLayouts(QString(), QStringLiteral("en-US")).isEmpty());
+        QVERIFY(enabledLayouts(QStringLiteral("none"), QStringLiteral("he-IL")).isEmpty());
+        QCOMPARE(enabledLayouts(QStringLiteral(" ru, he, xx, ru "), QStringLiteral("en")),
+                 (QStringList{QStringLiteral("ru"), QStringLiteral("he")}));
+        QCOMPARE(layoutName(QStringLiteral("en")), QStringLiteral("English"));
+        QCOMPARE(layoutName(QStringLiteral("he")), QStringLiteral("Hebrew"));
+        QCOMPARE(layouts().size(), 3);
+    }
+
     void everyTransformHasAMnemonicLabel()
     {
         const auto list = all();

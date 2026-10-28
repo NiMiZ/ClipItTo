@@ -477,6 +477,15 @@ private slots:
         QVERIFY(d.ocrLanguagesEdit()->text().isEmpty());
         d.ocrLanguagesEdit()->setText(QStringLiteral(" en, he "));
         QCOMPARE(d.config().ocrLanguages, QStringLiteral("en, he"));
+        // Keyboard layouts for Paste as…: unchanged keeps the setting; ticking writes the list.
+        QVERIFY(d.layoutBox(QStringLiteral("he")) && d.layoutBox(QStringLiteral("ru")) && d.layoutBox(QStringLiteral("el")));
+        QVERIFY(!d.layoutBox(QStringLiteral("xx")));
+        d.layoutBox(QStringLiteral("he"))->setChecked(true);
+        d.layoutBox(QStringLiteral("ru"))->setChecked(true);
+        QCOMPARE(d.config().keyboardLayouts, QStringLiteral("he, ru"));
+        d.layoutBox(QStringLiteral("he"))->setChecked(false);
+        d.layoutBox(QStringLiteral("ru"))->setChecked(false);
+        QVERIFY(d.config().keyboardLayouts.isEmpty()); // back to what it was: the system language's (none here)
         QVERIFY(d.detectSecretsBox()->isEnabled());
         QVERIFY(d.config().detectSecrets);
         d.detectSecretsBox()->setChecked(false);

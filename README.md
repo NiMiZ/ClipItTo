@@ -29,7 +29,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 |---|---|
 | type | filter history |
 | `↑` / `↓`, `Enter` | move, copy the entry back and paste it into the window you came from |
-| `Shift+Enter` | paste as…: upper / lower case, JSON pretty, URL or Base64 encode, and more |
+| `Shift+Enter` | paste as…: upper / lower case, JSON pretty, URL or Base64 encode, wrong keyboard layout (`xccv` → `סבבה`), and more |
 | `Ctrl+S` / `Ctrl+P` | star / pin |
 | `Ctrl+G` / `Ctrl+E` | set group / edit note |
 | `Del` | delete (or take it off Recent) |

@@ -138,8 +138,7 @@ public:
         const QString text = value ? QString::fromStdString(*value).trimmed() : QString();
         static const QRegularExpression allowed(QStringLiteral("^[A-Za-z0-9_,+ -]{0,64}$"));
         if (!value || !allowed.match(text).hasMatch()) {
-            warn(QStringLiteral("%1: expected language codes like \"en, he\" (or empty for automatic)")
-                     .arg(QLatin1String(key)));
+            warn(QStringLiteral("%1: expected language codes like \"en, he\" (or empty)").arg(QLatin1String(key)));
         } else {
             out = text;
         }
@@ -216,6 +215,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("max_item_bytes", config.maxItemBytes, 1, 64LL * 1024 * 1024);
     r.integer("max_images", config.maxImages, 0, 100'000);
     r.languages("ocr_languages", config.ocrLanguages);
+    r.languages("keyboard_layouts", config.keyboardLayouts);
     r.integer("max_image_bytes", config.maxImageBytes, 1, 512LL * 1024 * 1024);
     r.boolean("capture_primary", config.capturePrimary);
     r.boolean("paste_on_enter", config.pasteOnEnter);
@@ -298,6 +298,8 @@ std::vector<Line> lines(const Config& c)
         {"max_item_bytes", std::to_string(c.maxItemBytes), ""},
         {"max_images", std::to_string(c.maxImages), "unsaved pictures kept; 0 = don't record pictures"},
         {"ocr_languages", tomlString(c.ocrLanguages.toStdString()), "languages read in pictures, e.g. \"en, he\"; empty = automatic"},
+        {"keyboard_layouts", tomlString(c.keyboardLayouts.toStdString()),
+         "layouts offered by Paste as… for text typed with the wrong keyboard: \"he, ru, el\"; empty = the system language's; \"none\""},
         {"max_image_bytes", std::to_string(c.maxImageBytes), "larger pictures are not recorded"},
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},
