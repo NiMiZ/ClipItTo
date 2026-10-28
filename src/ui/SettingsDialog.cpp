@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHash>
 #include <QHeaderView>
@@ -245,6 +246,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_position->setCurrentIndex(m_position->findData(int(config.popupPosition)));
     m_position->setToolTip(tr("On Wayland desktops the desktop decides where the popup opens"));
     form->addRow(tr("Open the popup:"), m_position);
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        // A choice that silently does nothing is worse than none: say so where it is chosen.
+        auto* waylandNote = new QLabel(tr("<b>Not available on Wayland.</b> Applications cannot place their own "
+                                          "windows there, so your desktop decides where the popup opens, whatever "
+                                          "is chosen here. It works on X11, Windows and macOS."),
+                                       this);
+        waylandNote->setWordWrap(true);
+        waylandNote->setTextFormat(Qt::RichText);
+        form->addRow(QString(), waylandNote);
+    }
 
     m_startFocus->addItem(tr("Pinned copies"), int(StartFocus::Pinned));
     m_startFocus->addItem(tr("Group copies"), int(StartFocus::Grouped));
