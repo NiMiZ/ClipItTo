@@ -5,7 +5,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
 
 ## Next
 
-- **Paste as… another keyboard layout.** Text typed with the wrong layout, same keys, other language: copy
+- **DONE (0.8.0, Hebrew / Russian / Greek; Arabic still open): Paste as… another keyboard layout.** Text typed with the wrong layout, same keys, other language: copy
   `xccv`, choose *Paste as › Hebrew keyboard*, and `סבבה` is pasted (and the other way: `akuo` as English
   keyboard becomes `שלום`). It maps each key to the character the same physical key gives in the other
   layout, so it needs no dictionary and no network. Plan: a table per layout pair, starting with the standard
@@ -46,7 +46,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
 
 ## Ideas for productivity
 
-Ordered by how much they would likely help, not by effort. Items marked **DONE** are in 0.7.0.
+Ordered by how much they would likely help, not by effort. Items marked **DONE** are released (0.7.0 and 0.8.0).
 
 1. **DONE: Transform on paste** (ClipItTo stores plain text only, so formatting is never pasted anyway): UPPER / lower / Title case, trim, collapse whitespace, JSON pretty/minify, URL decode/encode.
 2. **Quick paste keys** (`Ctrl+1`…`9` in the popup, or a global chord) for the pinned copies, so a
