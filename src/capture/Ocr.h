@@ -14,7 +14,11 @@
 // Every call blocks and must not run on the GUI thread.
 namespace clipitto::ocr {
 
-// Whether text can be read here; the reason (and what to install) when not.
+// Whether this build has text recognition at all (Windows, macOS, Linux with Tesseract). Cheap and always
+// the same: no engine is started. Whether it can read a given language is found out when it is used.
+bool builtIn();
+
+// Whether text can be read here right now; the reason (and what to install) when not. Starts the engine.
 bool available(QString* why = nullptr);
 
 // "en, he", "eng+heb", "zh-Hans": the language codes in a user's setting, as a list (ISO 639-1 or -2,

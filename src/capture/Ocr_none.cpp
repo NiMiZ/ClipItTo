@@ -4,6 +4,11 @@
 
 namespace clipitto::ocr {
 
+bool builtIn()
+{
+    return false;
+}
+
 bool available(QString* why)
 {
     if (why) {
