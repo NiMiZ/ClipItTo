@@ -23,13 +23,11 @@ using winrt::Windows::Media::Ocr::OcrEngine;
 using winrt::Windows::Storage::Streams::DataWriter;
 using winrt::Windows::Storage::Streams::InMemoryRandomAccessStream;
 
+// No winrt::clear_factory_cache() here: it is process-wide and not safe while another thread (Windows
+// Hello's) is using WinRT, which crashed tst_daemon when both ran at once.
 struct Apartment {
     Apartment() { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
-    ~Apartment()
-    {
-        winrt::clear_factory_cache();
-        winrt::uninit_apartment();
-    }
+    ~Apartment() { winrt::uninit_apartment(); }
 };
 
 QString tr(const char* text)

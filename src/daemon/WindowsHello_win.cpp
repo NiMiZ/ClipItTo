@@ -81,11 +81,9 @@ QString statusText(KeyCredentialStatus status)
 // factory cache is cleared before leaving it: cached factories belong to the apartment.
 struct Apartment {
     Apartment() { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
-    ~Apartment()
-    {
-        winrt::clear_factory_cache();
-        winrt::uninit_apartment();
-    }
+    // No winrt::clear_factory_cache(): it is process-wide and unsafe while another thread (text
+    // recognition's) is using WinRT.
+    ~Apartment() { winrt::uninit_apartment(); }
 };
 
 // The Windows Security prompt can open behind other windows when a background app asks:
