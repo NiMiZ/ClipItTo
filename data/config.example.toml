@@ -48,12 +48,12 @@ encrypt_history = false     # encrypt history.db; the key is kept in the system 
 # 1Password, ...) are kept encrypted once a master password is set in Settings > Passwords,
 # shown as ●●●● and opened only after an unlock. The master password itself is never stored.
 keep_passwords = true       # false = skip them, as without a master password
-passwords_in_group = false  # put new password copies in the "Passwords" group
+passwords_in_group = true   # put new password copies in the "Passwords" group
                             # (false: only in the group and in the p[] search)
 detect_secrets = true       # a copy that looks like an API key, token, private key or card number is
                             # kept as a password copy too (once a master password is set)
-passwords_per_note = false  # the same password under a different note is kept as a separate copy
-password_ask_note = false   # after copying a new password, open ClipItTo with a name box on it
+passwords_per_note = true   # the same password under a different note is kept as a separate copy
+password_ask_note = true    # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
 password_clear_seconds = 30 # a password pasted from ClipItTo leaves the clipboard after this

@@ -159,9 +159,12 @@ private slots:
         d.passwords()->setMasterPassword("master", [&set](bool ok) { set = ok; });
         QTRY_VERIFY(set);
         QVERIFY(d.control()->passwordsWanted());
+        Config quiet = d.config();
+        quiet.passwordAskNote = false; // on by default; this test is not about the name box
+        QVERIFY(d.applySettings(quiet));
         emit d.control()->ingestRequested(QStringLiteral("hunter2"), marked);
         QCOMPARE(d.repository()->countSecrets(), 1);
-        const Entry e = d.repository()->recent(1, false).front();
+        const Entry e = d.repository()->allEntries().back();
         QVERIFY(e.secret);
         QCOMPARE(e.note, QStringLiteral("KeePassXC"));
         QCOMPARE(d.status().value(QStringLiteral("passwords")).toString(), QStringLiteral("locked"));
@@ -208,6 +211,10 @@ private slots:
         bool set = false;
         d.passwords()->setMasterPassword("master", [&set](bool ok) { set = ok; });
         QTRY_VERIFY(set);
+        Config off = d.config();
+        off.passwordAskNote = false;
+        off.passwordsPerNote = false; // a renamed copy stays "the same password" for this test
+        QVERIFY(d.applySettings(off));
         QStringList asked;
         d.popup()->setNamePrompt([&asked](QWidget*, const QString& suggestion) {
             asked << suggestion;
@@ -223,14 +230,14 @@ private slots:
         QTest::qWait(150);
         QVERIFY(asked.isEmpty());
         QVERIFY(!d.popup()->isVisible());
-        QCOMPARE(d.repository()->recent(1, false).front().note, QStringLiteral("Safari"));
+        QCOMPARE(d.repository()->allEntries().back().note, QStringLiteral("Safari"));
 
         Config c = d.config();
         c.passwordAskNote = true;
         QVERIFY(d.applySettings(c));
         copy("pw-two");
         QTRY_COMPARE(asked, QStringList{QStringLiteral("Safari")}); // the app it came from is suggested
-        QTRY_COMPARE(d.repository()->recent(1, false).front().note, QStringLiteral("My bank"));
+        QTRY_COMPARE(d.repository()->allEntries().back().note, QStringLiteral("My bank"));
         QTRY_VERIFY(!d.popup()->isVisible()); // it closes again: the focus goes back
 
         copy("pw-two"); // the same password again is not new: not asked

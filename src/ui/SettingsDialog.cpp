@@ -157,7 +157,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_passwordSupport(std::move(passwords))
     , m_keepPasswords(new QCheckBox(tr("Keep copies marked by password managers, encrypted"), this))
     , m_passwordsInGroup(new QCheckBox(tr("Put new password copies in the \"Passwords\" group"), this))
-    , m_passwordsInRecent(new QCheckBox(tr("Also show them in Recent"), this))
+    , m_passwordsInRecent(new QCheckBox(tr("Show passwords entries in Recent"), this))
     , m_askNote(new QCheckBox(tr("After copying a password, ask for a name"), this))
     , m_unlockMinutes(new QSpinBox(this))
     , m_clearSeconds(new QSpinBox(this))
@@ -458,7 +458,9 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     passwordsForm->addRow(tr("Password copies:"), m_keepPasswords);
     m_passwordsInGroup->setChecked(config.passwordsInGroup);
     passwordsForm->addRow(QString(), m_passwordsInGroup);
-    m_passwordsInRecent->setChecked(!m_repo.groupHiddenFromRecent(PasswordKeeper::passwordsGroup()));
+    // Until the Passwords group exists its rule is the default: kept out of Recent.
+    m_passwordsInRecent->setChecked(m_repo.groups().contains(PasswordKeeper::passwordsGroup()) &&
+                                    !m_repo.groupHiddenFromRecent(PasswordKeeper::passwordsGroup()));
     // A paragraph makes Qt treat a tooltip as rich text, which wraps instead of one long line.
     m_passwordsInRecent->setToolTip(QStringLiteral("<p>%1</p>")
                                         .arg(tr("Password copies in the Passwords group also appear in the Recent list, "
@@ -869,7 +871,8 @@ void SettingsDialog::finishImport(const QString& path, const backup::Info& info,
         }
         reloadGroups();
         // The Passwords group's rule may have come with the copies.
-        m_passwordsInRecent->setChecked(!m_repo.groupHiddenFromRecent(PasswordKeeper::passwordsGroup()));
+        m_passwordsInRecent->setChecked(m_repo.groups().contains(PasswordKeeper::passwordsGroup()) &&
+                                        !m_repo.groupHiddenFromRecent(PasswordKeeper::passwordsGroup()));
     }
     if (report->settings) {
         // What belongs to this computer stays as it is here.

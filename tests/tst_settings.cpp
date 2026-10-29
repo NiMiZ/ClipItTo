@@ -503,27 +503,27 @@ private slots:
         SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
         // "Also show them in Recent" is only for passwords put in the group: greyed until then.
         QVERIFY(d.passwordsInGroupBox()->isEnabled());
-        QVERIFY(!d.passwordsInGroupBox()->isChecked());
-        QVERIFY(!d.passwordsInRecentBox()->isEnabled());
-        QVERIFY(d.passwordsInRecentBox()->isChecked()); // the default: they show
+        QVERIFY(d.passwordsInGroupBox()->isChecked());
+        QVERIFY(d.passwordsInRecentBox()->isEnabled());
+        QVERIFY(!d.passwordsInRecentBox()->isChecked()); // the default: kept out of Recent
         QVERIFY2(d.passwordsInRecentBox()->toolTip().contains(QLatin1String("asterisks")),
                  qPrintable(d.passwordsInRecentBox()->toolTip()));
-        d.passwordsInGroupBox()->setChecked(true);
-        QVERIFY(d.passwordsInRecentBox()->isEnabled());
-        d.passwordsInRecentBox()->setChecked(false);
         QVERIFY(d.config().passwordsInGroup);
+        d.passwordsInRecentBox()->setChecked(true);
         // The Recent choice is a rule of the Passwords group: saved when the dialog is accepted.
         QVERIFY(!t.repo->groupHiddenFromRecent(clipitto::PasswordKeeper::passwordsGroup()));
+        d.accept();
+        QVERIFY(!t.repo->groupHiddenFromRecent(clipitto::PasswordKeeper::passwordsGroup()));
+        d.passwordsInRecentBox()->setChecked(false);
         d.accept();
         QVERIFY(t.repo->groupHiddenFromRecent(clipitto::PasswordKeeper::passwordsGroup()));
         d.passwordsInGroupBox()->setChecked(false);
         QVERIFY(!d.passwordsInRecentBox()->isEnabled());
 
-        // Ask for a name: its own switch, off by default.
+        // Ask for a name: its own switch, on by default.
         QVERIFY(d.askNoteBox()->isEnabled());
-        QVERIFY(!d.askNoteBox()->isChecked());
+        QVERIFY(d.askNoteBox()->isChecked());
         QVERIFY(d.askNoteBox()->toolTip().contains(QLatin1String("name")));
-        d.askNoteBox()->setChecked(true);
         QVERIFY(d.config().passwordAskNote);
         QVERIFY(d.ocrLanguagesEdit()->text().isEmpty());
         d.ocrLanguagesEdit()->setText(QStringLiteral(" en, he "));
@@ -542,9 +542,9 @@ private slots:
         d.detectSecretsBox()->setChecked(false);
         QVERIFY(!d.config().detectSecrets);
         QVERIFY(d.passwordsPerNoteBox()->isEnabled());
-        QVERIFY(!d.config().passwordsPerNote);
-        d.passwordsPerNoteBox()->setChecked(true);
         QVERIFY(d.config().passwordsPerNote);
+        d.passwordsPerNoteBox()->setChecked(false);
+        QVERIFY(!d.config().passwordsPerNote);
         QVERIFY(!d.config().ignoreCase);
         d.ignoreCaseBox()->setChecked(true);
         QVERIFY(d.config().ignoreCase);
@@ -572,7 +572,7 @@ private slots:
         support.keeper = &keeper;
         SettingsDialog d(Config{}, *t.repo, ShortcutSupport{}, {}, nullptr, support);
         QVERIFY(d.keepPasswordsBox()->isChecked());
-        QVERIFY(!d.passwordsInGroupBox()->isChecked()); // off by default
+        QVERIFY(d.passwordsInGroupBox()->isChecked()); // on by default
         d.keepPasswordsBox()->setChecked(false);
         d.passwordsInGroupBox()->setChecked(true);
         d.unlockMinutesBox()->setValue(30);

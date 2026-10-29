@@ -887,6 +887,16 @@ void Daemon::applyPasswordSettings()
     m_pipeline->setDetectSecrets(m_config.detectSecrets);
     m_pipeline->setPasswords(&m_passwords->vault(), m_config.keepPasswords,
                              m_config.passwordsInGroup ? PasswordKeeper::passwordsGroup() : QString());
+    if (m_config.passwordsInGroup && m_repo) {
+        // By default the Passwords group is kept out of Recent; the rule is set once, when the group is made.
+        try {
+            if (!m_repo->groups().contains(PasswordKeeper::passwordsGroup())) {
+                m_repo->setGroupHiddenFromRecent(PasswordKeeper::passwordsGroup(), true);
+            }
+        } catch (const db::DbError& e) {
+            qWarning() << "creating the Passwords group failed:" << e.what();
+        }
+    }
     if (m_capture.backend) {
         m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
     }

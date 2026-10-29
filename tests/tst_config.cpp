@@ -55,9 +55,9 @@ private slots:
     {
         const Config defaults;
         QVERIFY(defaults.keepPasswords);
-        QVERIFY(!defaults.passwordsInGroup);
-        QVERIFY(!defaults.passwordAskNote);
-        QVERIFY(!defaults.passwordsPerNote);
+        QVERIFY(defaults.passwordsInGroup);
+        QVERIFY(defaults.passwordAskNote);
+        QVERIFY(defaults.passwordsPerNote);
         QVERIFY(defaults.detectSecrets);
         QVERIFY(defaults.ocrLanguages.isEmpty());
         QVERIFY(!defaults.ignoreCase);
