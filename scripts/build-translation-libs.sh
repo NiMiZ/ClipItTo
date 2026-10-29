@@ -63,7 +63,14 @@ build_ct2() { # arch|native  -> $work/ct2-<arch>/merged.a
     if [ "$os" = Darwin ]; then
         extra="-DWITH_ACCELERATE=ON"
         if [ "$arch" != native ]; then
-            extra="$extra -DCMAKE_OSX_ARCHITECTURES=$arch -DCMAKE_SYSTEM_PROCESSOR=$arch"
+            # The libraries pick their CPU code from CMAKE_SYSTEM_PROCESSOR, which is the machine's, not the
+            # target's: a toolchain file makes the target explicit (x86_64 built on an arm64 Mac).
+            cat > "$work/macos-$arch.cmake" <<TOOLCHAIN
+set(CMAKE_SYSTEM_NAME Darwin)
+set(CMAKE_SYSTEM_PROCESSOR $arch)
+set(CMAKE_OSX_ARCHITECTURES $arch)
+TOOLCHAIN
+            extra="$extra -DCMAKE_TOOLCHAIN_FILE=$work/macos-$arch.cmake"
         fi
     fi
     # shellcheck disable=SC2086

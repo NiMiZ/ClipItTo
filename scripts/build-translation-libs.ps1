@@ -34,7 +34,16 @@ function Fetch([string]$name, [string]$url, [string]$tag, [string]$commit) {
 Fetch 'ctranslate2' 'https://github.com/OpenNMT/CTranslate2.git' $ct2Tag $ct2Commit
 Fetch 'sentencepiece' 'https://github.com/google/sentencepiece.git' $spTag $spCommit
 
-# CTranslate2
+# CTranslate2 links the static C++ runtime (/MT) when it is built as a static library; ClipItTo and Qt use the DLL
+# runtime (/MD), and mixing them does not link. Build it with /MD.
+$cmakeLists = "$work\ctranslate2\CMakeLists.txt"
+$text = Get-Content $cmakeLists -Raw
+$static = 'set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")'
+if ($text.Contains($static)) {
+    $text.Replace($static, 'set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")') | Set-Content $cmakeLists -NoNewline
+} elseif (-not $text.Contains('"MultiThreadedDLL"')) {
+    throw 'CTranslate2: the runtime library line was not found; the pinned version changed?'
+}
 $ct2 = Join-Path $work 'ct2-build'
 cmake -S "$work\ctranslate2" -B $ct2 -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_CLI=OFF `
     -DWITH_MKL=OFF -DWITH_DNNL=OFF -DWITH_RUY=ON -DOPENMP_RUNTIME=NONE -DCMAKE_POLICY_VERSION_MINIMUM=3.5
