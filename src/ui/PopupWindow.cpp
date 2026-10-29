@@ -1221,12 +1221,25 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
     return menu;
 }
 
+// Orange items and a border, so the Paste as menu is not mistaken for the list of copies.
+static void styleTransformMenu(QMenu* menu)
+{
+    menu->setStyleSheet(QStringLiteral(
+        "QMenu { border: 1px solid #e08a1e; }"
+        "QMenu::item { color: #e08a1e; }"
+        "QMenu::item:selected { background-color: #e08a1e; color: #1b1b1b; }"
+        "QMenu::item:disabled { color: gray; background: transparent; }"));
+}
+
 QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
 {
     if (entry.image) {
-        return createPictureMenu(entry, parent);
+        QMenu* picture = createPictureMenu(entry, parent);
+        styleTransformMenu(picture);
+        return picture;
     }
     auto* menu = new QMenu(tr("Paste &as"), parent);
+    styleTransformMenu(menu);
     const QString text = entry.content;
     for (const texttransform::Info& info : texttransform::all()) {
         const texttransform::Kind kind = info.kind;
