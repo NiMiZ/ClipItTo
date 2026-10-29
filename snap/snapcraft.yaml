@@ -1,6 +1,6 @@
 name: clipitto
 base: core24
-version: '0.8.1'
+version: '0.9.0'
 summary: Clipboard history, search, groups and favorites — kept on your device.
 description: |
   ClipItTo keeps a searchable history of copied text and pictures, with groups,
@@ -78,6 +78,13 @@ parts:
       - -DCLIPITTO_DBUS=ON
       - -DCLIPITTO_ENCRYPTION=ON
       - -DCLIPITTO_X11_PASTE=ON
+    # Offline translation: CTranslate2 and SentencePiece are built first, into a folder CMake finds through
+    # the environment (scripts/build-translation-libs.sh).
+    override-build: |
+      export CLIPITTO_TRANSLATE_PREFIX="$CRAFT_PART_BUILD/translate-prefix"
+      export CLIPITTO_TRANSLATE_WORK="$CRAFT_PART_BUILD/translate-work"
+      sh "$CRAFT_PART_SRC/scripts/build-translation-libs.sh" "$CLIPITTO_TRANSLATE_PREFIX"
+      craftctl default
     build-packages:
       - cmake
       - g++
@@ -85,6 +92,7 @@ parts:
       - libglib2.0-bin
       - libleptonica-dev
       - libtesseract-dev
+      - git
       - libtomlplusplus-dev
       - libx11-dev
       - libxtst-dev

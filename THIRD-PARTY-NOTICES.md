@@ -14,6 +14,12 @@ It uses the components below, under their own licenses, all compatible with the 
 | Tesseract OCR | Apache-2.0 | system package (Depends: libtesseract5) | not used (Windows.Media.Ocr, part of Windows) | not used (the Vision framework, part of macOS) |
 | Leptonica | BSD-2-Clause | system package (a dependency of Tesseract) | not used | not used |
 | tessdata_fast `eng.traineddata` (English text-recognition data) | Apache-2.0 | system package (Recommends: tesseract-ocr-eng) | not used | not used |
+| CTranslate2 | MIT | built in (static) | built in (static) | built in (static) |
+| SentencePiece | Apache-2.0 | built in (static) | built in (static) | built in (static) |
+| cpu_features, ruy (bundled with CTranslate2) | Apache-2.0 | built in (static) | built in (static) | built in (static) |
+| cpuinfo, clog (bundled with ruy) | BSD-2-Clause | built in (static) | built in (static) | built in (static) |
+| spdlog (bundled with CTranslate2) | MIT | built in (static) | built in (static) | built in (static) |
+| Translation models (OPUS-MT, as packaged by Argos Translate) | CC BY 4.0 | not shipped: added by the user | not shipped | not shipped |
 | Microsoft Visual C++ runtime | Microsoft redistributable | not used | DLLs shipped | not used |
 
 The AppImage and the snap carry the Ubuntu 24.04 libraries they use (Qt 6 under the LGPL-3.0,
@@ -143,3 +149,31 @@ keyring). BSD-3-Clause. Used from the distribution's package, not shipped with C
 The Windows build includes Microsoft's redistributable Visual C++ runtime DLLs
 (e.g. msvcp140.dll), distributed under Microsoft's redistribution terms for the Visual Studio
 runtime libraries.
+
+
+## Offline translation
+
+CTranslate2 (https://github.com/OpenNMT/CTranslate2, MIT, Copyright SYSTRAN) runs the translation models and
+SentencePiece (https://github.com/google/sentencepiece, Apache-2.0, Copyright Google) cuts the text into pieces. They
+are built from source at pinned versions by `scripts/build-translation-libs.*` and linked into ClipItTo; their licence
+texts are installed under `share/doc/clipitto/translation-licenses`. The translation models are not part of ClipItTo:
+users add them. The Argos Translate packages are derived from OPUS-MT models by Jörg Tiedemann and Santhosh
+Thottingal ("OPUS-MT — Building open translation services for the World", EAMT 2020), licensed CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/).
+
+## If ClipItTo's own licence ever changes
+
+A checklist, not legal advice. ClipItTo is GPL-3.0 today; every component above is compatible with that. If a
+version is ever released under another licence, each component has to be looked at again:
+
+| Component | Can stay in a build under another licence? | What to do |
+|---|---|---|
+| SQLite, SQLite3 Multiple Ciphers, toml++, Monocypher, CTranslate2, spdlog | Yes (public domain / MIT / CC0 / BSD) | Keep the copyright notices and licence texts. |
+| SentencePiece, Tesseract, cpu_features, ruy | Yes (Apache-2.0) | Keep the licence and NOTICE texts; say so when a file is changed. |
+| Leptonica, cpuinfo, QtKeychain | Yes (BSD) | Keep the copyright notices. |
+| Qt 6 | Only as LGPL-3.0: linked dynamically, users able to replace it | Ship the LGPL text and keep it as shared libraries. Other Qt licences need a commercial Qt licence. |
+| Translation models | They are not part of ClipItTo | Keep the CC BY 4.0 credit where they are described. |
+| Windows Hello, Vision, Windows.Media.Ocr | System components | Nothing to ship. |
+
+Nothing above is GPL-only, so nothing has to be removed for a relicence, except that Qt needs its LGPL conditions or a
+commercial licence. ClipItTo's own code would need the agreement of everyone who contributed to it.

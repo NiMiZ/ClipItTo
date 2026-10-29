@@ -23,6 +23,7 @@
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QRegularExpressionValidator>
 #include <QPointer>
@@ -117,7 +118,7 @@ void setNote(QLabel* label, const QString& text)
 
 SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
                                EncryptionSupport encryption, QWidget* parent, PasswordSupport passwords,
-                               StartupSupport startup)
+                               StartupSupport startup, TranslationSupport translation)
     : QDialog(parent)
     , m_config(config)
     , m_repo(repo)
@@ -594,6 +595,66 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_tabs->addTab(groupsPage, tr("Groups"));
     m_tabs->addTab(passwordsPage, tr("Passwords"));
     m_tabs->addTab(backupPage, tr("Backup"));
+    m_translation = std::move(translation);
+    if (m_translation.builtIn) {
+        // --- Translation: the language packs the popup's Translate menus use --------------------------------
+        auto* page = new QWidget(this);
+        auto* box = new QVBoxLayout(page);
+        auto* intro = new QLabel(
+            tr("<p>Translation runs on this computer only: nothing you copy is sent anywhere, and ClipItTo "
+               "never downloads anything by itself. Add a <b>language pack</b> (one per direction, e.g. "
+               "Chinese → English, English → Chinese, Hebrew → English) from a <code>.argosmodel</code> file. "
+               "The list of packs and their links is at <a href=\"https://github.com/argosopentech/argospm-index\">argospm-index</a>; "
+               "download one in your browser and choose it here. They are about 70-150 MB each and are credited "
+               "to OPUS-MT (CC BY 4.0).</p>"
+               "<p>Then copy a text or a picture, press Shift+Enter and choose <b>Translate</b>.</p>"),
+            page);
+        intro->setWordWrap(true);
+        intro->setTextFormat(Qt::RichText);
+        intro->setOpenExternalLinks(true);
+        box->addWidget(intro);
+        m_packList = new QListWidget(page);
+        box->addWidget(m_packList, 1);
+        auto* row = new QHBoxLayout;
+        m_addPack = new QPushButton(tr("Add language pack…"), page);
+        m_removePack = new QPushButton(tr("Remove"), page);
+        for (QPushButton* b : {m_addPack, m_removePack}) {
+            b->setAutoDefault(false);
+            row->addWidget(b);
+        }
+        row->addStretch(1);
+        box->addLayout(row);
+        m_packPrompt = [](QWidget* parent) {
+            return QFileDialog::getOpenFileName(parent, tr("Add a language pack"), QString(),
+                                                tr("Language packs (*.argosmodel);;All files (*)"));
+        };
+        connect(m_addPack, &QPushButton::clicked, this, [this] {
+            const QString file = m_packPrompt(this);
+            if (file.isEmpty()) {
+                return;
+            }
+            QString error;
+            if (!m_translation.install || !m_translation.install(file, &error)) {
+                m_notify(this, error.isEmpty() ? tr("The language pack could not be added.") : error);
+                return;
+            }
+            reloadPacks();
+        });
+        connect(m_removePack, &QPushButton::clicked, this, [this] {
+            const QListWidgetItem* item = m_packList->currentItem();
+            if (!item || !m_translation.remove) {
+                return;
+            }
+            if (m_confirm(this, tr("Remove the language pack \"%1\"?").arg(item->text()))) {
+                m_translation.remove(item->data(Qt::UserRole).toString());
+                reloadPacks();
+            }
+        });
+        connect(m_packList, &QListWidget::currentRowChanged, this,
+                [this](int row) { m_removePack->setEnabled(row >= 0); });
+        reloadPacks();
+        m_tabs->addTab(page, tr("Translation"));
+    }
     // Group edits are already saved, so Cancel would promise an undo it can't give: the
     // Groups tab only offers Close (which also keeps any General changes, like OK).
     QPushButton* close = m_buttons->addButton(QDialogButtonBox::Close);
@@ -1274,6 +1335,21 @@ QCheckBox* SettingsDialog::layoutBox(const QString& id) const
         }
     }
     return nullptr;
+}
+
+void SettingsDialog::reloadPacks()
+{
+    if (!m_packList) {
+        return;
+    }
+    m_packList->clear();
+    if (m_translation.packsFor) {
+        for (const TranslationPackInfo& pack : m_translation.packsFor(QString())) {
+            auto* item = new QListWidgetItem(pack.label, m_packList);
+            item->setData(Qt::UserRole, pack.id);
+        }
+    }
+    m_removePack->setEnabled(m_packList->currentRow() >= 0);
 }
 
 } // namespace clipitto::ui

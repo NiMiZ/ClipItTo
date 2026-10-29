@@ -2,6 +2,7 @@
 
 #include "Backup.h"
 #include "Config.h"
+#include "Translation.h"
 #include "Prompts.h"
 
 #include <QDialog>
@@ -14,6 +15,7 @@ class QComboBox;
 class QDialogButtonBox;
 class QKeySequenceEdit;
 class QLabel;
+class QListWidget;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -82,7 +84,7 @@ public:
 
     SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
                    EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {},
-                   StartupSupport startup = {});
+                   StartupSupport startup = {}, TranslationSupport translation = {});
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -94,6 +96,12 @@ public:
     void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
     void setMasterPasswordPrompt(MasterPasswordPrompt prompt) { m_masterPrompt = std::move(prompt); }
     void setFilePrompt(FilePrompt prompt) { m_filePrompt = std::move(prompt); }
+    // The language pack file to add (Translation tab); "" = cancelled.
+    using PackPrompt = std::function<QString(QWidget* parent)>;
+    void setPackPrompt(PackPrompt prompt) { m_packPrompt = std::move(prompt); }
+    QListWidget* packList() const { return m_packList; }
+    QPushButton* addPackButton() const { return m_addPack; }
+    QPushButton* removePackButton() const { return m_removePack; }
     void setPartsPrompt(PartsPrompt prompt) { m_partsPrompt = std::move(prompt); }
 
     // Backup tab. With a master password set, both ask for it first (even when unlocked).
@@ -243,6 +251,12 @@ private:
     PasswordPrompt m_passwordPrompt;
     MasterPasswordPrompt m_masterPrompt;
     FilePrompt m_filePrompt;
+    PackPrompt m_packPrompt;
+    TranslationSupport m_translation;
+    QListWidget* m_packList = nullptr;
+    QPushButton* m_addPack = nullptr;
+    QPushButton* m_removePack = nullptr;
+    void reloadPacks();
     PartsPrompt m_partsPrompt;
 };
 

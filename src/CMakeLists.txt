@@ -1,5 +1,6 @@
 add_subdirectory(core)
 add_subdirectory(capture)
+add_subdirectory(translate)
 add_subdirectory(output)
 add_subdirectory(ui)
 if(CLIPITTO_DBUS)

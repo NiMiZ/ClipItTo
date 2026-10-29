@@ -44,6 +44,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | [Installing](docs/install.md) | `.deb`, AppImage, Snap, Windows installer, macOS app: all the steps |
 | [Using it](docs/usage.md) | groups, stars, pins, Recent, duplicates, backup, pictures, settings |
 | [Encryption and password copies](docs/passwords.md) | how they are protected, what isn't covered |
+| [Translation](docs/translation.md) | offline translation of text and of text in pictures (Chinese ⇄ English, Hebrew ⇄ English, ...) |
 | [Capture per session](docs/platforms.md) | Wayland, X11, Windows, and the GNOME extension |
 | [Building from source](docs/building.md) | Linux, Windows, macOS |
 | [config.example.toml](data/config.example.toml) | every setting, with comments |

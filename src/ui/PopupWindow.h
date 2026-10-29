@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "Entry.h"
 #include "TextTransform.h"
+#include "Translation.h"
 #include "HistoryModel.h"
 #include "Prompts.h"
 
@@ -96,6 +97,9 @@ public:
     using HelloUnlock = std::function<void(std::function<void(bool unlocked)> done)>;
     void setHelloUnlock(HelloUnlock hello) { m_helloUnlock = std::move(hello); }
 
+    // Offline translation (see Translation.h): "Translate ▸" in the Paste as… menus.
+    void setTranslation(TranslationSupport translation) { m_translation = std::move(translation); }
+
     // "Paste text from picture": reads the text in a stored picture (off the GUI thread, offline) and
     // calls `done(text, error)`; `available`/`reason` say whether this computer can (the menu entry is
     // shown disabled, with the reason, when not).
@@ -120,6 +124,10 @@ public:
     // Reads the text in picture `id` and pastes it, changed by `kind` when given.
     void pasteTextFromPicture(qint64 id, std::optional<texttransform::Kind> kind = std::nullopt);
     QMenu* createPictureMenu(const Entry& picture, QWidget* parent);
+    // "Translate ▸" with the installed packs (those that fit `text` when given); disabled with a hint when there is none.
+    void addTranslateMenu(QMenu* menu, const QString& title, const QString& text, std::function<void(const QString& packId)> chosen);
+    void translateAndPaste(const QString& packId, const QString& text);
+    void translatePictureAndPaste(qint64 id, const QString& packId);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
     QMenu* createFavoritesMenu(QWidget* parent);
     void addOutOfRecentAction(QMenu* menu, const QString& path); // path "" = Favorites
@@ -218,6 +226,7 @@ private:
     NamePrompt m_namePrompt;
     bool m_namingPassword = false; // a name box is open or about to open: one at a time
     PasswordKeeper* m_passwords = nullptr;
+    TranslationSupport m_translation;
     QStringList m_keyboardLayouts; // layouts besides English that Paste as… converts to and from
     HelloUnlock m_helloUnlock;
     TextFromPicture m_textFromPicture;

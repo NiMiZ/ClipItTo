@@ -16,6 +16,14 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   keyboard"). Later: Arabic, Russian, Greek and others, and the layouts actually installed on the computer.
   It extends the existing Paste as… menu (`TextTransform`), with unit tests for every key of each table.
 
+## Translation (0.9.0)
+
+- **DONE: offline translation** of text and of the text in pictures (Settings › Translation; Shift+Enter ›
+  Translate). Language packs are added from a file the user downloads.
+- **Open:** an in-app "download this pack" button (would make ClipItTo's only network connection; off unless the
+  user presses it), a short list of recommended packs, translating a picture in place (an overlay), and more
+  pairs through English (Chinese → Hebrew goes via English today only if both packs are installed).
+
 ## Known gaps
 
 - **Passwords don't lock with the screen.** Today: `clipitto --lock` from a screen-lock hook, or a short
