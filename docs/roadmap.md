@@ -16,7 +16,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   keyboard"). Later: Arabic, Russian, Greek and others, and the layouts actually installed on the computer.
   It extends the existing Paste as… menu (`TextTransform`), with unit tests for every key of each table.
 
-## Translation (0.9)
+## Translation (0.9.0)
 
 - **DONE: offline translation** of text and of the text in pictures (Settings › Translation; Shift+Enter ›
   Translate). Language packs are added from a file the user downloads.
