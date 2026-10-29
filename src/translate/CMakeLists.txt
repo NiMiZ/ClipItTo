@@ -7,6 +7,9 @@ add_library(clipitto_translate STATIC
 )
 
 set(CLIPITTO_TRANSLATE_PREFIX "" CACHE PATH "Prefix holding CTranslate2 and SentencePiece (scripts/build-translation-libs.*)")
+if(NOT CLIPITTO_TRANSLATE_PREFIX AND DEFINED ENV{CLIPITTO_TRANSLATE_PREFIX})
+    set(CLIPITTO_TRANSLATE_PREFIX "$ENV{CLIPITTO_TRANSLATE_PREFIX}" CACHE PATH "" FORCE) # CI sets it in the environment
+endif()
 set(_have_translate OFF)
 if(CLIPITTO_TRANSLATE_PREFIX)
     find_path(CLIPITTO_CT2_INCLUDE ctranslate2/translator.h PATHS "${CLIPITTO_TRANSLATE_PREFIX}/include" NO_DEFAULT_PATH)
@@ -32,6 +35,10 @@ if(_have_translate)
     find_package(Threads REQUIRED)
     target_link_libraries(clipitto_translate PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
     set(CLIPITTO_HAVE_TRANSLATION ON CACHE INTERNAL "Built with the translation engine")
+    # The licences of CTranslate2, SentencePiece and what they bundle travel with the app.
+    if(EXISTS "${CLIPITTO_TRANSLATE_PREFIX}/licenses")
+        install(DIRECTORY "${CLIPITTO_TRANSLATE_PREFIX}/licenses/" DESTINATION share/doc/clipitto/translation-licenses)
+    endif()
 else()
     message(STATUS "Translation: off (set CLIPITTO_TRANSLATE_PREFIX; see scripts/build-translation-libs.sh)")
     target_sources(clipitto_translate PRIVATE Translate_none.cpp)

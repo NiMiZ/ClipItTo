@@ -28,11 +28,19 @@ os=$(uname -s)
 
 fetch() { # name url tag commit
     if [ ! -d "$work/$1/.git" ]; then
-        git clone -q --depth 1 --branch "$3" "$2" "$work/$1"
+        n=0
+        until git clone -q --depth 1 --branch "$3" "$2" "$work/$1"; do
+            n=$((n + 1)); [ "$n" -lt 4 ] || exit 1
+            echo "git clone failed (attempt $n); trying again" >&2; rm -rf "$work/$1"; sleep 20
+        done
     fi
     got=$(git -C "$work/$1" rev-parse HEAD)
     [ "$got" = "$4" ] || { echo "$1: expected commit $4, got $got" >&2; exit 1; }
-    git -C "$work/$1" submodule update -q --init --recursive --depth 1
+    n=0
+    until git -C "$work/$1" submodule update -q --init --recursive --depth 1; do
+        n=$((n + 1)); [ "$n" -lt 4 ] || exit 1
+        echo "submodule update failed (attempt $n); trying again" >&2; sleep 20
+    done
 }
 fetch ctranslate2 https://github.com/OpenNMT/CTranslate2.git "$ct2_tag" "$ct2_commit"
 fetch sentencepiece https://github.com/google/sentencepiece.git "$sp_tag" "$sp_commit"

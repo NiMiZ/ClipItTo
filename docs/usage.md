@@ -24,6 +24,9 @@ means the language of your system). With one language the menu offers the opposi
 (English ⇄ that language); with several it shows a submenu of them, each with a preview of the result. Russian
 and Greek keep capital letters. It works key for key, with no dictionary and no network.
 
+**Translation.** Shift+Enter › *Translate* translates a copy, or the text in a picture, with a language pack you
+add in Settings › Translation. It runs on your computer only; see [Translation](translation.md).
+
 **Search filters.** Type these next to your words to narrow the list (a filter alone works too):
 
 | Filter | Shows |

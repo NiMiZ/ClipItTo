@@ -1,0 +1,31 @@
+name: Translation libraries
+description: >
+  Builds CTranslate2 and SentencePiece (scripts/build-translation-libs.*) into a cached prefix and
+  points CLIPITTO_TRANSLATE_PREFIX at it, so the build has offline translation.
+inputs:
+  universal:
+    description: 'macOS: build arm64 and x86_64 into one archive'
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Cache the translation libraries
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/translate-prefix
+        key: translate-libs-${{ runner.os }}-${{ inputs.universal }}-${{ hashFiles('scripts/build-translation-libs.sh', 'scripts/build-translation-libs.ps1') }}
+    - name: Build the translation libraries (Linux, macOS)
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        mode=native
+        if [ "${{ inputs.universal }}" = true ]; then mode=universal; fi
+        scripts/build-translation-libs.sh "${{ runner.temp }}/translate-prefix" "$mode"
+    - name: Build the translation libraries (Windows)
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: scripts\build-translation-libs.ps1 "${{ runner.temp }}\translate-prefix"
+    - name: Use them
+      shell: bash
+      run: echo "CLIPITTO_TRANSLATE_PREFIX=${{ runner.temp }}/translate-prefix" >> "$GITHUB_ENV"

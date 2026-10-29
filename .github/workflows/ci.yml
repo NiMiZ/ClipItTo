@@ -45,6 +45,8 @@ jobs:
         with:
           path: ~/fetchcontent
           key: fetch-${{ runner.os }}-${{ github.job }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Translation libraries
+        uses: ./.github/actions/translation-libs
       - name: Configure
         run: |
           for attempt in 1 2 3; do
@@ -110,6 +112,8 @@ jobs:
         with:
           path: ~/fetchcontent
           key: fetch-${{ runner.os }}-${{ github.job }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Translation libraries
+        uses: ./.github/actions/translation-libs
       - name: Configure
         run: |
           for attempt in 1 2 3; do
@@ -194,6 +198,8 @@ jobs:
             C:\Users\runneradmin\AppData\Local\vcpkg\archives
           key: fetch-windows-${{ hashFiles('cmake/Dependencies.cmake', 'vcpkg.json') }}
 
+      - name: Translation libraries
+        uses: ./.github/actions/translation-libs
       - name: Configure
         shell: pwsh
         run: |
@@ -352,6 +358,10 @@ jobs:
         with:
           path: ~/fetchcontent
           key: fetch-${{ runner.os }}-${{ github.job }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Translation libraries
+        uses: ./.github/actions/translation-libs
+        with:
+          universal: true
       - name: Configure
         run: |
           for attempt in 1 2 3; do
@@ -524,6 +534,8 @@ jobs:
             ~/fetchcontent
             build/appimage/tools
           key: appimage-tools-${{ hashFiles('cmake/Dependencies.cmake', 'packaging/appimage/build-appimage.sh') }}
+      - name: Translation libraries
+        uses: ./.github/actions/translation-libs
       - name: Build the AppImage
         run: |
           export CLIPITTO_FETCH_DIR="$HOME/fetchcontent"

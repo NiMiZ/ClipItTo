@@ -22,3 +22,4 @@ C++20, Qt 6 (Widgets), CMake. Targets Windows 10+ and Linux (X11 and Wayland).
 - `.claude/notes/display-and-search.md` — popup, Recent rules, search
 - `.claude/notes/settings-groups-backend.md` — storage, groups, duplicates, config, backup, CI facts
 - `.claude/notes/passwords.md` — password copies: intent and implementation
+- `.claude/notes/translation.md` — offline translation (CTranslate2), language packs, build script
