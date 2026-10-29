@@ -87,7 +87,7 @@ ones only leave Recent and stay in their groups; pinned ones stay pinned. Its me
 also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups
 empty. Both ask first and can't be undone.
 
-**Text from a picture:** right-click a picture › *Paste text from picture* reads the text in it and puts it
+**Text from a picture:** select a picture and press Shift+Enter (or right-click it › *Paste as*) for its choices: *Paste text from picture* first, *Text from picture, changed* (on one line, trimmed, collapsed spaces, upper / lower / Title case), and *Paste the picture*. *Paste text from picture* reads the text in it and puts it
 on the clipboard and into the window you came from. It runs on your computer only, with no network or cloud
 service: Windows uses its built-in text recognition (languages installed in Settings › Time & language), macOS
 uses the Vision framework, and Linux uses Tesseract (the `.deb` recommends `tesseract-ocr-eng`; the AppImage
