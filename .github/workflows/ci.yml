@@ -427,8 +427,12 @@ jobs:
           mark org.nspasteboard.TransientType 'temporary-data'
           sleep 1.5
           [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a TransientType copy was kept"; exit 1; }
-          printf 'second ordinary copy' | pbcopy
-          for i in $(seq 80); do [ "$(items)" = 2 ] && break; sleep 0.25; done
+          # Copied again every 2 s until the daemon has seen it (same text = one item), as for the first copy.
+          for i in $(seq 80); do
+            [ $((i % 8)) = 1 ] && printf 'second ordinary copy' | pbcopy
+            [ "$(items)" = 2 ] && break
+            sleep 0.25
+          done
           [ "$(items)" = 2 ] || { echo "::error title=pasteboard::a later ordinary copy was not captured"; exit 1; }
           "$bin/cli/clipitto" --quit # not silenced: its reply must arrive before the daemon exits
           wait "$daemon"
