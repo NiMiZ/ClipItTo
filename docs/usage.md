@@ -64,14 +64,14 @@ pinned and grouped copies, which stay where they are.
   group (and comes back to Recent when you copy it again). In a group, or on an unfiled copy,
   Delete deletes it.
 - Right-click a group (or the *Favorites* row) › *Keep out of Recent*: its copies, and those of
-  its sub-groups, don't appear in Recent. The Passwords group has this as the *Also show them in
+  its sub-groups, don't appear in Recent. The Passwords group has this as the *Show passwords entries in
   Recent* setting.
 
 **Duplicates:** each text is one copy; copying it again moves it to the top. With *Ignore letter
 case* (General, `ignore_case`, off by default) "ABC" and "abc" are the same copy and the wording you
 copied last is the one kept; turning it on merges the copies already there (notes, groups and stars
 move to the one that stays). A password is one copy too, whatever its note; with *Keep the same
-password separately when its note differs* (Passwords, `passwords_per_note`, off by default) the
+password separately when its note differs* (Passwords, `passwords_per_note`, on by default) the
 same password under another note (say, copied from another app) is its own copy, and only the same
 password with the same note is merged.
 
