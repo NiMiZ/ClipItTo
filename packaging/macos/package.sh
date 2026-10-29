@@ -57,6 +57,14 @@ mkdir -p "$dmgroot"
 cp -R "$app" "$dmgroot/"
 ln -s /Applications "$dmgroot/Applications"
 [ -f "$dmg" ] && rm "$dmg"
-hdiutil create -volname "ClipItTo" -srcfolder "$dmgroot" -ov -format UDZO "$dmg"
+# "hdiutil: create failed - Resource busy" happens now and then on the CI Macs (a volume of the last step is
+# still being released): try again a few times.
+n=0
+until hdiutil create -volname "ClipItTo" -srcfolder "$dmgroot" -ov -format UDZO "$dmg"; do
+    n=$((n + 1))
+    [ "$n" -lt 4 ] || exit 1
+    echo "hdiutil create failed (attempt $n); trying again" >&2
+    sleep 15
+done
 rm -r "$dmgroot"
 echo "built: $dmg ($(du -h "$dmg" | cut -f1)), app: $app"
