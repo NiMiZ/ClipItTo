@@ -628,6 +628,38 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: true
 
+  # The snap goes to the Snap Store (the Ubuntu App Center), channel "candidate", when the repository has the
+  # SNAPCRAFT_STORE_CREDENTIALS secret (snapcraft export-login, see docs/snap-store.md). Promote to "stable" in
+  # the store once it has been tried. A first upload waits for the store's manual review of its permissions, so
+  # a failure here never fails the release.
+  snap-store:
+    name: Snap Store
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    env:
+      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    steps:
+      - name: Is there a store login?
+        id: login
+        run: |
+          if [ -n "$SNAPCRAFT_STORE_CREDENTIALS" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "::notice title=Snap Store::no SNAPCRAFT_STORE_CREDENTIALS secret: not uploading"; fi
+      - uses: actions/download-artifact@v4
+        if: steps.login.outputs.present == 'true'
+        with:
+          name: clipitto-snap
+          path: dist
+      - name: Find the snap
+        if: steps.login.outputs.present == 'true'
+        id: snap
+        run: echo "file=$(ls dist/*.snap)" >> "$GITHUB_OUTPUT"
+      - uses: snapcore/action-publish@v1
+        if: steps.login.outputs.present == 'true'
+        with:
+          snap: ${{ steps.snap.outputs.file }}
+          release: candidate
+
   # Install a published release the way the README tells users to, on fresh machines. On a
   # tag: the release just published, with the scripts attached to it. On other pushes: this
   # commit's scripts, installing the latest release (so script changes are tested too).

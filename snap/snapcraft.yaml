@@ -1,4 +1,5 @@
 name: clipitto
+title: ClipItTo
 base: core24
 version: '0.9.0'
 summary: Clipboard history, search, groups and favorites — kept on your device.
@@ -11,13 +12,20 @@ description: |
   locally and can optionally be encrypted with a random key kept in your system
   keyring. Encryption is off by default.
 
-  On GNOME Wayland, clipboard monitoring and popup focus require the ClipItTo
-  GNOME Shell extension.
+  Features: pin, star and group copies, notes, search filters, pictures with
+  text recognition, offline translation, a password vault for copies from
+  password managers, and backup and restore. Everything runs on your computer.
+
+  Not in the snap: on GNOME Wayland, clipboard monitoring and popup focus
+  need the ClipItTo GNOME Shell extension, which a snap cannot install. Use the
+  .deb or the AppImage from https://github.com/NiMiZ/ClipItTo/releases for the
+  full setup there (X11 and other desktops work with the snap).
 
 license: GPL-3.0-only
 website: https://github.com/NiMiZ/ClipItTo#privacy
 source-code: https://github.com/NiMiZ/ClipItTo
 issues: https://github.com/NiMiZ/ClipItTo/issues
+contact: https://github.com/NiMiZ/ClipItTo/issues
 grade: stable
 confinement: strict
 icon: data/io.github.nimiz.ClipItTo.svg
