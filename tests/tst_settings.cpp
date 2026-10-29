@@ -17,6 +17,7 @@
 #include <QSpinBox>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QListWidget>
 #include <QTest>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -53,6 +54,56 @@ private:
     }
 
 private slots:
+    void translationTabListsAddsAndRemovesPacks()
+    {
+        TestDb t;
+        {   // No engine in the build: no tab.
+            SettingsDialog d(Config{}, *t.repo, {});
+            QVERIFY(!d.packList());
+        }
+        QStringList installed{QStringLiteral("zh-en")};
+        QString lastFile;
+        clipitto::ui::TranslationSupport support;
+        support.builtIn = true;
+        support.packsFor = [&](const QString&) {
+            QList<clipitto::ui::TranslationPackInfo> out;
+            for (const QString& id : installed) {
+                out.push_back({id, id.toUpper()});
+            }
+            return out;
+        };
+        support.install = [&](const QString& file, QString* error) {
+            lastFile = file;
+            if (file.endsWith(QLatin1String("bad.argosmodel"))) {
+                *error = QStringLiteral("not a pack");
+                return false;
+            }
+            installed << QStringLiteral("en-zh");
+            return true;
+        };
+        support.remove = [&](const QString& id) { return installed.removeAll(id) > 0; };
+        SettingsDialog d(Config{}, *t.repo, {}, {}, nullptr, {}, {}, support);
+        QStringList messages;
+        d.setNotify([&](QWidget*, const QString& m) { messages << m; });
+        d.setConfirmPrompt([](QWidget*, const QString&) { return true; });
+        QVERIFY(d.packList());
+        QCOMPARE(d.packList()->count(), 1);
+        QVERIFY(!d.removePackButton()->isEnabled());
+        d.setPackPrompt([](QWidget*) { return QStringLiteral("/tmp/bad.argosmodel"); });
+        d.addPackButton()->click();
+        QCOMPARE(messages, QStringList{QStringLiteral("not a pack")});
+        QCOMPARE(d.packList()->count(), 1);
+        d.setPackPrompt([](QWidget*) { return QStringLiteral("/tmp/en_zh.argosmodel"); });
+        d.addPackButton()->click();
+        QCOMPARE(lastFile, QStringLiteral("/tmp/en_zh.argosmodel"));
+        QCOMPARE(d.packList()->count(), 2);
+        d.packList()->setCurrentRow(0);
+        QVERIFY(d.removePackButton()->isEnabled());
+        d.removePackButton()->click();
+        QCOMPARE(d.packList()->count(), 1);
+        QCOMPARE(installed, QStringList{QStringLiteral("en-zh")});
+    }
+
     void themeChangesAreAnnounced()
     {
         // Static: the listener stays registered after this test (there is no unregister).

@@ -1196,6 +1196,11 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
         }
         changed->addAction(info.label, this, [this, id, kind] { pasteTextFromPicture(id, kind); });
     }
+    // Read the text, then translate it with a pack.
+    const int before = int(menu->actions().size());
+    addTranslateMenu(menu, tr("Trans&late text from picture"), QString(),
+                     [this, id](const QString& packId) { translatePictureAndPaste(id, packId); });
+    QAction* translateEntry = menu->actions().size() > before ? menu->actions().last() : nullptr;
     menu->addSeparator();
     const Entry copy = picture;
     menu->addAction(tr("Paste the &picture"), this, [this, copy] {
@@ -1203,6 +1208,10 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
         hidePopup();
     });
     if (!canRead) {
+        if (translateEntry) {
+            translateEntry->setEnabled(false);
+            translateEntry->setToolTip(reason);
+        }
         read->setEnabled(false);
         changed->menuAction()->setEnabled(false);
         read->setToolTip(reason);
@@ -1233,7 +1242,92 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
         });
     }
     addKeyboardLayoutEntries(menu, text);
+    addTranslateMenu(menu, tr("Tran&slate"), text,
+                     [this, text](const QString& packId) { translateAndPaste(packId, text); });
     return menu;
+}
+
+void PopupWindow::addTranslateMenu(QMenu* menu, const QString& title, const QString& text,
+                                   std::function<void(const QString& packId)> chosen)
+{
+    if (!m_translation.builtIn || !m_translation.packsFor) {
+        return;
+    }
+    const QList<TranslationPackInfo> packs = m_translation.packsFor(text);
+    if (packs.isEmpty()) {
+        QAction* none = menu->addAction(title);
+        none->setEnabled(false);
+        none->setToolTip(m_translation.packsFor(QString()).isEmpty()
+                             ? tr("No language pack is installed: add one in Settings › Translation.")
+                             : tr("No installed language pack translates from the language of this text."));
+        menu->setToolTipsVisible(true);
+        return;
+    }
+    QMenu* sub = menu->addMenu(title);
+    for (const TranslationPackInfo& pack : packs) {
+        const QString id = pack.id;
+        sub->addAction(pack.label, this, [chosen, id] { chosen(id); });
+    }
+}
+
+void PopupWindow::translateAndPaste(const QString& packId, const QString& text)
+{
+    if (!m_translation.translate) {
+        return;
+    }
+    setBusy(tr("Translating…"));
+    m_translation.translate(packId, text, [this, self = QPointer<PopupWindow>(this)](const QString& out, const QString& error) {
+        if (!self) {
+            return;
+        }
+        setBusy(QString());
+        if (!error.isEmpty()) {
+            showMessage(error);
+        } else if (out.trimmed().isEmpty()) {
+            showMessage(tr("The translation is empty."));
+        } else {
+            emit textActivated(out);
+            hidePopup();
+        }
+    });
+}
+
+// A picture: its text is read first, then translated; the pack has to fit the language of that text.
+void PopupWindow::translatePictureAndPaste(qint64 id, const QString& packId)
+{
+    if (!m_textFromPicture || !m_textFromPictureAvailable || !m_translation.translate) {
+        return;
+    }
+    setBusy(tr("Reading and translating the text in the picture…"));
+    m_textFromPicture(id, [this, packId, self = QPointer<PopupWindow>(this)](const QString& text, const QString& error) {
+        if (!self) {
+            return;
+        }
+        if (!error.isEmpty() || text.trimmed().isEmpty()) {
+            setBusy(QString());
+            showMessage(error.isEmpty() ? tr("No text found in the picture.") : error);
+            return;
+        }
+        if (m_translation.fits && !m_translation.fits(packId, text)) {
+            setBusy(QString());
+            showMessage(tr("The text in the picture does not look like the language this pack translates from."));
+            return;
+        }
+        m_translation.translate(packId, text, [this, self](const QString& out, const QString& err) {
+            if (!self) {
+                return;
+            }
+            setBusy(QString());
+            if (!err.isEmpty()) {
+                showMessage(err);
+            } else if (out.trimmed().isEmpty()) {
+                showMessage(tr("The translation is empty."));
+            } else {
+                emit textActivated(out);
+                hidePopup();
+            }
+        });
+    });
 }
 
 // Text typed with the wrong keyboard layout, converted key for key. One layout to go to (the opposite of the

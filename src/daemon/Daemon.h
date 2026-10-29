@@ -8,6 +8,7 @@
 #include "KeyStore.h"
 #include "PasswordKeeper.h"
 #include "SessionEnv.h"
+#include "Translation.h"
 
 #include <QObject>
 #include <QThreadPool>
@@ -102,6 +103,8 @@ private:
     // Password copies follow the settings and the vault: kept or not, which group, unlock time.
     void applyPasswordSettings();
     void setUpWindowsHello(); // availability, and the popup's Hello unlock
+    void setUpTranslation(); // the popup's Translate menus
+    ui::TranslationSupport translationSupport();
     void setUpOcr(); // whether text can be read from pictures here, and the popup's menu entry
     void onTextActivated(const QString& text);
     void pasteIfWanted();
@@ -137,6 +140,7 @@ private:
     QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
+    QThreadPool m_translatePool; // one thread: translating takes a second or two
     QThreadPool m_helloPool; // one thread: Windows Hello and text-recognition calls (blocking, WinRT; never on the GUI thread)
     bool m_helloAvailable = false;
     QString m_helloReason;

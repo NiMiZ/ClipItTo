@@ -945,6 +945,149 @@ private slots:
         QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("סבבה"));
     }
 
+    // A fake translation engine: packs zh→en (Han text) and en→zh (Latin text); "translating" upper-cases and prefixes.
+    static clipitto::ui::TranslationSupport fakeTranslation(bool withPacks = true)
+    {
+        clipitto::ui::TranslationSupport s;
+        s.builtIn = true;
+        const QList<clipitto::ui::TranslationPackInfo> all = withPacks
+            ? QList<clipitto::ui::TranslationPackInfo>{{"zh-en", "Chinese → English"}, {"en-zh", "English → Chinese"}}
+            : QList<clipitto::ui::TranslationPackInfo>{};
+        s.packsFor = [all](const QString& text) {
+            QList<clipitto::ui::TranslationPackInfo> out;
+            for (const auto& p : all) {
+                const bool han = p.id == "zh-en";
+                const bool textHan = text.contains(QChar(0x4F60));
+                if (text.isEmpty() || han == textHan) {
+                    out.push_back(p);
+                }
+            }
+            return out;
+        };
+        s.fits = [](const QString& id, const QString& text) { return (id == "zh-en") == text.contains(QChar(0x4F60)); };
+        s.translate = [](const QString& id, const QString& text, std::function<void(const QString&, const QString&)> done) {
+            done(QStringLiteral("[%1] %2").arg(id, text), QString());
+        };
+        return s;
+    }
+
+    void translateMenuOffersThePacksThatFitTheText()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        const Entry beta = *f.model()->entryAt(f.model()->index(4, 0));
+        // No translation in the build: nothing about it in the menu.
+        {
+            std::unique_ptr<QMenu> owner(f.popup->createContextMenu(beta, f.popup.get()));
+            for (QAction* a : owner->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    for (QAction* b : a->menu()->actions()) {
+                        QVERIFY(b->text().remove(QLatin1Char('&')) != QLatin1String("Translate"));
+                    }
+                }
+            }
+        }
+
+        // With packs: a Latin text offers the English pack only; choosing it translates and pastes.
+        f.popup->setTranslation(fakeTranslation());
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        {
+            std::unique_ptr<QMenu> owner(f.popup->createContextMenu(beta, f.popup.get()));
+            QMenu* paste = nullptr;
+            for (QAction* a : owner->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    paste = a->menu();
+                }
+            }
+            QVERIFY(paste);
+            QMenu* translate = nullptr;
+            for (QAction* b : paste->actions()) {
+                if (b->menu() && b->text().remove(QLatin1Char('&')) == QLatin1String("Translate")) {
+                    translate = b->menu();
+                }
+            }
+            QVERIFY(translate);
+            QCOMPARE(translate->actions().size(), 1);
+            QCOMPARE(translate->actions().first()->text(), QStringLiteral("English → Chinese"));
+            translate->actions().first()->trigger();
+        }
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("[en-zh] ") + beta.content);
+
+        // No pack installed: the entry is there but disabled, saying why.
+        f.popup->setTranslation(fakeTranslation(/*withPacks=*/false));
+        std::unique_ptr<QMenu> owner(f.popup->createContextMenu(beta, f.popup.get()));
+        QMenu* paste = nullptr;
+        for (QAction* a : owner->actions()) {
+            if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                paste = a->menu();
+            }
+        }
+        QVERIFY(paste);
+        QAction* none = nullptr;
+        for (QAction* b : paste->actions()) {
+            if (b->text().remove(QLatin1Char('&')) == QLatin1String("Translate")) {
+                none = b;
+            }
+        }
+        QVERIFY(none && !none->isEnabled());
+        QVERIFY(none->toolTip().contains(QStringLiteral("Settings")));
+    }
+
+    void translateTextFromAPicture()
+    {
+        Fixture f;
+        QImage thumb(40, 20, QImage::Format_RGB32);
+        thumb.fill(Qt::white);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        thumb.save(&buffer, "PNG");
+        clipitto::ImageClip clip;
+        clip.png = png;
+        clip.thumbnail = png;
+        clip.width = 40;
+        clip.height = 20;
+        clip.pixelHash = QStringLiteral("tr");
+        const qint64 id = f.t.repo->ingestImage(clip).id;
+        QVERIFY(f.show());
+        const Entry picture = *f.model()->entryAt(f.model()->findEntry(id));
+        QString read = QString(QChar(0x4F60)) + QStringLiteral("好");
+        f.popup->setTextFromPicture(
+            [&](qint64, std::function<void(const QString&, const QString&)> done) { done(read, QString()); }, true, QString());
+        f.popup->setTranslation(fakeTranslation());
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& m) { messages << m; });
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        const auto choose = [&](const QString& packLabel) {
+            std::unique_ptr<QMenu> owner(f.popup->createContextMenu(picture, f.popup.get()));
+            for (QAction* a : owner->actions()) {
+                if (!a->menu() || a->text().remove(QLatin1Char('&')) != QLatin1String("Paste as")) {
+                    continue;
+                }
+                for (QAction* b : a->menu()->actions()) {
+                    if (b->menu() && b->text().remove(QLatin1Char('&')) == QLatin1String("Translate text from picture")) {
+                        for (QAction* p : b->menu()->actions()) {
+                            if (p->text() == packLabel) {
+                                p->trigger();
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        };
+        // Both packs are offered for a picture (its text is not known yet); the fitting one translates.
+        QVERIFY(choose(QStringLiteral("Chinese → English")));
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("[zh-en] ") + read);
+        // A pack for another language than the text: nothing is pasted, the user is told.
+        QVERIFY(choose(QStringLiteral("English → Chinese")));
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(messages.size(), 1);
+    }
+
     void pasteAsTransformsTheTextAndLeavesTheCopyAlone()
     {
         Fixture f;

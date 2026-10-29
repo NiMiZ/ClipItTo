@@ -12,6 +12,7 @@
 #include "WlPasteBackend.h"
 #include "ImageCodec.h"
 #include "Ocr.h"
+#include "Translate.h"
 #include "SyntheticPaste.h"
 #include "WindowsHello.h"
 #include "Paths.h"
@@ -81,6 +82,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
         }
     });
     m_helloPool.setMaxThreadCount(1);
+    m_translatePool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
@@ -190,6 +192,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_popup->setPasswords(m_passwords.get());
     setUpWindowsHello();
     setUpOcr();
+    setUpTranslation();
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
         if (!ok) {
@@ -613,7 +616,7 @@ void Daemon::openSettings()
         startup.enabled = loginItem().isEnabled();
         startup.set = [this](bool on, QString* error) { return loginItem().setEnabled(on, error); };
     }
-    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup);
+    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup, translationSupport());
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
@@ -717,6 +720,66 @@ void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, st
 }
 
 } // namespace
+
+// Offline translation: the popup and Settings get the language packs and the engine through this struct.
+ui::TranslationSupport Daemon::translationSupport()
+{
+    ui::TranslationSupport support;
+    support.builtIn = translate::builtIn();
+    if (!support.builtIn) {
+        return support;
+    }
+    const auto info = [](const translate::Pack& p) { return ui::TranslationPackInfo{p.id, p.label()}; };
+    support.packsFor = [info](const QString& text) {
+        QList<ui::TranslationPackInfo> out;
+        for (const translate::Pack& pack : translate::PackStore().installed()) {
+            if (text.isEmpty() || translate::fits(pack, text)) {
+                out.push_back(info(pack));
+            }
+        }
+        return out;
+    };
+    support.fits = [](const QString& packId, const QString& text) {
+        for (const translate::Pack& pack : translate::PackStore().installed()) {
+            if (pack.id == packId) {
+                return translate::fits(pack, text);
+            }
+        }
+        return false;
+    };
+    support.translate = [this](const QString& packId, const QString& text,
+                               std::function<void(const QString&, const QString&)> done) {
+        std::optional<translate::Pack> chosen;
+        for (const translate::Pack& pack : translate::PackStore().installed()) {
+            if (pack.id == packId) {
+                chosen = pack;
+            }
+        }
+        if (!chosen) {
+            done(QString(), tr("That language pack is not installed."));
+            return;
+        }
+        runOn<std::pair<QString, QString>>(
+            &m_translatePool, this,
+            [pack = *chosen, text] {
+                QString error;
+                const std::optional<QString> out = translate::translate(pack, text, &error);
+                if (!out) {
+                    return std::pair<QString, QString>(QString(), error.isEmpty() ? QStringLiteral("Translation failed.") : error);
+                }
+                return std::pair<QString, QString>(*out, QString());
+            },
+            [done = std::move(done)](std::pair<QString, QString> result) { done(result.first, result.second); });
+    };
+    support.install = [](const QString& file, QString* error) { return translate::PackStore().install(file, error); };
+    support.remove = [](const QString& id) { return translate::PackStore().remove(id); };
+    return support;
+}
+
+void Daemon::setUpTranslation()
+{
+    m_popup->setTranslation(translationSupport());
+}
 
 void Daemon::setUpOcr()
 {
