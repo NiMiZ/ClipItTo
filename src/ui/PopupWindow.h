@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "Entry.h"
+#include "TextTransform.h"
 #include "HistoryModel.h"
 #include "Prompts.h"
 
@@ -116,7 +117,9 @@ public:
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
     void pasteAs(const QModelIndex& index);
-    void pasteTextFromPicture(qint64 id);
+    // Reads the text in picture `id` and pastes it, changed by `kind` when given.
+    void pasteTextFromPicture(qint64 id, std::optional<texttransform::Kind> kind = std::nullopt);
+    QMenu* createPictureMenu(const Entry& picture, QWidget* parent);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
     QMenu* createFavoritesMenu(QWidget* parent);
     void addOutOfRecentAction(QMenu* menu, const QString& path); // path "" = Favorites

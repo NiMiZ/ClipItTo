@@ -1157,13 +1157,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
             menu->addAction(tr("Lock passwords"), m_passwords, &PasswordKeeper::lock);
         }
     } else if (entry.image) {
-        QAction* read = menu->addAction(tr("Paste text from picture"), this, [this, id] { pasteTextFromPicture(id); });
-        if (!m_textFromPicture || !m_textFromPictureAvailable) {
-            read->setEnabled(false);
-            read->setToolTip(m_textFromPictureReason.isEmpty() ? tr("Text recognition is not available here.")
-                                                               : m_textFromPictureReason);
-            menu->setToolTipsVisible(true);
-        }
+        menu->addMenu(createPasteAsMenu(entry, menu)); // Paste text from picture comes first in it
     } else {
         menu->addMenu(createPasteAsMenu(entry, menu));
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
@@ -1181,8 +1175,48 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     return menu;
 }
 
+// The choices for a picture (Shift+Enter, and the right-click menu): its text first, then that text changed,
+// then the picture itself.
+QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
+{
+    auto* menu = new QMenu(tr("Paste &as"), parent);
+    const qint64 id = picture.id;
+    const bool canRead = m_textFromPicture && m_textFromPictureAvailable;
+    const QString reason = m_textFromPictureReason.isEmpty() ? tr("Text recognition is not available here.")
+                                                             : m_textFromPictureReason;
+    QAction* read = menu->addAction(tr("Paste &text from picture"), this, [this, id] { pasteTextFromPicture(id); });
+    QMenu* changed = menu->addMenu(tr("Text from picture, &changed"));
+    // The changes that make sense for recognized text; the rest (JSON, URL, Base64) stay for text copies.
+    for (const texttransform::Info& info : texttransform::all()) {
+        const texttransform::Kind kind = info.kind;
+        if (kind != texttransform::Kind::OneLine && kind != texttransform::Kind::CollapseSpaces
+            && kind != texttransform::Kind::Trim && kind != texttransform::Kind::Upper
+            && kind != texttransform::Kind::Lower && kind != texttransform::Kind::Title) {
+            continue;
+        }
+        changed->addAction(info.label, this, [this, id, kind] { pasteTextFromPicture(id, kind); });
+    }
+    menu->addSeparator();
+    const Entry copy = picture;
+    menu->addAction(tr("Paste the &picture"), this, [this, copy] {
+        emit entryActivated(copy);
+        hidePopup();
+    });
+    if (!canRead) {
+        read->setEnabled(false);
+        changed->menuAction()->setEnabled(false);
+        read->setToolTip(reason);
+        changed->menuAction()->setToolTip(reason);
+        menu->setToolTipsVisible(true);
+    }
+    return menu;
+}
+
 QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
 {
+    if (entry.image) {
+        return createPictureMenu(entry, parent);
+    }
     auto* menu = new QMenu(tr("Paste &as"), parent);
     const QString text = entry.content;
     for (const texttransform::Info& info : texttransform::all()) {
@@ -1247,8 +1281,8 @@ void PopupWindow::addKeyboardLayoutEntries(QMenu* menu, const QString& text)
 void PopupWindow::pasteAs(const QModelIndex& index)
 {
     const Entry* e = entryFor(index);
-    if (!e || e->image || e->secret) {
-        return; // a group row, a picture or a password: nothing to transform
+    if (!e || e->secret) {
+        return; // a group row or a password: nothing to choose from
     }
     QMenu* menu = createPasteAsMenu(*e, this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
@@ -1262,13 +1296,13 @@ void PopupWindow::pasteAs(const QModelIndex& index)
     }
 }
 
-void PopupWindow::pasteTextFromPicture(qint64 id)
+void PopupWindow::pasteTextFromPicture(qint64 id, std::optional<texttransform::Kind> kind)
 {
     if (!m_textFromPicture || !m_textFromPictureAvailable) {
         return;
     }
     setBusy(tr("Reading the text in the picture…")); // not a message box: that would wait for a click
-    m_textFromPicture(id, [this, self = QPointer<PopupWindow>(this)](const QString& text, const QString& error) {
+    m_textFromPicture(id, [this, kind, self = QPointer<PopupWindow>(this)](const QString& text, const QString& error) {
         if (!self) {
             return;
         }
@@ -1278,7 +1312,17 @@ void PopupWindow::pasteTextFromPicture(qint64 id)
         } else if (text.trimmed().isEmpty()) {
             showMessage(tr("No text found in the picture."));
         } else {
-            emit textActivated(text); // on the clipboard, and pasted like any copy
+            QString out = text;
+            if (kind) {
+                QString why;
+                const std::optional<QString> changed = texttransform::apply(*kind, text, &why);
+                if (!changed) {
+                    showMessage(why);
+                    return;
+                }
+                out = *changed;
+            }
+            emit textActivated(out); // on the clipboard, and pasted like any copy
             hidePopup();
         }
     });

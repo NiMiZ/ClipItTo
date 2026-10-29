@@ -802,19 +802,32 @@ private slots:
         const qint64 id = f.t.repo->ingestImage(clip).id;
         QVERIFY(f.show());
         const Entry picture = *f.model()->entryAt(f.model()->findEntry(id));
-        // Finds the menu entry (found, enabled) and clicks it when asked.
-        const auto entry = [&](bool click) {
-            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(picture, f.popup.get()));
-            for (QAction* a : menu->actions()) {
-                if (a->text() == QLatin1String("Paste text from picture")) {
-                    const std::pair<bool, bool> state(true, a->isEnabled());
-                    if (click) {
-                        a->trigger();
-                    }
-                    return state;
+        // The picture's "Paste as" menu (also what Shift+Enter opens): the text first, then it changed, then the picture.
+        const auto pasteAs = [&](std::unique_ptr<QMenu>& owner) -> QMenu* {
+            owner.reset(f.popup->createContextMenu(picture, f.popup.get()));
+            for (QAction* a : owner->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    return a->menu();
                 }
             }
-            return std::pair<bool, bool>(false, false);
+            return nullptr;
+        };
+        // Finds "Paste text from picture" (found, enabled) and clicks it when asked.
+        const auto entry = [&](bool click) {
+            std::unique_ptr<QMenu> owner;
+            QMenu* menu = pasteAs(owner);
+            if (!menu || menu->actions().isEmpty()) {
+                return std::pair<bool, bool>(false, false);
+            }
+            QAction* a = menu->actions().first(); // first: the most useful for a picture
+            if (a->text().remove(QLatin1Char('&')) != QLatin1String("Paste text from picture")) {
+                return std::pair<bool, bool>(false, false);
+            }
+            const std::pair<bool, bool> state(true, a->isEnabled());
+            if (click) {
+                a->trigger();
+            }
+            return state;
         };
         // No text recognition on this computer: the entry is there, disabled.
         QCOMPARE(entry(false), (std::pair<bool, bool>(true, false)));
@@ -840,6 +853,30 @@ private slots:
         entry(true);
         QCOMPARE(pasted.size(), 1);
         QCOMPARE(messages, QStringList{QStringLiteral("No text found in the picture.")});
+
+        // The text changed: "one line" turns the lines into one. And the picture itself can be pasted.
+        reply = QStringLiteral("line one\nline two");
+        std::unique_ptr<QMenu> owner;
+        QMenu* menu = pasteAs(owner);
+        QVERIFY(menu);
+        QMenu* changed = nullptr;
+        for (QAction* a : menu->actions()) {
+            if (a->menu()) {
+                changed = a->menu();
+            }
+        }
+        QVERIFY(changed);
+        for (QAction* a : changed->actions()) {
+            if (a->text().remove(QLatin1Char('&')) == QLatin1String("One line")) {
+                a->trigger();
+            }
+        }
+        QCOMPARE(pasted.size(), 2);
+        QCOMPARE(pasted.at(1).at(0).toString(), QStringLiteral("line one line two"));
+        QSignalSpy picturePasted(f.popup.get(), &PopupWindow::entryActivated);
+        menu->actions().last()->trigger();
+        QCOMPARE(picturePasted.size(), 1);
+        QCOMPARE(picturePasted.at(0).at(0).value<Entry>().id, id);
     }
 
     void pasteAsKeyboardLayoutFollowsTheSetting()
@@ -933,12 +970,20 @@ private slots:
         QCOMPARE(plain.size(), 0); // the stored copy is not "used"
         QCOMPARE(f.t.repo->get(beta.id)->content, beta.content);
 
-        // Not for pictures' or passwords' menus.
+        // A picture's "Paste as" has its own choices (text from the picture first), not the text transforms.
         Entry picture = beta;
         picture.image = true;
         std::unique_ptr<QMenu> pictureMenu(f.popup->createContextMenu(picture, nullptr));
+        QMenu* pictureChoices = nullptr;
         for (QAction* a : pictureMenu->actions()) {
-            QVERIFY(a->text().remove(QLatin1Char('&')) != QLatin1String("Paste as"));
+            if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                pictureChoices = a->menu();
+            }
+        }
+        QVERIFY(pictureChoices);
+        QCOMPARE(pictureChoices->actions().first()->text().remove(QLatin1Char('&')), QStringLiteral("Paste text from picture"));
+        for (QAction* a : pictureChoices->actions()) {
+            QVERIFY(a->text().remove(QLatin1Char('&')) != QLatin1String("UPPER CASE"));
         }
     }
 
