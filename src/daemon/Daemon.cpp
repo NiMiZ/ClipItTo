@@ -11,6 +11,7 @@
 #include "PopupWindow.h"
 #include "WlPasteBackend.h"
 #include "ImageCodec.h"
+#include "Ocr.h"
 #include "SyntheticPaste.h"
 #include "WindowsHello.h"
 #include "Paths.h"
@@ -188,6 +189,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_popup = std::make_unique<ui::PopupWindow>(*m_repo, m_config);
     m_popup->setPasswords(m_passwords.get());
     setUpWindowsHello();
+    setUpOcr();
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
         if (!ok) {
@@ -715,6 +717,45 @@ void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, st
 }
 
 } // namespace
+
+void Daemon::setUpOcr()
+{
+    // Whether the build has text recognition is known at once; whether it can read right now (a language
+    // installed, the data files) is found out when it is used, and said then. (Starting the engine here
+    // ran Windows' WinRT at every start, and in every test.)
+    QString why;
+    const bool builtIn = ocr::builtIn();
+    if (!builtIn) {
+        ocr::available(&why);
+    }
+    m_popup->setTextFromPicture(
+        [this](qint64 id, std::function<void(const QString&, const QString&)> done) {
+            QByteArray png;
+            try {
+                png = m_repo->imageData(id); // the database stays on this thread
+            } catch (const db::DbError& e) {
+                qCWarning(lcDaemon) << "failed to read the picture:" << e.what();
+            }
+            if (png.isEmpty()) {
+                done(QString(), tr("The picture could not be read."));
+                return;
+            }
+            const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
+            runOn<std::pair<QString, QString>>(
+                &m_helloPool, this, // the one WinRT thread (see WindowsHello_win.cpp)
+                [png, languages] {
+                    QString error;
+                    const std::optional<QString> text = ocr::recognize(png, languages, &error);
+                    if (!text) {
+                        return std::pair<QString, QString>(
+                            QString(), error.isEmpty() ? QStringLiteral("Text recognition failed.") : error);
+                    }
+                    return std::pair<QString, QString>(*text, QString());
+                },
+                [done = std::move(done)](std::pair<QString, QString> result) { done(result.first, result.second); });
+        },
+        builtIn, why);
+}
 
 void Daemon::setUpWindowsHello()
 {

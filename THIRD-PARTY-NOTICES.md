@@ -11,10 +11,14 @@ It uses the components below, under their own licenses, all compatible with the 
 | Monocypher | CC0-1.0 or BSD-2-Clause | built in | built in | built in |
 | Qt 6 | LGPL-3.0 | system packages (not shipped) | DLLs shipped, unmodified | frameworks shipped, unmodified |
 | QtKeychain | BSD-3-Clause | system package (not shipped) | not used | not used (the macOS Keychain, through Apple's Security framework) |
+| Tesseract OCR | Apache-2.0 | system package (Depends: libtesseract5) | not used (Windows.Media.Ocr, part of Windows) | not used (the Vision framework, part of macOS) |
+| Leptonica | BSD-2-Clause | system package (a dependency of Tesseract) | not used | not used |
+| tessdata_fast `eng.traineddata` (English text-recognition data) | Apache-2.0 | system package (Recommends: tesseract-ocr-eng) | not used | not used |
 | Microsoft Visual C++ runtime | Microsoft redistributable | not used | DLLs shipped | not used |
 
 The AppImage and the snap carry the Ubuntu 24.04 libraries they use (Qt 6 under the LGPL-3.0,
-toml++, QtKeychain, and their dependencies), unmodified.
+toml++, QtKeychain, Tesseract and Leptonica, and their dependencies), unmodified, and the English
+text-recognition data (`eng.traineddata`, from tessdata_fast 4.1.0, Apache-2.0).
 
 ## SQLite
 

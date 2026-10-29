@@ -27,6 +27,30 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void ocrLanguages()
+    {
+        QStringList warnings;
+        const Config c = Config::fromToml("ocr_languages = \"en, he\"\n", &warnings);
+        QCOMPARE(c.ocrLanguages, QStringLiteral("en, he"));
+        QVERIFY(warnings.isEmpty());
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        const Config bad = Config::fromToml("ocr_languages = \"en; rm -rf\"\n", &warnings);
+        QVERIFY(bad.ocrLanguages.isEmpty());
+        QCOMPARE(warnings.size(), 1);
+    }
+
+    void keyboardLayouts()
+    {
+        QVERIFY(Config().keyboardLayouts.isEmpty());
+        QStringList warnings;
+        const Config c = Config::fromToml("keyboard_layouts = \"he, ru\"\n", &warnings);
+        QCOMPARE(c.keyboardLayouts, QStringLiteral("he, ru"));
+        QVERIFY(warnings.isEmpty());
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        Config::fromToml("keyboard_layouts = \"he; rm\"\n", &warnings);
+        QCOMPARE(warnings.size(), 1);
+    }
+
     void passwordSettings()
     {
         const Config defaults;
@@ -35,6 +59,7 @@ private slots:
         QVERIFY(!defaults.passwordAskNote);
         QVERIFY(!defaults.passwordsPerNote);
         QVERIFY(defaults.detectSecrets);
+        QVERIFY(defaults.ocrLanguages.isEmpty());
         QVERIFY(!defaults.ignoreCase);
         QCOMPARE(defaults.passwordUnlockMinutes, 5);
         QCOMPARE(defaults.passwordClearSeconds, 30);

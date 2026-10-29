@@ -3,6 +3,19 @@
 Known gaps first, then ideas. Nothing here is promised or scheduled. See also
 [untested.md](untested.md) for what still needs a person with the hardware.
 
+## Next
+
+- **DONE (0.8.0, Hebrew / Russian / Greek; Arabic still open): Paste as… another keyboard layout.** Text typed with the wrong layout, same keys, other language: copy
+  `xccv`, choose *Paste as › Hebrew keyboard*, and `סבבה` is pasted (and the other way: `akuo` as English
+  keyboard becomes `שלום`). It maps each key to the character the same physical key gives in the other
+  layout, so it needs no dictionary and no network. Plan: a table per layout pair, starting with the standard
+  English (US) and Hebrew layouts (`q→/`, `w→'`, `e→ק`, `r→ר`, `t→א`, `y→ט`, `u→ו`, `i→ן`, `o→ם`, `p→פ`,
+  `a→ש`, `s→ד`, `d→ג`, `f→כ`, `g→ע`, `h→י`, `j→ח`, `k→ל`, `l→ך`, `;→ף`, `z→ז`, `x→ס`, `c→ב`, `v→ה`, `b→נ`,
+  `n→מ`, `m→צ`, `,→ת`, `.→ץ`, `/→.`), both directions, shifted keys and punctuation included. The menu offers
+  the direction that fits the text (Latin letters → "as Hebrew keyboard", Hebrew letters → "as English
+  keyboard"). Later: Arabic, Russian, Greek and others, and the layouts actually installed on the computer.
+  It extends the existing Paste as… menu (`TextTransform`), with unit tests for every key of each table.
+
 ## Known gaps
 
 - **Passwords don't lock with the screen.** Today: `clipitto --lock` from a screen-lock hook, or a short
@@ -33,7 +46,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
 
 ## Ideas for productivity
 
-Ordered by how much they would likely help, not by effort. Items marked **DONE** are in 0.7.0.
+Ordered by how much they would likely help, not by effort. Items marked **DONE** are released (0.7.0 and 0.8.0).
 
 1. **DONE: Transform on paste** (ClipItTo stores plain text only, so formatting is never pasted anyway): UPPER / lower / Title case, trim, collapse whitespace, JSON pretty/minify, URL decode/encode.
 2. **Quick paste keys** (`Ctrl+1`…`9` in the popup, or a global chord) for the pinned copies, so a
@@ -52,7 +65,10 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
 8. **Smart paste keys per app:** pick Ctrl+V / Shift+Insert / Ctrl+Shift+V automatically for terminals
    instead of one global setting.
 9. **Clean links:** strip tracking parameters (`utm_*`, `fbclid`) from copied URLs, optionally.
-10. **Text from pictures (OCR):** search inside screenshots, and copy the text out of a picture.
+10. **Text from pictures (OCR):** **DONE: copy the text out of a picture** (right-click › Paste text from picture;
+    offline: Windows.Media.Ocr, Vision, Tesseract). Languages: a setting (`ocr_languages`). Still open: search inside screenshots (read the text when a
+    picture is copied and index it; needs a database change and a setting), and picking the Tesseract language
+    from the picture itself (script detection with `osd` data).
 11. **Command line for scripts:** `clipitto --list`, `--get N`, `--add`, `--paste N`, JSON output, so
     other tools and shell scripts can use the history.
 12. **Undo delete / Clear** for a few seconds (a toast with "Undo") instead of only asking first.

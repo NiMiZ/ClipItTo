@@ -396,6 +396,7 @@ PopupWindow::~PopupWindow() = default;
 
 void PopupWindow::applyConfig(const Config& config)
 {
+    m_keyboardLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
     m_controller->applyConfig(config);
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
@@ -1155,7 +1156,15 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
         if (m_passwords && m_passwords->isUnlocked()) {
             menu->addAction(tr("Lock passwords"), m_passwords, &PasswordKeeper::lock);
         }
-    } else if (!entry.image) {
+    } else if (entry.image) {
+        QAction* read = menu->addAction(tr("Paste text from picture"), this, [this, id] { pasteTextFromPicture(id); });
+        if (!m_textFromPicture || !m_textFromPictureAvailable) {
+            read->setEnabled(false);
+            read->setToolTip(m_textFromPictureReason.isEmpty() ? tr("Text recognition is not available here.")
+                                                               : m_textFromPictureReason);
+            menu->setToolTipsVisible(true);
+        }
+    } else {
         menu->addMenu(createPasteAsMenu(entry, menu));
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
         if (!m_passwords || !m_passwords->isSetUp()) {
@@ -1189,7 +1198,50 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
             hidePopup();
         });
     }
+    addKeyboardLayoutEntries(menu, text);
     return menu;
+}
+
+// Text typed with the wrong keyboard layout, converted key for key. One layout to go to (the opposite of the
+// text's language): one entry. Several: a submenu with each.
+void PopupWindow::addKeyboardLayoutEntries(QMenu* menu, const QString& text)
+{
+    const QString from = texttransform::layoutOf(text, m_keyboardLayouts);
+    const QStringList targets = texttransform::convertibleTo(text, m_keyboardLayouts);
+    if (m_keyboardLayouts.isEmpty() || targets.isEmpty()) {
+        return;
+    }
+    const auto add = [this, text, from](QMenu* into, const QString& to, const QString& label) {
+        into->addAction(label, this, [this, text, from, to] {
+            QString why;
+            const std::optional<QString> out = texttransform::convertLayout(text, from, to, &why);
+            if (!out) {
+                showMessage(why);
+                return;
+            }
+            emit textActivated(*out);
+            hidePopup();
+        });
+    };
+    // A short preview of the result in the label, so the right layout is easy to pick.
+    const auto preview = [&text, &from](const QString& to) {
+        const std::optional<QString> out = texttransform::convertLayout(text, from, to);
+        QString shown = out.value_or(QString()).simplified();
+        if (shown.size() > 24) {
+            shown = shown.left(24) + QStringLiteral("…");
+        }
+        return shown;
+    };
+    menu->addSeparator();
+    if (targets.size() == 1) {
+        add(menu, targets.first(),
+            tr("As %1 &keyboard: %2").arg(texttransform::layoutName(targets.first()), preview(targets.first())));
+        return;
+    }
+    QMenu* sub = menu->addMenu(tr("Another &keyboard layout"));
+    for (const QString& to : targets) {
+        add(sub, to, tr("%1: %2").arg(texttransform::layoutName(to), preview(to)));
+    }
 }
 
 void PopupWindow::pasteAs(const QModelIndex& index)
@@ -1208,6 +1260,28 @@ void PopupWindow::pasteAs(const QModelIndex& index)
     if (isVisible()) {
         m_search->setFocus();
     }
+}
+
+void PopupWindow::pasteTextFromPicture(qint64 id)
+{
+    if (!m_textFromPicture || !m_textFromPictureAvailable) {
+        return;
+    }
+    setBusy(tr("Reading the text in the picture…")); // not a message box: that would wait for a click
+    m_textFromPicture(id, [this, self = QPointer<PopupWindow>(this)](const QString& text, const QString& error) {
+        if (!self) {
+            return;
+        }
+        setBusy(QString());
+        if (!error.isEmpty()) {
+            showMessage(error);
+        } else if (text.trimmed().isEmpty()) {
+            showMessage(tr("No text found in the picture."));
+        } else {
+            emit textActivated(text); // on the clipboard, and pasted like any copy
+            hidePopup();
+        }
+    });
 }
 
 void PopupWindow::addOutOfRecentAction(QMenu* menu, const QString& path)

@@ -74,11 +74,18 @@ if(NOT CLIPITTO_DEB_SHLIBDEPS)
     if(Qt6Keychain_FOUND)
         string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libqt6keychain1")
     endif()
+    if(CLIPITTO_HAVE_TESSERACT)
+        string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libtesseract5")
+    endif()
     if(NOT CLIPITTO_ENCRYPTION)
         string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libsqlite3-0 (>= 3.35)") # DROP COLUMN; otherwise SQLite is built in
     endif()
 endif()
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "wl-clipboard | gnome-shell")
+if(CLIPITTO_HAVE_TESSERACT)
+    # English data for "Paste text from picture"; other languages: tesseract-ocr-<lang> (e.g. -heb).
+    string(APPEND CPACK_DEBIAN_PACKAGE_RECOMMENDS ", tesseract-ocr-eng")
+endif()
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     ${PROJECT_SOURCE_DIR}/packaging/debian/postinst ${PROJECT_SOURCE_DIR}/packaging/debian/prerm)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)

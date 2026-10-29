@@ -34,7 +34,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev qt6-qpa-plugins libgl-dev \
-            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dbus gjs
+            libsqlite3-dev libtomlplusplus-dev libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dbus gjs \
+            libtesseract-dev libleptonica-dev tesseract-ocr-eng
 
       # CMake downloads SQLite3MC, Monocypher (and toml++ on macOS) from github.com at configure
       # time; GitHub's release downloads fail now and then (504, "egress over the limit").
@@ -98,7 +99,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev libgl-dev libsqlite3-dev libtomlplusplus-dev \
-            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dpkg-dev desktop-file-utils
+            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev dpkg-dev desktop-file-utils \
+            libtesseract-dev libleptonica-dev
 
       # CMake downloads SQLite3MC, Monocypher (and toml++ on macOS) from github.com at configure
       # time; GitHub's release downloads fail now and then (504, "egress over the limit").
@@ -397,8 +399,17 @@ jobs:
               pb.setStringForType($(""), $("'"$1"'"));'
           }
           [ "$(items)" = 0 ]
-          printf 'copied with pbcopy %s' "$RANDOM" | pbcopy
-          for i in $(seq 80); do [ "$(items)" = 1 ] && break; sleep 0.25; done
+          # The daemon notices a copy by comparing the pasteboard's change count with the one it saw last; a copy
+          # made before that first look is never seen as a change, and the check failed now and then for that
+          # reason. So wait a moment first, and copy the same text again every 2 s until it is captured (the
+          # same text is one item however often it is copied).
+          text="copied with pbcopy $RANDOM"
+          sleep 1
+          for i in $(seq 80); do
+            [ $((i % 8)) = 1 ] && printf '%s' "$text" | pbcopy
+            [ "$(items)" = 1 ] && break
+            sleep 0.25
+          done
           [ "$(items)" = 1 ] || { echo "::error title=pasteboard::a pbcopy copy was not captured"; cat daemon.log; exit 1; }
           mark org.nspasteboard.ConcealedType 'a-password-1'
           sleep 1.5
@@ -504,7 +515,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build qt6-base-dev qt6-wayland libgl-dev libsqlite3-dev libtomlplusplus-dev \
-            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev file dbus
+            libx11-dev libxtst-dev libglib2.0-bin qtkeychain-qt6-dev file dbus \
+            libtesseract-dev libleptonica-dev
       - name: Cache the AppImage tools and the dependency sources
         uses: actions/cache@v4
         with:

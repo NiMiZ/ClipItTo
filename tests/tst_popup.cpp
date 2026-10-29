@@ -784,6 +784,130 @@ private slots:
         QVERIFY(!f.t.repo->get(beta.id));
     }
 
+    void pasteTextFromPictureReadsAndPastesTheText()
+    {
+        Fixture f;
+        QImage thumb(40, 20, QImage::Format_RGB32);
+        thumb.fill(Qt::white);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        thumb.save(&buffer, "PNG");
+        clipitto::ImageClip clip;
+        clip.png = png;
+        clip.thumbnail = png;
+        clip.width = 40;
+        clip.height = 20;
+        clip.pixelHash = QStringLiteral("ocr");
+        const qint64 id = f.t.repo->ingestImage(clip).id;
+        QVERIFY(f.show());
+        const Entry picture = *f.model()->entryAt(f.model()->findEntry(id));
+        // Finds the menu entry (found, enabled) and clicks it when asked.
+        const auto entry = [&](bool click) {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(picture, f.popup.get()));
+            for (QAction* a : menu->actions()) {
+                if (a->text() == QLatin1String("Paste text from picture")) {
+                    const std::pair<bool, bool> state(true, a->isEnabled());
+                    if (click) {
+                        a->trigger();
+                    }
+                    return state;
+                }
+            }
+            return std::pair<bool, bool>(false, false);
+        };
+        // No text recognition on this computer: the entry is there, disabled.
+        QCOMPARE(entry(false), (std::pair<bool, bool>(true, false)));
+
+        qint64 askedFor = 0;
+        QString reply = QStringLiteral("hello from a screenshot");
+        f.popup->setTextFromPicture(
+            [&](qint64 pid, std::function<void(const QString&, const QString&)> done) {
+                askedFor = pid;
+                done(reply, QString());
+            },
+            true, QString());
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        QCOMPARE(entry(true), (std::pair<bool, bool>(true, true)));
+        QCOMPARE(askedFor, id);
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), reply);
+
+        // A picture without text: nothing is pasted, and the user is told.
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        reply = QStringLiteral("  \n ");
+        entry(true);
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(messages, QStringList{QStringLiteral("No text found in the picture.")});
+    }
+
+    void pasteAsKeyboardLayoutFollowsTheSetting()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        const Entry beta = *f.model()->entryAt(f.model()->index(4, 0));
+        Entry typed = beta;
+        typed.content = QStringLiteral("xccv");
+        Entry hebrew = beta;
+        hebrew.content = QStringLiteral("סבבה");
+        const auto texts = [&](const Entry& e) {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(e, f.popup.get()));
+            QMenu* paste = nullptr;
+            for (QAction* a : menu->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    paste = a->menu();
+                }
+            }
+            QStringList out;
+            if (paste) {
+                for (QAction* a : paste->actions()) {
+                    out << a->text().remove(QLatin1Char('&'));
+                }
+            }
+            return out;
+        };
+        const auto layouts = [&](const char* setting) {
+            clipitto::Config c;
+            c.keyboardLayouts = QString::fromLatin1(setting);
+            f.popup->applyConfig(c);
+        };
+        const auto hasKeyboard = [](const QStringList& t) {
+            return std::any_of(t.begin(), t.end(), [](const QString& s) { return s.contains(QLatin1String("keyboard")); });
+        };
+
+        layouts("none");
+        QVERIFY(!hasKeyboard(texts(typed)));
+
+        // One layout: a single entry, the opposite of the text's language, with a preview of the result.
+        layouts("he");
+        QVERIFY(texts(typed).last().contains(QStringLiteral("As Hebrew keyboard: סבבה")));
+        QVERIFY(texts(hebrew).last().contains(QStringLiteral("As English keyboard: xccv")));
+
+        // Several: a submenu of them.
+        layouts("he, ru");
+        std::unique_ptr<QMenu> menu(f.popup->createContextMenu(typed, f.popup.get()));
+        QMenu* paste = nullptr;
+        for (QAction* a : menu->actions()) {
+            if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                paste = a->menu();
+            }
+        }
+        QVERIFY(paste);
+        QMenu* more = nullptr;
+        for (QAction* a : paste->actions()) {
+            if (a->menu()) {
+                more = a->menu();
+            }
+        }
+        QVERIFY(more);
+        QCOMPARE(more->actions().size(), 2);
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        more->actions().first()->trigger();
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("סבבה"));
+    }
+
     void pasteAsTransformsTheTextAndLeavesTheCopyAlone()
     {
         Fixture f;
