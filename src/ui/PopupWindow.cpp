@@ -1221,12 +1221,30 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
     return menu;
 }
 
+// Orange items and a border, so the Paste as menu is not mistaken for the list of copies. On a light theme the
+// orange is darker (about 4.6:1 against white instead of 2.6:1), and the selected row has light text. The popup's
+// own palette decides, which follows the theme setting (a menu has its own default palette, not the theme's).
+static void styleTransformMenu(QMenu* menu, const QPalette& around)
+{
+    const bool light = around.color(QPalette::Window).lightness() > 128;
+    const QString orange = light ? QStringLiteral("#b85c00") : QStringLiteral("#e08a1e");
+    const QString onOrange = light ? QStringLiteral("#ffffff") : QStringLiteral("#1b1b1b");
+    menu->setStyleSheet(QStringLiteral("QMenu { border: 1px solid %1; }"
+                                       "QMenu::item { color: %1; }"
+                                       "QMenu::item:selected { background-color: %1; color: %2; }"
+                                       "QMenu::item:disabled { color: gray; background: transparent; }")
+                            .arg(orange, onOrange));
+}
+
 QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
 {
     if (entry.image) {
-        return createPictureMenu(entry, parent);
+        QMenu* picture = createPictureMenu(entry, parent);
+        styleTransformMenu(picture, palette());
+        return picture;
     }
     auto* menu = new QMenu(tr("Paste &as"), parent);
+    styleTransformMenu(menu, palette());
     const QString text = entry.content;
     for (const texttransform::Info& info : texttransform::all()) {
         const texttransform::Kind kind = info.kind;
