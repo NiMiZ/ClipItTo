@@ -68,9 +68,10 @@ build_ct2() { # arch|native  -> $work/ct2-<arch>/merged.a
             cat > "$work/macos-$arch.cmake" <<TOOLCHAIN
 set(CMAKE_SYSTEM_NAME Darwin)
 set(CMAKE_SYSTEM_PROCESSOR $arch)
-set(CMAKE_OSX_ARCHITECTURES $arch)
 TOOLCHAIN
-            extra="$extra -DCMAKE_TOOLCHAIN_FILE=$work/macos-$arch.cmake"
+            # Naming the system makes CMake treat this as a cross build, which drops the default SDK path.
+            extra="$extra -DCMAKE_TOOLCHAIN_FILE=$work/macos-$arch.cmake -DCMAKE_OSX_ARCHITECTURES=$arch"
+            extra="$extra -DCMAKE_OSX_SYSROOT=$(xcrun --sdk macosx --show-sdk-path)"
         fi
     fi
     # shellcheck disable=SC2086
