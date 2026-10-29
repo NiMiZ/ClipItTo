@@ -21,7 +21,7 @@ runs:
       run: |
         mode=native
         if [ "${{ inputs.universal }}" = true ]; then mode=universal; fi
-        scripts/build-translation-libs.sh "${{ runner.temp }}/translate-prefix" "$mode"
+        sh scripts/build-translation-libs.sh "${{ runner.temp }}/translate-prefix" "$mode"
     - name: Build the translation libraries (Windows)
       if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
       shell: pwsh

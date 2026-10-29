@@ -83,7 +83,7 @@ parts:
     override-build: |
       export CLIPITTO_TRANSLATE_PREFIX="$CRAFT_PART_BUILD/translate-prefix"
       export CLIPITTO_TRANSLATE_WORK="$CRAFT_PART_BUILD/translate-work"
-      "$CRAFT_PART_SRC/scripts/build-translation-libs.sh" "$CLIPITTO_TRANSLATE_PREFIX"
+      sh "$CRAFT_PART_SRC/scripts/build-translation-libs.sh" "$CLIPITTO_TRANSLATE_PREFIX"
       craftctl default
     build-packages:
       - cmake
