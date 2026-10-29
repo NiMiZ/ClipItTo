@@ -1088,6 +1088,32 @@ private slots:
         QCOMPARE(messages.size(), 1);
     }
 
+    void pasteAsMenuIsOrangeAndDarkerOnALightTheme()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        const Entry beta = *f.model()->entryAt(f.model()->index(4, 0));
+        const auto styleFor = [&](const QColor& window) {
+            QPalette p = f.popup->palette();
+            p.setColor(QPalette::Window, window);
+            f.popup->setPalette(p);
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(beta, f.popup.get()));
+            for (QAction* a : menu->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    return a->menu()->styleSheet();
+                }
+            }
+            return QString();
+        };
+        const QString dark = styleFor(QColor(30, 30, 30));
+        const QString light = styleFor(QColor(250, 250, 250));
+        QVERIFY(dark.contains(QStringLiteral("#e08a1e")));
+        QVERIFY(dark.contains(QStringLiteral("border: 1px solid")));
+        QVERIFY(light.contains(QStringLiteral("#b85c00")));
+        QVERIFY(!light.contains(QStringLiteral("#e08a1e")));
+        QVERIFY(light.contains(QStringLiteral("border: 1px solid")));
+    }
+
     void pasteAsTransformsTheTextAndLeavesTheCopyAlone()
     {
         Fixture f;
