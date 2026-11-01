@@ -1,7 +1,7 @@
 name: clipitto
 title: ClipItTo
 base: core24
-version: '0.9.4'
+version: '0.10.0'
 summary: Clipboard history, search, groups and favorites — kept on your device.
 description: |
   ClipItTo keeps a searchable history of copied text and pictures, with groups,

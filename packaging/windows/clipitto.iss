@@ -6,7 +6,7 @@
   #error Define StageDir: the directory produced by "cmake --install build/windows --prefix <absolute dir>"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.9.4"
+  #define AppVersion "0.10.0"
 #endif
 #ifndef OutputDir
   #define OutputDir "Output"
