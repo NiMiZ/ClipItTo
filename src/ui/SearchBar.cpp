@@ -170,6 +170,10 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
         emit editNoteRequested();
         return;
     }
+    if (event->key() == Qt::Key_F2 && (event->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier) {
+        emit renameRequested();
+        return;
+    }
     switch (event->key()) {
     case Qt::Key_Down:
         emit stepRequested(1);

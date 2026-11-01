@@ -11,6 +11,7 @@ Back to the [README](../README.md).
 | `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
 | `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
 | `Ctrl+G` / `Ctrl+E` | assign group (on a group: rename) / edit the note and the text of a copy (see below) |
+| `F2` | rename: on a group its name (same as `Ctrl+G` there), on a copy its note (same as `Ctrl+E`); also from the search box |
 | `Alt+↑` / `Alt+↓` | move a group, or a pinned copy, up or down |
 | `Del` | delete the entry (on a group: delete the group, its copies are kept); in the search box too, when the cursor is at the end |
 | right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |

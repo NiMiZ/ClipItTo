@@ -32,6 +32,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | `Shift+Enter` | paste as…: upper / lower case, JSON pretty, URL or Base64 encode, wrong keyboard layout (`xccv` → `סבבה`), and more |
 | `Ctrl+S` / `Ctrl+P` | star / pin |
 | `Ctrl+G` / `Ctrl+E` | set group / edit note and text |
+| `F2` | rename the group, or edit the note of the copy |
 | `Del` | delete (or take it off Recent) |
 | right-click | the same actions in a menu |
 | `img:` `pin:` `star:` `group:x` `since:3d` | search filters, next to your words |

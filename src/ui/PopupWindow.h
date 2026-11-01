@@ -204,6 +204,7 @@ private:
     void remove(const QModelIndex& index, bool focusList = true);
     void newGroup(const QString& parentPath);
     void renameGroup(const QString& path);
+    void renameIndex(const QModelIndex& index); // F2
     void deleteGroup(const QString& path);
     void showContextMenu(const QModelIndex& index, const QPoint& globalPos);
     void markAsPassword(qint64 id);

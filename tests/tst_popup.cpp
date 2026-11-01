@@ -927,7 +927,7 @@ private slots:
         QVERIFY(texts.contains(QStringLiteral("★ Star")));
         QVERIFY(texts.contains(QStringLiteral("Pin to the top")));
         QVERIFY(texts.contains(QStringLiteral("Group")));
-        QVERIFY(texts.contains(QStringLiteral("Add note…")));
+        QVERIFY(texts.contains(QStringLiteral("Add note…\tF2")));
         QVERIFY(deleteAction);
         deleteAction->trigger();
         QVERIFY(!f.t.repo->get(beta.id));
@@ -1539,6 +1539,46 @@ private slots:
         QCOMPARE(f.t.repo->count(), 4); // copies kept
     }
 
+    void f2RenamesGroupAndCopyAndNotFavorites()
+    {
+        GroupFixture f;
+        QStringList asked;
+        f.popup->setTextPrompt([&](QWidget*, const QString&, const QString&, const QString& current) {
+            asked << current;
+            return current == QLatin1String("Work") ? std::optional<QString>(QStringLiteral("Jobs")) : std::nullopt;
+        });
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Right);
+        QTest::keyClick(view, Qt::Key_F2); // Groups header: nothing
+        QTest::keyClick(view, Qt::Key_Down); // Favorites: nothing
+        QTest::keyClick(view, Qt::Key_F2);
+        QVERIFY(asked.isEmpty());
+        QTest::keyClick(view, Qt::Key_Down); // Work
+        QTest::keyClick(view, Qt::Key_F2);
+        QCOMPARE(asked, QStringList{QStringLiteral("Work")});
+        QCOMPARE(f.t.repo->get(f.betaId)->group, QStringLiteral("Jobs"));
+    }
+
+    void f2EditsTheNoteOfACopyFromListAndSearch()
+    {
+        Fixture f;
+        int calls = 0;
+        f.popup->setEditPrompt([&](QWidget*, const QString&, const std::optional<QString>&,
+                                   const clipitto::ui::EditApply& apply) {
+            ++calls;
+            return apply({QStringLiteral("renamed"), std::nullopt}).isEmpty();
+        });
+        QVERIFY(f.show());
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_F2); // search box focused
+        QCOMPARE(calls, 1);
+        f.enterList();
+        QTest::keyClick(f.popup->view(), Qt::Key_End);
+        QTest::keyClick(f.popup->view(), Qt::Key_F2);
+        QCOMPARE(calls, 2);
+        QCOMPARE(f.t.repo->search(QStringLiteral("alpha")).front().note, QStringLiteral("renamed"));
+    }
+
     void renameConflictIsReported()
     {
         GroupFixture f;
@@ -1550,7 +1590,7 @@ private slots:
         f.popup->setNotify([&](QWidget*, const QString& message) { reported = message; });
         QVERIFY(f.show());
         std::unique_ptr<QMenu> menu(f.popup->createGroupMenu(QStringLiteral("Work"), nullptr));
-        menu->actions().value(1)->trigger(); // Rename or move…
+        menu->actions().value(1)->trigger(); // Rename group…
         QVERIFY(reported.contains(QLatin1String("already exists")));
         QVERIFY(f.t.repo->groups().contains(QStringLiteral("Work")));
     }

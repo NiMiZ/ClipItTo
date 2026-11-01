@@ -305,6 +305,12 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
             remove(m_view->currentIndex(), /*focusList=*/false); // typing stays in the search box
         }
     });
+    connect(m_search, &SearchBar::renameRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        renameIndex(m_view->currentIndex());
+    });
     connect(m_search, &SearchBar::editNoteRequested, this, [this] {
         if (m_controller->isPending()) {
             m_controller->refresh();
@@ -383,6 +389,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
             editNote(e->id);
         }
     });
+    connect(m_view, &HistoryView::renameRequested, this, &PopupWindow::renameIndex);
     connect(m_view, &HistoryView::deleteRequested, this, [this](const QModelIndex& index) {
         if (entryFor(index)) {
             remove(index);
@@ -1042,6 +1049,15 @@ void PopupWindow::newGroup(const QString& parentPath)
     refreshSelecting(Selection{Kind::Group, 0, created});
 }
 
+void PopupWindow::renameIndex(const QModelIndex& index)
+{
+    if (const Entry* e = entryFor(index)) {
+        editNote(e->id);
+    } else if (m_model->kindAt(index) == Kind::Group) {
+        renameGroup(m_model->pathAt(index)); // not Favorites or the Groups header: other kinds
+    }
+}
+
 void PopupWindow::renameGroup(const QString& path)
 {
     std::optional<QString> target;
@@ -1194,7 +1210,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
         });
     }
 
-    menu->addAction(entry.note.isEmpty() ? tr("Add note…") : tr("Edit note…"), this, [this, id] { editNote(id); });
+    menu->addAction(entry.note.isEmpty() ? tr("Add note…\tF2") : tr("Edit note…\tF2"), this, [this, id] { editNote(id); });
     if (entry.secret) {
         menu->addSeparator();
         menu->addAction(tr("Show password"), this, [this, id] { revealPassword(id); });
@@ -1558,7 +1574,7 @@ QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
         return menu;
     }
     menu->addAction(tr("New sub-group…"), this, [this, path] { newGroup(path); });
-    menu->addAction(tr("Rename or move…"), this, [this, path] { renameGroup(path); });
+    menu->addAction(tr("Rename group…\tF2"), this, [this, path] { renameGroup(path); });
     menu->addAction(tr("Move up (Alt+↑)"), this, [this, path] { moveGroup(path, -1); });
     menu->addAction(tr("Move down (Alt+↓)"), this, [this, path] { moveGroup(path, 1); });
     addOutOfRecentAction(menu, path);
