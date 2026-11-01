@@ -436,10 +436,22 @@ QModelIndex HistoryModel::firstEntry(StartFocus focus) const
         }
         return false;
     };
+    // Search results are ranked by relevance, not by time, so for the unsaved history "first" means
+    // the most recently used match (in the plain list this is simply the first one).
+    const Node* best = nullptr;
     for (const auto& child : m_root->children) {
-        if (child->kind == Kind::Entry && matches(child->entry)) {
+        if (child->kind != Kind::Entry || !matches(child->entry)) {
+            continue;
+        }
+        if (focus != StartFocus::Unsaved) {
             return indexFor(child.get());
         }
+        if (!best || child->entry.lastUsed > best->entry.lastUsed) {
+            best = child.get();
+        }
+    }
+    if (best) {
+        return indexFor(best);
     }
     return firstEntry();
 }

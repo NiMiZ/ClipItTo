@@ -578,6 +578,20 @@ private slots:
         QCOMPARE(none->currentContent(), QStringLiteral("ssh -J bastion app"));
     }
 
+    void unsavedStartFocusPicksTheNewestMatchOfASearch()
+    {
+        Config cfg;
+        cfg.startFocus = clipitto::StartFocus::Unsaved;
+        Fixture f(cfg);
+        // Relevance would rank the older, denser match first; "first recent" is the newest one.
+        f.t.repo->ingest(QStringLiteral("needle needle needle"));
+        f.t.repo->ingest(QStringLiteral("a needle in a very long line of other words to dilute it"));
+        QVERIFY(f.show());
+        QTest::keyClicks(f.popup->searchBar(), QStringLiteral("needle"));
+        f.popup->controller()->refresh();
+        QCOMPARE(f.currentContent(), QStringLiteral("a needle in a very long line of other words to dilute it"));
+    }
+
     void choosingACopyHidesThePopup()
     {
         Fixture f;
