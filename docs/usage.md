@@ -33,6 +33,17 @@ means the language of your system). With one language the menu offers the opposi
 (English ⇄ that language); with several it shows a submenu of them, each with a preview of the result. Russian
 and Greek keep capital letters. It works key for key, with no dictionary and no network.
 
+**Choosing the Paste as… items.** Settings › *Paste as* lists the menu's items, one list for text and one for
+pictures: tick an item to show it, untick to hide it, move it with *Move up* / *Move down* (or drag it), and
+*Reset to default* restores the built-in list and order. The right-click *Paste as* submenu follows the same
+list. When two shown items would use the same underlined letter, the later one loses it. With every item hidden
+the menu shows only "No items selected". Stored as `paste_as_text` and `paste_as_picture` in the config: a
+comma list of item ids in menu order, `-` before an id hides it (`"lower,upper,-title"`); empty or missing is
+the built-in list, unknown ids are ignored, and items added in later versions appear at the end, shown. Text
+ids: `upper`, `lower`, `title`, `trim`, `collapse`, `oneline`, `json_pretty`, `json_minify`, `url_encode`,
+`url_decode`, `base64_encode`, `base64_decode`, `layout` (keyboard layout), `translate`. Picture ids:
+`pic_text`, `pic_changed`, `pic_translate`, `pic_paste`.
+
 **Translation.** Shift+Enter › *Translate* translates a copy, or the text in a picture, with a language pack you
 add in Settings › Translation. It runs on your computer only; see [Translation](translation.md).
 

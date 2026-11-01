@@ -2,6 +2,7 @@
 
 #include "Backup.h"
 #include "Config.h"
+#include "PasteAs.h"
 #include "Translation.h"
 #include "Prompts.h"
 
@@ -169,6 +170,16 @@ public:
     QPushButton* useOpenButton() const { return m_useOpen; }
     QPushButton* resetMasterButton() const { return m_resetMaster; }
 
+    // A "Paste as" list: checkable items in menu order, move buttons, reset.
+    struct PasteAsEditor {
+        QListWidget* list = nullptr;
+        QPushButton* up = nullptr;
+        QPushButton* down = nullptr;
+        QPushButton* reset = nullptr;
+        QList<pasteas::Item> items; // the built-in list
+    };
+    const PasteAsEditor& pasteAsEditor(bool picture) const { return picture ? m_pasteAsPicture : m_pasteAsText; }
+
     // Saves the one setting that lives in the history (whether password copies are in Recent).
     void accept() override;
 
@@ -184,7 +195,13 @@ private:
     void withMasterPassword(const QString& purpose, std::function<void(QByteArray password)> proceed);
     void finishImport(const QString& path, const backup::Info& info, const QByteArray& masterPassword);
 
+    PasteAsEditor createPasteAsEditor(QWidget* page, QLayout* into, const QString& title, const QList<pasteas::Item>& items,
+                                      const QString& setting);
+    QString pasteAsSetting(const PasteAsEditor& editor, const QString& loaded) const;
+
     Config m_config;
+    PasteAsEditor m_pasteAsText;
+    PasteAsEditor m_pasteAsPicture;
     db::Repository& m_repo;
     QString m_hotkey; // last valid shortcut, canonical spelling
     bool m_groupsChanged = false;

@@ -127,6 +127,7 @@ public:
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
     // The transforms for a text copy (Shift+Enter, and a submenu of the right-click menu).
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
+    static void fixMnemonics(QMenu* menu);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
     void pasteAs(const QModelIndex& index);
     // Reads the text in picture `id` and pastes it, changed by `kind` when given.
@@ -247,6 +248,8 @@ private:
     bool m_namingPassword = false; // a name box is open or about to open: one at a time
     PasswordKeeper* m_passwords = nullptr;
     TranslationSupport m_translation;
+    QString m_pasteAsText; // paste_as_text / paste_as_picture: which Paste as… items, in what order
+    QString m_pasteAsPicture;
     QStringList m_keyboardLayouts; // layouts besides English that Paste as… converts to and from
     HelloUnlock m_helloUnlock;
     TextFromPicture m_textFromPicture;
