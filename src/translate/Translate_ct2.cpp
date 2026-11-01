@@ -77,6 +77,25 @@ QString joinPieces(const std::vector<std::string>& pieces)
     return out.simplified();
 }
 
+// Does the text say the same word twice in a row ("שלום שלום", "peace Peace.")? Case and end punctuation don't count.
+bool repeatsAWord(const QString& text)
+{
+    const QStringList words = text.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (qsizetype i = 1; i < words.size(); ++i) {
+        const auto strip = [](QString w) {
+            while (!w.isEmpty() && (w.back().isPunct() || w.back().isSpace())) {
+                w.chop(1);
+            }
+            return w.toCaseFolded();
+        };
+        const QString a = strip(words[i - 1]);
+        if (!a.isEmpty() && a == strip(words[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 bool builtIn()
@@ -104,21 +123,64 @@ std::optional<QString> translate(const Pack& pack, const QString& text, QString*
             where.push_back(i);
         }
         QStringList translated(pieces.size());
-        if (!batch.empty()) {
+        // Sentences go through together, bounded by their length: a short text such as "pc enthusiast" must not
+        // decode up to 512 pieces when the model starts repeating itself.
+        // One to three pieces (a word or two) are different: the model was trained on sentences and, given "hello",
+        // answers "שלום שלום" (and "שלום" comes back as "Peaceful peace."). For those the best few candidates are
+        // looked at and the first that doesn't say the same word twice in a row is taken.
+        constexpr std::size_t kShort = 3;
+        std::vector<std::size_t> longIdx;
+        std::vector<std::size_t> shortIdx;
+        for (std::size_t k = 0; k < batch.size(); ++k) {
+            (batch[k].size() <= kShort ? shortIdx : longIdx).push_back(k);
+        }
+        const auto take = [&batch](const std::vector<std::size_t>& idx) {
+            std::vector<std::vector<std::string>> part;
+            for (const std::size_t k : idx) {
+                part.push_back(batch[k]);
+            }
+            return part;
+        };
+        const auto longest = [](const std::vector<std::vector<std::string>>& part) {
+            std::size_t n = 0;
+            for (const auto& tokens : part) {
+                n = std::max(n, tokens.size());
+            }
+            return n;
+        };
+        if (!longIdx.empty()) {
+            const auto part = take(longIdx);
             ctranslate2::TranslationOptions options;
             options.beam_size = 4;
-            // Bounded by the input: a short text such as "pc enthusiast" must not decode up to 512 pieces
-            // when the model starts repeating itself (that kept the translation busy for a long time).
-            std::size_t longest = 0;
-            for (const auto& tokens : batch) {
-                longest = std::max(longest, tokens.size());
-            }
-            options.max_decoding_length = std::min<std::size_t>(512, longest * 2 + 10);
+            options.max_decoding_length = std::min<std::size_t>(512, longest(part) * 2 + 10);
             options.repetition_penalty = 1.2F;
             options.no_repeat_ngram_size = 3;
-            const auto results = g_loaded.translator->translate_batch(batch, options);
-            for (std::size_t k = 0; k < results.size(); ++k) {
-                translated[where[k]] = joinPieces(results[k].output());
+            const auto results = g_loaded.translator->translate_batch(part, options);
+            for (std::size_t r = 0; r < results.size(); ++r) {
+                translated[where[longIdx[r]]] = joinPieces(results[r].output());
+            }
+        }
+        if (!shortIdx.empty()) {
+            const auto part = take(shortIdx);
+            ctranslate2::TranslationOptions options;
+            options.beam_size = 6;
+            options.num_hypotheses = 6;
+            options.max_decoding_length = longest(part) * 3 + 4;
+            options.repetition_penalty = 1.2F;
+            const auto results = g_loaded.translator->translate_batch(part, options);
+            for (std::size_t r = 0; r < results.size(); ++r) {
+                QString chosen;
+                for (const auto& hypothesis : results[r].hypotheses) {
+                    const QString candidate = joinPieces(hypothesis);
+                    if (chosen.isEmpty()) {
+                        chosen = candidate; // the best one, if all repeat
+                    }
+                    if (!repeatsAWord(candidate)) {
+                        chosen = candidate;
+                        break;
+                    }
+                }
+                translated[where[shortIdx[r]]] = chosen;
             }
         }
         QString out;
