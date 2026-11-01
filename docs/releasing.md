@@ -35,9 +35,14 @@ Pushing a tag named `vX.Y.Z` makes GitHub Actions build every package and publis
 ## Why builds fail
 
 - **"Artifact storage quota has been hit"** at the last step of a build job: GitHub's free storage for build files is
-  full. Branch and PR runs no longer upload files (only tags do), and the files expire after 30 days (1 day before this
-  was changed). After deleting old files, GitHub recalculates usage every 6-12 hours; re-run the failed jobs then.
+  full. Branch and PR runs no longer upload files (only tags do), and those expire after 3 days. A private repository on the
+  free plan has only 500 MB of this storage and about 2,000 build minutes a month (macOS counts 10 times). After deleting old files, GitHub recalculates usage every 6-12 hours; re-run the failed jobs then.
 - **macOS job cancelled with "The job was not acquired by Runner"**: GitHub had no macOS machine free. Re-run it.
 - **macOS "hdiutil: create failed - Resource busy"** or "a pbcopy copy was not captured": rare timing problems on the
   macOS runners; the CI retries both. Re-run if it still happens.
 - A real test failure shows in the failing step's log (look for `FAIL!`), and needs a fix.
+- **The two *Install the release* jobs are skipped** while the repository is private: they download the release the way a
+  stranger does, with no login, and a private repository answers 404. They run again when it is public.
+- **macOS job "failed because of a scheduled macOS 14 runner image brownout"**: GitHub is retiring the `macos-14` image
+  (November 2, 2026); the build now uses `macos-15`. When a runner image is retired the same happens again: change
+  `runs-on` in `.github/workflows/ci.yml`.
