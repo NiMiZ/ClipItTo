@@ -126,6 +126,7 @@ public:
     QMenu* createPictureMenu(const Entry& picture, QWidget* parent);
     // "Translate ▸" with the installed packs (those that fit `text` when given); disabled with a hint when there is none.
     void addTranslateMenu(QMenu* menu, const QString& title, const QString& text, std::function<void(const QString& packId)> chosen);
+    void previewTranslation();
     void translateAndPaste(const QString& packId, const QString& text);
     void translatePictureAndPaste(qint64 id, const QString& packId);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
