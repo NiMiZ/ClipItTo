@@ -1897,6 +1897,66 @@ private slots:
         QVERIFY(!f.model()->hasRevealed());
     }
 
+    void movingIntoThePasswordsGroupMakesItAPasswordCopy()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        const qint64 alpha = f.t.repo->search(QStringLiteral("alpha")).front().id;
+        const qint64 beta = f.t.repo->search(QStringLiteral("beta")).front().id;
+        // A group called Passwords exists to pick from the menu (as after "put new passwords in the Passwords group").
+        f.t.repo->setGroup(beta, QStringLiteral("Passwords"));
+        const auto moveTo = [&](qint64 id, const QString& groupLabel) {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(*f.t.repo->get(id), f.popup.get()));
+            for (QAction* a : menu->actions()) {
+                if (a->menu() && a->text() == QLatin1String("Group")) {
+                    for (QAction* g : a->menu()->actions()) {
+                        if (g->text() == groupLabel) {
+                            g->trigger();
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        };
+        QVERIFY(moveTo(alpha, QStringLiteral("Passwords")));
+        const auto moved = f.t.repo->get(alpha);
+        QVERIFY(moved);
+        QVERIFY(moved->secret); // moved and marked in one step
+        QCOMPARE(moved->group, QStringLiteral("Passwords"));
+        QVERIFY(f.t.repo->sealedSecret(alpha).size() > 0);
+
+        // Another group: the copy stays plain text.
+        const qint64 gamma = f.t.repo->search(QStringLiteral("gamma")).front().id;
+        f.t.repo->setGroup(f.t.repo->search(QStringLiteral("bastion")).front().id, QStringLiteral("Work"));
+        QVERIFY(moveTo(gamma, QStringLiteral("Work")));
+        QVERIFY(!f.t.repo->get(gamma)->secret);
+        QCOMPARE(f.t.repo->get(gamma)->group, QStringLiteral("Work"));
+
+        // Without a master password it is refused and the copy stays where it was.
+        Fixture plain;
+        QStringList messages;
+        plain.popup->setNotify([&](QWidget*, const QString& m) { messages << m; });
+        const qint64 plainBeta = plain.t.repo->search(QStringLiteral("beta")).front().id;
+        plain.t.repo->setGroup(plain.t.repo->search(QStringLiteral("alpha")).front().id, QStringLiteral("Passwords"));
+        const qint64 plainGamma = plain.t.repo->search(QStringLiteral("gamma")).front().id;
+        std::unique_ptr<QMenu> menu(plain.popup->createContextMenu(*plain.t.repo->get(plainGamma), plain.popup.get()));
+        for (QAction* a : menu->actions()) {
+            if (a->menu() && a->text() == QLatin1String("Group")) {
+                for (QAction* g : a->menu()->actions()) {
+                    if (g->text() == QLatin1String("Passwords")) {
+                        g->trigger();
+                    }
+                }
+            }
+        }
+        Q_UNUSED(plainBeta)
+        QCOMPARE(messages.size(), 1);
+        QVERIFY(messages.at(0).contains(QStringLiteral("master password")));
+        QVERIFY(plain.t.repo->get(plainGamma)->group.isEmpty());
+        QVERIFY(!plain.t.repo->get(plainGamma)->secret);
+    }
+
     void contextMenuMarksAndUnmarks()
     {
         PasswordFixture f;

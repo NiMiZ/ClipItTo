@@ -64,6 +64,12 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   window closes again afterwards if it wasn't open. (On Windows the window may not take the
   focus when it opens by itself.)
 
+**Moving a copy into the Passwords group** (Ctrl+G, or right-click › Group) makes it a password copy at the same time,
+so there is no need to move it *and* mark it. It needs a master password (or the no-master mode): without one the copy is
+not moved, because plain text in a group called Passwords would only look protected. *Mark as password* in the right-click
+menu stays for copies that should keep their place. If the same password is already kept, that copy stays and is the one
+in the group.
+
 **Copies that look like secrets.** Once passwords are kept, a copy that no password manager marked but
 that looks like a private key, an API key or access token (AWS, GitHub, GitLab, Slack, Google, Stripe,
 Anthropic, OpenAI, npm, a JSON web token) or a whole-copy card number (Luhn-checked) is kept encrypted too,
