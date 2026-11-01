@@ -3,6 +3,7 @@ add_library(clipitto_daemon_lib STATIC
     Daemon.cpp Daemon.h
     GnomeShortcut.cpp GnomeShortcut.h
     LoginItem.cpp LoginItem.h
+    Notify.cpp Notify.h
 )
 target_include_directories(clipitto_daemon_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_translate clipitto_output clipitto_ui Qt6::Concurrent)
@@ -42,6 +43,9 @@ else()
     target_sources(clipitto_daemon_lib PRIVATE SystemKeyStore_none.cpp)
 endif()
 if(CLIPITTO_DBUS)
+    # The freedesktop notification service (Notify.cpp).
+    target_compile_definitions(clipitto_daemon_lib PRIVATE CLIPITTO_NOTIFY_DBUS)
+    target_link_libraries(clipitto_daemon_lib PRIVATE Qt6::DBus)
     # Linux: D-Bus control channel and the GNOME Shell extension.
     target_compile_definitions(clipitto-daemon PRIVATE CLIPITTO_USE_DBUS)
     target_link_libraries(clipitto-daemon PRIVATE clipitto_ipc)

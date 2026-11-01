@@ -5,6 +5,7 @@
 #include "Hotkey.h"
 #include "LoginItem.h"
 #include "MacPaste.h"
+#include "Notify.h"
 #include "SettingsDialog.h"
 #include "Theme.h"
 #include "ClipboardWriter.h"
@@ -205,6 +206,8 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
     connect(m_popup.get(), &ui::PopupWindow::textActivated, this, &Daemon::onTextActivated);
+    connect(m_popup.get(), &ui::PopupWindow::textEdited, this, &Daemon::onTextEdited);
+    m_popup->setMaxItemBytes(m_config.maxItemBytes);
     connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
     // popup_position = last: where the popup closed, kept next to the history across runs.
     const QString positionFile = QFileInfo(m_options.databasePath).dir().filePath(QStringLiteral("popup-position"));
@@ -362,6 +365,29 @@ void Daemon::onEntryActivated(const Entry& entry)
     }
 
     pasteIfWanted();
+}
+
+void Daemon::onTextEdited(qint64 id, const QString& text)
+{
+    // Only the newest copy is what the clipboard holds (or would be pasted next): the system
+    // clipboard follows its new text. The writer tells the capture filter, so no new entry appears.
+    std::optional<qint64> newest;
+    try {
+        newest = m_repo->newestId();
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "failed to find the newest copy:" << e.what();
+        return;
+    }
+    if (newest != id) {
+        return;
+    }
+    m_writer->setText(text);
+    const QString title = QStringLiteral("ClipItTo");
+    const QString body = tr("ClipItTo: the clipboard now holds the edited text");
+    const bool shown = m_options.notify ? m_options.notify(title, body) : desktopNotify(title, body);
+    if (!shown && m_popup) {
+        m_popup->flash(body);
+    }
 }
 
 void Daemon::onTextActivated(const QString& text)
@@ -911,6 +937,9 @@ void Daemon::reload(bool forceShortcut)
         return;
     }
     m_pipeline->setLimits(m_config.maxHistory, m_config.maxItemBytes);
+    if (m_popup) {
+        m_popup->setMaxItemBytes(m_config.maxItemBytes);
+    }
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
     if (m_capture.backend) {
         m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);

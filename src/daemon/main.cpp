@@ -1,3 +1,4 @@
+#include "Notify.h"
 #include "AppIcon.h"
 #include "Theme.h"
 #include "Daemon.h"
@@ -166,6 +167,7 @@ int main(int argc, char* argv[])
                          }
                      });
     tray.show();
+    clipitto::setNotifyTray(&tray); // edited-text notices use the tray where the desktop has one
 #endif
 
     return app.exec();

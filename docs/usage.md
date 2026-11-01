@@ -10,12 +10,20 @@ Back to the [README](../README.md).
 | `Enter` / click | copy the entry back to the clipboard and close (on a group: open/close it) |
 | `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
 | `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
-| `Ctrl+G` / `Ctrl+E` | assign group (on a group: rename) / edit note |
+| `Ctrl+G` / `Ctrl+E` | assign group (on a group: rename) / edit the note and the text of a copy (see below) |
 | `Alt+↑` / `Alt+↓` | move a group, or a pinned copy, up or down |
 | `Del` | delete the entry (on a group: delete the group, its copies are kept); in the search box too, when the cursor is at the end |
 | right-click or `Menu` | the same actions in a menu, plus new group / sub-group on groups |
 | `Ctrl+,` or ⚙ | settings |
 | `Esc` | close |
+
+**Editing a copy (Ctrl+E).** One dialog with two boxes: **Note** (Enter saves) and **Text** (Ctrl+Enter saves,
+Enter adds a line). Pictures and password copies have only the Note box. Saving the text changes the copy in
+place: its note, group, star, pin, position in Recent and "last used" time stay. The text can't be empty, over
+`max_item_bytes`, or the same as another copy's; the dialog says so and nothing changes. If the edited copy is
+the most recent one, the new text is also put on the system clipboard (no new entry is made from it) and a
+notification says so (the desktop's notification service on Linux, the tray message on Windows and macOS, or a
+line in the popup if neither works). Esc cancels.
 
 **Keyboard layout (Paste as…).** Text typed with the wrong layout becomes the other language on the same keys:
 copy `xccv`, press Shift+Enter, and *As Hebrew keyboard: סבבה* pastes `סבבה` (and `סבבה` → `xccv`). Choose the

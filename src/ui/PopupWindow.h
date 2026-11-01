@@ -75,7 +75,11 @@ public:
     bool isBusy() const { return !m_busyMessage.isEmpty(); }
 
     void setGroupPrompt(Prompt prompt) { m_groupPrompt = std::move(prompt); }
-    void setNotePrompt(Prompt prompt) { m_notePrompt = std::move(prompt); }
+    void setEditPrompt(EditPrompt prompt) { m_editPrompt = std::move(prompt); }
+    // The largest text a copy may be edited to (max_item_bytes).
+    void setMaxItemBytes(qint64 bytes) { m_maxItemBytes = bytes; }
+    // A short line in place of the footer hints for a few seconds (no modal box).
+    void flash(const QString& message);
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
@@ -164,6 +168,8 @@ signals:
     // "Paste as…": this text (the copy, transformed) goes to the clipboard and into the window; the
     // stored copy is not touched.
     void textActivated(const QString& text);
+    // Ctrl+E saved a new text for this copy (its place and time are unchanged).
+    void textEdited(qint64 id, const QString& text);
     void aboutToShow(); // before the popup takes focus (the previous window still has it)
     void closedAt(QPoint topLeft); // where it was when it hid (for popup_position = last)
     void visibilityChanged(bool visible);
@@ -219,7 +225,9 @@ private:
     HistoryView* m_view;
     QLabel* m_footer;
     Prompt m_groupPrompt;
-    Prompt m_notePrompt;
+    EditPrompt m_editPrompt;
+    qint64 m_maxItemBytes = 1024 * 1024;
+    QString m_footerHint;
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
     Notify m_notify;

@@ -23,6 +23,20 @@ TextPrompt defaultTextPrompt();
 std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices);
 ConfirmPrompt defaultConfirmPrompt();
 
+// Ctrl+E: the note of a copy and, for a plain-text copy, its text. `text` is nullopt for a picture
+// or a password copy (the dialog then has only the Note box). `apply` is called when the user
+// saves; it returns an error to show in the dialog (which then stays open, nothing changed) or an
+// empty string once saved. The prompt returns true when something was saved.
+struct CopyEdit {
+    QString note;
+    std::optional<QString> text; // nullopt: no text box
+};
+using EditApply = std::function<QString(const CopyEdit&)>;
+using EditPrompt = std::function<bool(QWidget* parent, const QString& note, const std::optional<QString>& text,
+                                      const EditApply& apply)>;
+// Object names the dialog's widgets carry ("editNoteBox", "editTextBox", "editError"), for tests.
+EditPrompt defaultEditPrompt();
+
 // A masked password (the master password). nullopt = cancelled. The caller wipes the text.
 using PasswordPrompt = std::function<std::optional<QString>(QWidget* parent, const QString& label)>;
 PasswordPrompt defaultPasswordPrompt();

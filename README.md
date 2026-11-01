@@ -31,7 +31,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | `↑` / `↓`, `Enter` | move, copy the entry back and paste it into the window you came from |
 | `Shift+Enter` | paste as…: upper / lower case, JSON pretty, URL or Base64 encode, wrong keyboard layout (`xccv` → `סבבה`), and more |
 | `Ctrl+S` / `Ctrl+P` | star / pin |
-| `Ctrl+G` / `Ctrl+E` | set group / edit note |
+| `Ctrl+G` / `Ctrl+E` | set group / edit note and text |
 | `Del` | delete (or take it off Recent) |
 | right-click | the same actions in a menu |
 | `img:` `pin:` `star:` `group:x` `since:3d` | search filters, next to your words |

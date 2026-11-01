@@ -1000,6 +1000,49 @@ void Repository::setNote(qint64 id, const QString& note)
     m_setNote->run();
 }
 
+Repository::ContentChange Repository::setContent(qint64 id, const QString& text, qint64 maxBytes)
+{
+    if (text.trimmed().isEmpty()) {
+        return ContentChange::Empty;
+    }
+    if (text.size() * 3 > maxBytes && text.toUtf8().size() > maxBytes) {
+        return ContentChange::TooLarge;
+    }
+    Transaction tx(m_db);
+    {
+        Stmt kind(m_db, "SELECT kind, secret FROM clips WHERE id = ?1");
+        kind.bindInt(1, id);
+        if (!kind.step()) {
+            return ContentChange::Missing;
+        }
+        if (kind.colText(0) != QLatin1String("text") || kind.colInt(1) != 0) {
+            return ContentChange::NotText;
+        }
+    }
+    const QString hash = textHash(text);
+    {
+        Stmt find(m_db, "SELECT id FROM clips WHERE content_hash = ?1 AND id != ?2");
+        find.bindText(1, hash).bindInt(2, id);
+        if (find.step()) {
+            return ContentChange::Duplicate;
+        }
+    }
+    Stmt update(m_db, "UPDATE clips SET content = ?2, content_hash = ?3 WHERE id = ?1");
+    update.bindInt(1, id).bindText(2, text).bindText(3, hash);
+    update.run();
+    tx.commit();
+    return ContentChange::Done;
+}
+
+std::optional<qint64> Repository::newestId()
+{
+    Stmt s(m_db, "SELECT id FROM clips ORDER BY last_used DESC, id DESC LIMIT 1");
+    if (!s.step()) {
+        return std::nullopt;
+    }
+    return s.colInt(0);
+}
+
 void Repository::remove(qint64 id)
 {
     m_remove->reset();
