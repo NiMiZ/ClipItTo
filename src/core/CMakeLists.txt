@@ -12,6 +12,7 @@ add_library(clipitto_core STATIC
     KeyStore.h
     PasswordKeeper.cpp PasswordKeeper.h
     PasswordPolicy.cpp PasswordPolicy.h
+    PasteAs.cpp PasteAs.h
     TextTransform.cpp TextTransform.h
     SecretScan.cpp SecretScan.h
     SearchFilter.cpp SearchFilter.h

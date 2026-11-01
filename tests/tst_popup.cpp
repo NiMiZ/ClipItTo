@@ -1094,6 +1094,60 @@ private slots:
         QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("סבבה"));
     }
 
+    void pasteAsFollowsTheItemList()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        Entry text = *f.model()->entryAt(f.model()->index(4, 0));
+        text.content = QStringLiteral("Hello");
+        const auto texts = [&](const Entry& e) {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(e, f.popup.get()));
+            QStringList out;
+            for (QAction* a : menu->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    for (QAction* b : a->menu()->actions()) {
+                        out << b->text();
+                    }
+                }
+            }
+            return out;
+        };
+        const auto set = [&](const char* items) {
+            clipitto::Config c;
+            c.pasteAsText = QString::fromLatin1(items);
+            f.popup->applyConfig(c);
+        };
+        const int all = int(texts(text).size());
+        QVERIFY(all >= 12);
+
+        set("lower,upper,-title");
+        QStringList custom = texts(text);
+        QCOMPARE(custom.size(), all - 1);
+        QVERIFY(custom.at(0).contains(QLatin1String("lower")));
+        QVERIFY(custom.at(1).contains(QLatin1String("UPPER")));
+        QVERIFY(!custom.join(QLatin1Char('|')).contains(QLatin1String("Title")));
+
+        // Unknown ids are ignored.
+        set("bogus,trim");
+        custom = texts(text);
+        QCOMPARE(custom.size(), all);
+        QVERIFY(custom.first().contains(QLatin1String("m white space")));
+
+        // A letter shared by two shown items belongs to the first: "Collapse &spaces" and "Tran&slate".
+        set("-upper,-lower,-title,-trim,-oneline,-json_pretty,-json_minify,-url_encode,-url_decode,-base64_encode,-base64_decode");
+        custom = texts(text);
+        QVERIFY(custom.first().contains(QLatin1String("&spaces")));
+        for (const QString& t : custom.mid(1)) {
+            QVERIFY2(!t.contains(QLatin1String("&s")), qPrintable(t));
+        }
+
+        // Everything hidden: a disabled hint, no error.
+        set("-upper,-lower,-title,-trim,-collapse,-oneline,-json_pretty,-json_minify,-url_encode,-url_decode,-base64_encode,-base64_decode,-layout,-translate");
+        custom = texts(text);
+        QCOMPARE(custom.size(), 1);
+        QVERIFY(custom.first().contains(QLatin1String("No items selected")));
+    }
+
     // A fake translation engine: packs zh→en (Han text) and en→zh (Latin text); "translating" upper-cases and prefixes.
     static clipitto::ui::TranslationSupport fakeTranslation(bool withPacks = true)
     {

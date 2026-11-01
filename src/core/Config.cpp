@@ -127,6 +127,23 @@ public:
         }
     }
 
+    // Item ids of a menu: "upper,-lower,pic_text" (see PasteAs.h). Unknown ids are dropped later, not here.
+    void idList(const char* key, QString& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const auto value = node->value_exact<std::string>();
+        const QString text = value ? QString::fromStdString(*value).trimmed() : QString();
+        static const QRegularExpression allowed(QStringLiteral("^[A-Za-z0-9_, -]{0,512}$"));
+        if (!value || !allowed.match(text).hasMatch()) {
+            warn(QStringLiteral("%1: expected a comma list of item names (or empty)").arg(QLatin1String(key)));
+        } else {
+            out = text;
+        }
+    }
+
     // Language tags separated by commas, spaces or plus signs: "en, he", "eng+heb", "zh-Hans".
     void languages(const char* key, QString& out)
     {
@@ -216,6 +233,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("max_images", config.maxImages, 0, 100'000);
     r.languages("ocr_languages", config.ocrLanguages);
     r.languages("keyboard_layouts", config.keyboardLayouts);
+    r.idList("paste_as_text", config.pasteAsText);
+    r.idList("paste_as_picture", config.pasteAsPicture);
     r.integer("max_image_bytes", config.maxImageBytes, 1, 512LL * 1024 * 1024);
     r.boolean("capture_primary", config.capturePrimary);
     r.boolean("paste_on_enter", config.pasteOnEnter);
@@ -300,6 +319,9 @@ std::vector<Line> lines(const Config& c)
         {"ocr_languages", tomlString(c.ocrLanguages.toStdString()), "languages read in pictures, e.g. \"en, he\"; empty = automatic"},
         {"keyboard_layouts", tomlString(c.keyboardLayouts.toStdString()),
          "layouts offered by Paste as… for text typed with the wrong keyboard: \"he, ru, el\"; empty = the system language's; \"none\""},
+        {"paste_as_text", tomlString(c.pasteAsText.toStdString()),
+         "items of the Paste as… menu for text, in order, \"-\" hides one: \"upper,-lower,title\"; empty = all, built-in order"},
+        {"paste_as_picture", tomlString(c.pasteAsPicture.toStdString()), "the same for pictures"},
         {"max_image_bytes", std::to_string(c.maxImageBytes), "larger pictures are not recorded"},
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},

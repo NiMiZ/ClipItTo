@@ -51,6 +51,19 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void pasteAsItems()
+    {
+        QVERIFY(Config().pasteAsText.isEmpty() && Config().pasteAsPicture.isEmpty());
+        QStringList warnings;
+        const Config c = Config::fromToml("paste_as_text = \"lower,-upper,translate\"\npaste_as_picture = \"pic_paste\"\n", &warnings);
+        QCOMPARE(c.pasteAsText, QStringLiteral("lower,-upper,translate"));
+        QCOMPARE(c.pasteAsPicture, QStringLiteral("pic_paste"));
+        QVERIFY(warnings.isEmpty());
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        Config::fromToml("paste_as_text = \"a; b\"\n", &warnings);
+        QCOMPARE(warnings.size(), 1);
+    }
+
     void passwordSettings()
     {
         const Config defaults;

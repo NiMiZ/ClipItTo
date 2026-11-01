@@ -54,6 +54,47 @@ private:
     }
 
 private slots:
+    void pasteAsTabChecksMovesAndResets()
+    {
+        TestDb t;
+        Config start;
+        SettingsDialog d(start, *t.repo, {});
+        const auto& text = d.pasteAsEditor(false);
+        const auto& picture = d.pasteAsEditor(true);
+        QVERIFY(text.list && picture.list);
+        QCOMPARE(text.list->count(), 14);
+        QCOMPARE(picture.list->count(), 4);
+        QCOMPARE(text.list->item(0)->data(Qt::UserRole).toString(), QStringLiteral("upper"));
+        QVERIFY(d.config().pasteAsText.isEmpty()); // untouched: the built-in list
+        QVERIFY(d.config().pasteAsPicture.isEmpty());
+        QVERIFY(!text.up->isEnabled());
+
+        text.list->setCurrentRow(0);
+        text.down->click();
+        QCOMPARE(text.list->item(1)->data(Qt::UserRole).toString(), QStringLiteral("upper"));
+        QCOMPARE(text.list->currentRow(), 1);
+        text.list->item(0)->setCheckState(Qt::Unchecked); // lower
+        QVERIFY(d.config().pasteAsText.startsWith(QLatin1String("-lower,upper,title")));
+        text.up->click();
+        QVERIFY(d.config().pasteAsText.startsWith(QLatin1String("upper,-lower,title")));
+
+        picture.list->setCurrentRow(3);
+        picture.up->click();
+        QCOMPARE(d.config().pasteAsPicture, QStringLiteral("pic_text,pic_changed,pic_paste,pic_translate"));
+
+        // The saved setting is loaded back.
+        Config again = start;
+        again.pasteAsText = d.config().pasteAsText;
+        SettingsDialog d2(again, *t.repo, {});
+        QCOMPARE(d2.pasteAsEditor(false).list->item(1)->data(Qt::UserRole).toString(), QStringLiteral("lower"));
+        QCOMPARE(d2.pasteAsEditor(false).list->item(1)->checkState(), Qt::Unchecked);
+
+        text.reset->click();
+        picture.reset->click();
+        QVERIFY(d.config().pasteAsText.isEmpty());
+        QVERIFY(d.config().pasteAsPicture.isEmpty());
+    }
+
     void translationTabListsAddsAndRemovesPacks()
     {
         TestDb t;
@@ -396,7 +437,7 @@ private slots:
             return answer;
         });
 
-        QCOMPARE(d.tabs()->count(), 4);
+        QCOMPARE(d.tabs()->count(), 5);
         QCOMPARE(d.setMasterButton()->text(), QStringLiteral("Set…"));
         QVERIFY(!d.removeMasterButton()->isEnabled());
         QVERIFY(!d.keepPasswordsBox()->isEnabled()); // nothing to keep them with yet

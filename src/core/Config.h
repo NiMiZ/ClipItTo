@@ -33,6 +33,8 @@ struct Config {
     qint64 maxItemBytes = 1024 * 1024;
     QString ocrLanguages; // languages to read in pictures, e.g. "en, he"; empty = automatic
     QString keyboardLayouts; // layouts offered by Paste as…: "he, ru, el"; "" = the system language's; "none"
+    QString pasteAsText; // items of the Paste as… menu for text, see PasteAs.h; "" = the built-in list
+    QString pasteAsPicture; // the same for pictures
     int maxImages = 100; // unsaved pictures kept, apart from maxHistory; 0 = don't record pictures
     qint64 maxImageBytes = 50LL * 1024 * 1024; // larger pictures (PNG-encoded) are skipped
     bool capturePrimary = false;

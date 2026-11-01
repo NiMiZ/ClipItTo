@@ -27,6 +27,7 @@ enum class Kind {
 
 struct Info {
     Kind kind;
+    QString id; // stable, for the Paste as… setting: "upper", "json_pretty", ...
     QString label; // with an & mnemonic, for menus
 };
 

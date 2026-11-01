@@ -597,6 +597,20 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_tabs->addTab(groupsPage, tr("Groups"));
     m_tabs->addTab(passwordsPage, tr("Passwords"));
     m_tabs->addTab(backupPage, tr("Backup"));
+    {
+        // --- Paste as: which items the Shift+Enter menu shows, and in what order ---------------------------
+        auto* page = new QWidget(this);
+        auto* box = new QVBoxLayout(page);
+        auto* intro = new QLabel(tr("Choose what the <b>Paste as</b> menu (Shift+Enter, and right-click) shows and in what "
+                                    "order: tick to show, drag or use the arrows to move."),
+                                 page);
+        intro->setWordWrap(true);
+        intro->setTextFormat(Qt::RichText);
+        box->addWidget(intro);
+        m_pasteAsText = createPasteAsEditor(page, box, tr("For text"), pasteas::textItems(), config.pasteAsText);
+        m_pasteAsPicture = createPasteAsEditor(page, box, tr("For pictures"), pasteas::pictureItems(), config.pasteAsPicture);
+        m_tabs->addTab(page, tr("Paste as"));
+    }
     m_translation = std::move(translation);
     if (m_translation.builtIn) {
         // --- Translation: the language packs the popup's Translate menus use --------------------------------
@@ -711,6 +725,8 @@ Config SettingsDialog::config() const
         const QStringList before = texttransform::enabledLayouts(m_layoutsSetting, QLocale::system().bcp47Name());
         c.keyboardLayouts = ids == before ? m_layoutsSetting : (ids.isEmpty() ? QStringLiteral("none") : ids.join(QStringLiteral(", ")));
     }
+    c.pasteAsText = pasteAsSetting(m_pasteAsText, m_config.pasteAsText);
+    c.pasteAsPicture = pasteAsSetting(m_pasteAsPicture, m_config.pasteAsPicture);
     c.previewLines = m_lines->value();
     c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;
@@ -1328,6 +1344,87 @@ void SettingsDialog::deleteSelectedGroup()
     } catch (const db::DbError& e) {
         m_notify(this, QString::fromUtf8(e.what()));
     }
+}
+
+SettingsDialog::PasteAsEditor SettingsDialog::createPasteAsEditor(QWidget* page, QLayout* into, const QString& title,
+                                                                  const QList<pasteas::Item>& items, const QString& setting)
+{
+    PasteAsEditor e;
+    e.items = items;
+    auto* column = new QVBoxLayout;
+    column->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(title.toHtmlEscaped()), page));
+    auto* row = new QHBoxLayout;
+    e.list = new QListWidget(page);
+    e.list->setDragDropMode(QAbstractItemView::InternalMove);
+    e.list->setDefaultDropAction(Qt::MoveAction);
+    row->addWidget(e.list, 1);
+    auto* buttons = new QVBoxLayout;
+    e.up = new QPushButton(tr("Move up"), page);
+    e.down = new QPushButton(tr("Move down"), page);
+    e.reset = new QPushButton(tr("Reset to default"), page);
+    for (QPushButton* b : {e.up, e.down, e.reset}) {
+        b->setAutoDefault(false);
+        buttons->addWidget(b);
+    }
+    buttons->addStretch(1);
+    row->addLayout(buttons);
+    column->addLayout(row, 1);
+    into->addItem(column);
+
+    QListWidget* list = e.list;
+    const auto fill = [list, items](const QString& value) {
+        list->clear();
+        QHash<QString, QString> labels;
+        for (const pasteas::Item& item : items) {
+            labels.insert(item.id, pasteas::plain(item.label));
+        }
+        for (const pasteas::Choice& c : pasteas::resolve(value, items)) {
+            auto* item = new QListWidgetItem(labels.value(c.id), list);
+            item->setData(Qt::UserRole, c.id);
+            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+            item->setCheckState(c.shown ? Qt::Checked : Qt::Unchecked);
+        }
+        list->setCurrentRow(0);
+    };
+    fill(setting);
+    QPushButton* up = e.up;
+    QPushButton* down = e.down;
+    const auto refresh = [list, up, down] {
+        up->setEnabled(list->currentRow() > 0);
+        down->setEnabled(list->currentRow() >= 0 && list->currentRow() < list->count() - 1);
+    };
+    const auto move = [list, refresh](int by) {
+        const int row = list->currentRow();
+        const int to = row + by;
+        if (row < 0 || to < 0 || to >= list->count()) {
+            return;
+        }
+        QListWidgetItem* item = list->takeItem(row);
+        list->insertItem(to, item);
+        list->setCurrentRow(to);
+        refresh();
+    };
+    connect(e.up, &QPushButton::clicked, this, [move] { move(-1); });
+    connect(e.down, &QPushButton::clicked, this, [move] { move(1); });
+    connect(e.reset, &QPushButton::clicked, this, [fill, refresh] {
+        fill(QString());
+        refresh();
+    });
+    connect(list, &QListWidget::currentRowChanged, this, refresh);
+    connect(list->model(), &QAbstractItemModel::rowsMoved, this, refresh);
+    refresh();
+    return e;
+}
+
+QString SettingsDialog::pasteAsSetting(const PasteAsEditor& editor, const QString& loaded) const
+{
+    QList<pasteas::Choice> now;
+    for (int i = 0; i < editor.list->count(); ++i) {
+        const QListWidgetItem* item = editor.list->item(i);
+        now.append({item->data(Qt::UserRole).toString(), item->checkState() == Qt::Checked});
+    }
+    // Unchanged from what the setting meant: keep it as it was.
+    return now == pasteas::resolve(loaded, editor.items) ? loaded : pasteas::serialize(now, editor.items);
 }
 
 QCheckBox* SettingsDialog::layoutBox(const QString& id) const

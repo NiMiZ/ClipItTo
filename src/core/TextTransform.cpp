@@ -49,18 +49,18 @@ QString title(const QString& text)
 QList<Info> all()
 {
     return {
-        {Kind::Upper, t("&UPPER CASE")},
-        {Kind::Lower, t("&lower case")},
-        {Kind::Title, t("&Title Case")},
-        {Kind::Trim, t("Tri&m white space at the ends")},
-        {Kind::CollapseSpaces, t("Collapse &spaces")},
-        {Kind::OneLine, t("&One line")},
-        {Kind::JsonPretty, t("&JSON, pretty")},
-        {Kind::JsonMinify, t("JSON, m&inified")},
-        {Kind::UrlEncode, t("URL-&encode")},
-        {Kind::UrlDecode, t("URL-&decode")},
-        {Kind::Base64Encode, t("&Base64-encode")},
-        {Kind::Base64Decode, t("Base64-de&code")},
+        {Kind::Upper, QStringLiteral("upper"), t("&UPPER CASE")},
+        {Kind::Lower, QStringLiteral("lower"), t("&lower case")},
+        {Kind::Title, QStringLiteral("title"), t("&Title Case")},
+        {Kind::Trim, QStringLiteral("trim"), t("Tri&m white space at the ends")},
+        {Kind::CollapseSpaces, QStringLiteral("collapse"), t("Collapse &spaces")},
+        {Kind::OneLine, QStringLiteral("oneline"), t("&One line")},
+        {Kind::JsonPretty, QStringLiteral("json_pretty"), t("&JSON, pretty")},
+        {Kind::JsonMinify, QStringLiteral("json_minify"), t("JSON, m&inified")},
+        {Kind::UrlEncode, QStringLiteral("url_encode"), t("URL-&encode")},
+        {Kind::UrlDecode, QStringLiteral("url_decode"), t("URL-&decode")},
+        {Kind::Base64Encode, QStringLiteral("base64_encode"), t("&Base64-encode")},
+        {Kind::Base64Decode, QStringLiteral("base64_decode"), t("Base64-de&code")},
     };
 }
 
