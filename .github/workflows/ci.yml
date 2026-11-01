@@ -160,6 +160,7 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: clipitto-deb
           path: build/deb/clipitto_*.deb
@@ -330,6 +331,7 @@ jobs:
           }
 
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: clipitto-windows-installer
           path: installer/*.exe
@@ -482,6 +484,7 @@ jobs:
           codesign --verify --deep --strict "$mnt/ClipItTo.app"
           hdiutil detach "$mnt"
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: clipitto-macos
           path: build/macos-package/ClipItTo-*-macos.dmg
@@ -580,6 +583,7 @@ jobs:
             exit 1
           fi
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: clipitto-appimage
           path: build/appimage/ClipItTo-*-x86_64.AppImage
@@ -607,6 +611,7 @@ jobs:
           snap run clipitto --version
           snap run clipitto.setup
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: clipitto-snap
           path: ${{ steps.build.outputs.snap }}
