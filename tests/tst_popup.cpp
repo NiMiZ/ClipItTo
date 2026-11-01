@@ -1034,6 +1034,21 @@ private slots:
         QVERIFY(none->toolTip().contains(QStringLiteral("Settings")));
     }
 
+    void ctrlTShowsTheTranslationWithoutPasting()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        QStringList messages;
+        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        f.popup->setTranslation(fakeTranslation());
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        f.popup->view()->selectIndex(f.model()->findEntry(f.t.repo->search(QStringLiteral("beta")).front().id));
+        f.popup->previewTranslation();
+        QCOMPARE(messages.size(), 1);
+        QCOMPARE(messages.at(0), QStringLiteral("[en-zh] beta"));
+        QCOMPARE(pasted.size(), 0);
+    }
+
     void translateTextFromAPicture()
     {
         Fixture f;

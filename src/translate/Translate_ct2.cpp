@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <algorithm>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QThread>
@@ -106,7 +107,15 @@ std::optional<QString> translate(const Pack& pack, const QString& text, QString*
         if (!batch.empty()) {
             ctranslate2::TranslationOptions options;
             options.beam_size = 4;
-            options.max_decoding_length = 512;
+            // Bounded by the input: a short text such as "pc enthusiast" must not decode up to 512 pieces
+            // when the model starts repeating itself (that kept the translation busy for a long time).
+            std::size_t longest = 0;
+            for (const auto& tokens : batch) {
+                longest = std::max(longest, tokens.size());
+            }
+            options.max_decoding_length = std::min<std::size_t>(512, longest * 2 + 10);
+            options.repetition_penalty = 1.2F;
+            options.no_repeat_ngram_size = 3;
             const auto results = g_loaded.translator->translate_batch(batch, options);
             for (std::size_t k = 0; k < results.size(); ++k) {
                 translated[where[k]] = joinPieces(results[k].output());

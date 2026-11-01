@@ -203,6 +203,9 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     connect(m_settingsButton, &QToolButton::clicked, this, &PopupWindow::settingsRequested);
     auto* settingsShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma), this);
     connect(settingsShortcut, &QShortcut::activated, this, &PopupWindow::settingsRequested);
+    // Ctrl+T: show the selected text translated, without pasting it.
+    auto* translateShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
+    connect(translateShortcut, &QShortcut::activated, this, &PopupWindow::previewTranslation);
 
     // Clear: the button empties Recent (copies in no group are deleted, filed ones only leave
     // Recent); its menu also offers deleting everything. Both ask first.
@@ -1286,6 +1289,34 @@ void PopupWindow::addTranslateMenu(QMenu* menu, const QString& title, const QStr
         const QString id = pack.id;
         sub->addAction(pack.label, this, [chosen, id] { chosen(id); });
     }
+}
+
+// Ctrl+T: the selected copy translated with the first installed pack that fits its language, shown but not pasted.
+void PopupWindow::previewTranslation()
+{
+    if (isBusy() || !m_translation.builtIn || !m_translation.packsFor || !m_translation.translate) {
+        return;
+    }
+    const Entry* entry = entryFor(m_view->currentIndex());
+    if (!entry || entry->image || entry->content.trimmed().isEmpty()) {
+        return;
+    }
+    const QString text = entry->content;
+    const QList<TranslationPackInfo> packs = m_translation.packsFor(text);
+    if (packs.isEmpty()) {
+        showMessage(m_translation.packsFor(QString()).isEmpty()
+                        ? tr("No language pack is installed: add one in Settings › Translation.")
+                        : tr("No installed language pack translates from the language of this text."));
+        return;
+    }
+    setBusy(tr("Translating…"));
+    m_translation.translate(packs.first().id, text, [this, self = QPointer<PopupWindow>(this)](const QString& out, const QString& error) {
+        if (!self) {
+            return;
+        }
+        setBusy(QString());
+        showMessage(!error.isEmpty() ? error : out.trimmed().isEmpty() ? tr("The translation is empty.") : out);
+    });
 }
 
 void PopupWindow::translateAndPaste(const QString& packId, const QString& text)
