@@ -83,6 +83,10 @@ public:
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
+    // Shows a text that is not a problem (a translation, a hint): a quiet window without a warning icon or a
+    // system beep. With `offerPaste` it has a Paste button; returns true when the user chose it.
+    using TextViewer = std::function<bool(QWidget* parent, const QString& text, bool offerPaste)>;
+    void setTextViewer(TextViewer viewer) { m_viewText = std::move(viewer); }
     void setPasswordPrompt(PasswordPrompt prompt) { m_passwordPrompt = std::move(prompt); }
     void setNamePrompt(NamePrompt prompt) { m_namePrompt = std::move(prompt); }
 
@@ -131,6 +135,7 @@ public:
     // "Translate ▸" with the installed packs (those that fit `text` when given); disabled with a hint when there is none.
     void addTranslateMenu(QMenu* menu, const QString& title, const QString& text, std::function<void(const QString& packId)> chosen);
     void previewTranslation();
+    bool showQuiet(const QString& text, bool offerPaste = false); // see setTextViewer
     void translateAndPaste(const QString& packId, const QString& text);
     void translatePictureAndPaste(qint64 id, const QString& packId);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
@@ -232,6 +237,7 @@ private:
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
     Notify m_notify;
+    TextViewer m_viewText;
     PasswordPrompt m_passwordPrompt;
     NamePrompt m_namePrompt;
     bool m_namingPassword = false; // a name box is open or about to open: one at a time
