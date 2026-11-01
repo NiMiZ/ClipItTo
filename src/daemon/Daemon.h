@@ -48,6 +48,9 @@ struct DaemonOptions {
     // Pastes with synthetic keys where there is no desktop integration (tests replace it, so
     // they never type real keys); returns false where that isn't possible.
     std::function<bool(PasteKeys)> syntheticPaste;
+    // Side notification (title, body); false = none could be shown, and the popup says it instead.
+    // Null: the desktop's (D-Bus notifications on Linux, the tray's message elsewhere). Tests replace it.
+    std::function<bool(const QString&, const QString&)> notify;
 };
 
 // Owns everything that lives for the whole session: config, database, capture, the popup,
@@ -107,6 +110,7 @@ private:
     ui::TranslationSupport translationSupport();
     void setUpOcr(); // whether text can be read from pictures here, and the popup's menu entry
     void onTextActivated(const QString& text);
+    void onTextEdited(qint64 id, const QString& text);
     void pasteIfWanted();
     void helloUnlock(std::function<void(bool)> done);
     void setWindowsHello(bool on, std::function<void(QString error)> done);

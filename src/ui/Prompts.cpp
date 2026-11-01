@@ -8,9 +8,11 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -49,6 +51,91 @@ std::optional<QString> askGroup(QWidget* parent, const QString& current, const Q
         return std::nullopt;
     }
     return dialog.textValue();
+}
+
+namespace {
+
+// Ctrl+Enter saves from the text box (plain Enter adds a line).
+class SaveTextEdit : public QPlainTextEdit {
+public:
+    std::function<void()> save;
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override
+    {
+        if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+            (event->modifiers() & Qt::ControlModifier)) {
+            if (save) {
+                save();
+            }
+            return;
+        }
+        QPlainTextEdit::keyPressEvent(event);
+    }
+};
+
+} // namespace
+
+EditPrompt defaultEditPrompt()
+{
+    return [](QWidget* parent, const QString& note, const std::optional<QString>& text, const EditApply& apply) {
+        #define EDIT_TR(s) QCoreApplication::translate("clipitto::ui::PopupWindow", s)
+        QDialog dialog(parent);
+        dialog.setWindowTitle(EDIT_TR("Edit copy"));
+        auto* layout = new QVBoxLayout(&dialog);
+        auto* form = new QFormLayout;
+        layout->addLayout(form);
+
+        auto* noteBox = new QLineEdit(note, &dialog);
+        noteBox->setObjectName(QStringLiteral("editNoteBox"));
+        form->addRow(EDIT_TR("Note (shown instead of the text):"), noteBox);
+
+        SaveTextEdit* textBox = nullptr;
+        if (text) {
+            textBox = new SaveTextEdit;
+            textBox->setObjectName(QStringLiteral("editTextBox"));
+            textBox->setPlainText(*text);
+            textBox->setMinimumSize(420, 160);
+            form->addRow(EDIT_TR("Text (Ctrl+Enter saves):"), textBox);
+        }
+
+        auto* error = new QLabel(&dialog);
+        error->setObjectName(QStringLiteral("editError"));
+        error->setWordWrap(true);
+        error->setStyleSheet(QStringLiteral("color: #c0392b;"));
+        error->hide();
+        layout->addWidget(error);
+
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+        layout->addWidget(buttons);
+
+        bool saved = false;
+        auto save = [&] {
+            CopyEdit edit;
+            edit.note = noteBox->text();
+            if (textBox) {
+                edit.text = textBox->toPlainText();
+            }
+            const QString problem = apply(edit);
+            if (!problem.isEmpty()) {
+                error->setText(problem);
+                error->show();
+                return;
+            }
+            saved = true;
+            dialog.accept();
+        };
+        QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, save);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        // Enter in the Note box presses the default Save button.
+        if (textBox) {
+            textBox->save = save;
+        }
+        noteBox->setFocus();
+        dialog.exec();
+        return saved;
+    };
+#undef EDIT_TR
 }
 
 ConfirmPrompt defaultConfirmPrompt()

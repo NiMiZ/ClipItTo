@@ -323,6 +323,49 @@ private slots:
         QCOMPARE(d.repository()->recent(1, false).front().content, QStringLiteral("older"));
     }
 
+    void editedTextReachesTheClipboardOnlyForTheNewestCopy()
+    {
+        QStringList notes;
+        DaemonOptions o = options();
+        o.notify = [&](const QString&, const QString& body) {
+            notes << body;
+            return true;
+        };
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        emit d.control()->ingestRequested(QStringLiteral("older"), {});
+        emit d.control()->ingestRequested(QStringLiteral("newer"), {});
+        const QString untouched = QGuiApplication::clipboard()->text();
+        const qint64 count = d.repository()->count();
+        const auto olderId = d.repository()->search(QStringLiteral("older")).front().id;
+        const auto newerId = d.repository()->search(QStringLiteral("newer")).front().id;
+
+        // Not the newest: stored, clipboard and notification left alone.
+        d.repository()->setContent(olderId, QStringLiteral("older edited"), 1024);
+        emit d.popup()->textEdited(olderId, QStringLiteral("older edited"));
+        QCOMPARE(QGuiApplication::clipboard()->text(), untouched);
+        QVERIFY(notes.isEmpty());
+
+        // The newest: the clipboard follows, one notification, and no new entry from the echo.
+        d.repository()->setContent(newerId, QStringLiteral("newer edited"), 1024);
+        emit d.popup()->textEdited(newerId, QStringLiteral("newer edited"));
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("newer edited"));
+        QCOMPARE(notes.size(), 1);
+        QCoreApplication::processEvents();
+        QCOMPARE(d.repository()->count(), count);
+
+        // No notification service: the popup says it instead of failing silently.
+        DaemonOptions o2 = options();
+        o2.databasePath = m_dir.filePath(QStringLiteral("data/other.db"));
+        o2.notify = [](const QString&, const QString&) { return false; };
+        Daemon d2(o2, std::make_unique<FakeControl>());
+        QVERIFY(d2.start() == Daemon::StartResult::Ok);
+        emit d2.control()->ingestRequested(QStringLiteral("only"), {});
+        const auto onlyId = d2.repository()->search(QStringLiteral("only")).front().id;
+        emit d2.popup()->textEdited(onlyId, QStringLiteral("only edited"));
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("only edited"));
+    }
+
     void integrationActivatesPopupAndOwnsClipboard()
     {
         auto integration = std::make_unique<FakeIntegration>(true);

@@ -20,12 +20,15 @@
 #include <QComboBox>
 #include <QEnterEvent>
 #include <QLabel>
+#include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QMenu>
 #include <QToolButton>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
+#include <functional>
 #include <QToolButton>
 
 using clipitto::Config;
@@ -702,8 +705,9 @@ private slots:
             offeredGroups = choices;
             return std::optional<QString>(QStringLiteral("Work"));
         });
-        f.popup->setNotePrompt([](QWidget*, const QString&, const QStringList&) {
-            return std::optional<QString>(QStringLiteral("my title"));
+        f.popup->setEditPrompt([](QWidget*, const QString&, const std::optional<QString>&,
+                                  const clipitto::ui::EditApply& apply) {
+            return apply({QStringLiteral("my title"), std::nullopt}).isEmpty();
         });
         QVERIFY(f.show());
         f.enterList();
@@ -763,10 +767,132 @@ private slots:
         QCOMPARE(*chosen, expected);
     }
 
+    void editPromptGetsTheTextOfPlainText()
+    {
+        Fixture f;
+        std::vector<std::optional<QString>> offered;
+        f.popup->setEditPrompt([&](QWidget*, const QString&, const std::optional<QString>& text,
+                                   const clipitto::ui::EditApply&) {
+            offered.push_back(text);
+            return false;
+        });
+        QVERIFY(f.show());
+        f.enterList();
+        QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha
+        QTest::keyClick(f.popup->view(), Qt::Key_E, Qt::ControlModifier);
+        QCOMPARE(offered.size(), size_t(1));
+        QCOMPARE(*offered[0], QStringLiteral("alpha"));
+    }
+
+    void editPromptSavesTextAndReportsRefusals()
+    {
+        Fixture f;
+        QSignalSpy spy(f.popup.get(), &PopupWindow::textEdited);
+        QStringList problems;
+        f.popup->setEditPrompt([&](QWidget*, const QString&, const std::optional<QString>&,
+                                   const clipitto::ui::EditApply& apply) {
+            problems << apply({QStringLiteral("n"), QStringLiteral("")});
+            problems << apply({QStringLiteral("n"), QStringLiteral("beta")}); // another copy's text
+            problems << apply({QStringLiteral("n"), QStringLiteral("alpha two")});
+            return true;
+        });
+        QVERIFY(f.show());
+        f.enterList();
+        QTest::keyClick(f.popup->view(), Qt::Key_End); // alpha
+        QTest::keyClick(f.popup->view(), Qt::Key_E, Qt::ControlModifier);
+        QCOMPARE(problems.size(), 3);
+        QVERIFY(!problems[0].isEmpty());
+        QVERIFY(!problems[1].isEmpty());
+        QVERIFY(problems[2].isEmpty());
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(1).toString(), QStringLiteral("alpha two"));
+        const auto e = f.t.repo->search(QStringLiteral("alpha")).front();
+        QCOMPARE(e.content, QStringLiteral("alpha two"));
+        QCOMPARE(e.note, QStringLiteral("n"));
+    }
+
+    // Drives the real dialog: types into its boxes, then runs `finish` on it.
+
+    static bool driveEditDialog(const std::optional<QString>& text, const std::function<void(QWidget*)>& finish, QString* savedNote = nullptr,
+                                std::optional<QString>* savedText = nullptr, bool* hadTextBox = nullptr)
+    {
+        QTimer::singleShot(0, [&] {
+            QWidget* modal = QApplication::activeModalWidget();
+            if (!modal) {
+                return;
+            }
+            if (hadTextBox) {
+                *hadTextBox = modal->findChild<QPlainTextEdit*>(QStringLiteral("editTextBox")) != nullptr;
+            }
+            finish(modal);
+            if (QApplication::activeModalWidget() == modal) {
+                modal->close(); // never hang
+            }
+        });
+        const auto prompt = clipitto::ui::defaultEditPrompt();
+        return prompt(nullptr, QStringLiteral("old"), text, [&](const clipitto::ui::CopyEdit& edit) -> QString {
+            if (savedNote) {
+                *savedNote = edit.note;
+            }
+            if (savedText) {
+                *savedText = edit.text;
+            }
+            if (edit.text && edit.text->isEmpty()) {
+                return QStringLiteral("empty");
+            }
+            return {};
+        });
+    }
+
+    void editDialogFieldsAndKeys()
+    {
+        bool hadText = true;
+        // A picture or password: no text box; Enter in the Note box saves.
+        QString note;
+        QVERIFY(driveEditDialog(std::nullopt, [](QWidget* d) {
+            auto* box = d->findChild<QLineEdit*>(QStringLiteral("editNoteBox"));
+            box->setText(QStringLiteral("renamed"));
+            QTest::keyClick(box, Qt::Key_Return);
+        }, &note, nullptr, &hadText));
+        QVERIFY(!hadText);
+        QCOMPARE(note, QStringLiteral("renamed"));
+
+        // Plain text: Ctrl+Enter in the Text box saves, Enter there only adds a line.
+        std::optional<QString> saved;
+        QVERIFY(driveEditDialog(QStringLiteral("abc"), [](QWidget* d) {
+            auto* box = d->findChild<QPlainTextEdit*>(QStringLiteral("editTextBox"));
+            box->setFocus();
+            box->moveCursor(QTextCursor::End);
+            QTest::keyClick(box, Qt::Key_Return);
+            QTest::keyClicks(box, QStringLiteral("def"));
+            QTest::keyClick(box, Qt::Key_Return, Qt::ControlModifier);
+        }, nullptr, &saved, &hadText));
+        QVERIFY(hadText);
+        QCOMPARE(*saved, QStringLiteral("abc\ndef"));
+
+        // Esc cancels without saving.
+        saved.reset();
+        QVERIFY(!driveEditDialog(QStringLiteral("abc"), [](QWidget* d) { QTest::keyClick(d, Qt::Key_Escape); }, nullptr,
+                                 &saved));
+        QVERIFY(!saved);
+
+        // A refusal shows in the dialog and keeps it open.
+        QString shown;
+        QVERIFY(!driveEditDialog(QStringLiteral("abc"), [&](QWidget* d) {
+            auto* box = d->findChild<QPlainTextEdit*>(QStringLiteral("editTextBox"));
+            box->clear();
+            QTest::keyClick(box, Qt::Key_Return, Qt::ControlModifier);
+            auto* err = d->findChild<QLabel*>(QStringLiteral("editError"));
+            shown = err->isVisibleTo(d) ? err->text() : QString();
+        }));
+        QCOMPARE(shown, QStringLiteral("empty"));
+    }
+
     void cancelledPromptChangesNothing()
     {
         Fixture f;
-        f.popup->setNotePrompt([](QWidget*, const QString&, const QStringList&) { return std::optional<QString>(); });
+        f.popup->setEditPrompt([](QWidget*, const QString&, const std::optional<QString>&,
+                                  const clipitto::ui::EditApply&) { return false; });
         QVERIFY(f.show());
         f.enterList();
         QTest::keyClick(f.popup->view(), Qt::Key_E, Qt::ControlModifier);

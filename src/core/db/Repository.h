@@ -135,6 +135,15 @@ public:
     Change setPinned(qint64 id, bool pinned); // new pins go last
     bool movePinned(qint64 id, int delta); // -1 = up one place; false at either end
     void setNote(qint64 id, const QString& note); // empty clears the note
+
+    enum class ContentChange { Done, Missing, NotText, Empty, TooLarge, Duplicate };
+    // Replaces the text of a plain-text copy in place (one transaction): note, group, star, pin,
+    // position and last_used stay; the search index and the duplicate hash follow the new text.
+    // Refused (nothing changed) when empty, over `maxBytes` of UTF-8, or the same copy as another
+    // one (same hash under the ignore-case choice). Pictures and passwords are NotText.
+    ContentChange setContent(qint64 id, const QString& text, qint64 maxBytes);
+    // The copy with the newest last_used (the top of Recent); nullopt for an empty history.
+    std::optional<qint64> newestId();
     void remove(qint64 id);
     // Deletes the history: unsaved copies (text and pictures) only, or with `everything` also
     // starred, pinned and grouped ones. Groups themselves stay. Returns the number deleted.

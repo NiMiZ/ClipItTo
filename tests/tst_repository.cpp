@@ -608,6 +608,79 @@ private slots:
         QCOMPARE(t.repo->recent(1, false).front().id, a);
     }
 
+    void setContentEditsInPlace()
+    {
+        TestDb t;
+        const auto older = t.repo->ingest(QStringLiteral("older one")).id;
+        const auto id = t.repo->ingest(QStringLiteral("kubectl get pods")).id;
+        t.repo->ingest(QStringLiteral("newest"));
+        t.repo->setNote(id, QStringLiteral("pods"));
+        t.repo->setGroup(id, QStringLiteral("Work"));
+        t.repo->setFavorite(id, true);
+        const auto before = *t.repo->get(id);
+        const auto order = [&] {
+            QList<qint64> ids;
+            for (const auto& e : t.repo->recent(10, false)) {
+                ids.append(e.id);
+            }
+            return ids;
+        };
+        const auto orderBefore = order();
+
+        using C = clipitto::db::Repository::ContentChange;
+        QCOMPARE(t.repo->setContent(id, QStringLiteral("kubectl get nodes"), 1024), C::Done);
+        const auto after = *t.repo->get(id);
+        QCOMPARE(after.content, QStringLiteral("kubectl get nodes"));
+        QCOMPARE(after.note, QStringLiteral("pods"));
+        QCOMPARE(after.group, QStringLiteral("Work"));
+        QVERIFY(after.favorite);
+        QCOMPARE(after.lastUsed, before.lastUsed);
+        QCOMPARE(after.createdAt, before.createdAt);
+        QCOMPARE(order(), orderBefore);
+        QVERIFY(after.contentHash != before.contentHash);
+
+        // The search index follows, and the duplicate hash: the new text is that copy now.
+        QVERIFY(t.repo->search(QStringLiteral("pods")).size() == 1); // still by its note
+        QCOMPARE(t.repo->search(QStringLiteral("nodes")).size(), size_t(1));
+        QCOMPARE(t.repo->ingest(QStringLiteral("kubectl get nodes")).id, id);
+        QVERIFY(t.repo->ingest(QStringLiteral("kubectl get pods")).inserted); // the old text is free again
+
+        // Refusals change nothing.
+        QCOMPARE(t.repo->setContent(older, QStringLiteral("  \n"), 1024), C::Empty);
+        QCOMPARE(t.repo->setContent(older, QString(2000, QLatin1Char('x')), 1024), C::TooLarge);
+        QCOMPARE(t.repo->setContent(older, QStringLiteral("newest"), 1024), C::Duplicate);
+        QCOMPARE(t.repo->setContent(9999, QStringLiteral("zzz"), 1024), C::Missing);
+        QCOMPARE(t.repo->get(older)->content, QStringLiteral("older one"));
+        QCOMPARE(t.repo->setContent(older, QStringLiteral("older one"), 1024), C::Done); // same text: fine
+
+        const auto secret = t.repo->ingestSecret(QByteArray("sealed"), QStringLiteral("secret:a"), QString(), QString()).id;
+        QCOMPARE(t.repo->setContent(secret, QStringLiteral("plain"), 1024), C::NotText);
+        QCOMPARE(t.repo->get(secret)->content, clipitto::db::Repository::secretLabel());
+    }
+
+    void setContentFollowsIgnoreCase()
+    {
+        TestDb t;
+        const auto a = t.repo->ingest(QStringLiteral("Hello")).id;
+        const auto b = t.repo->ingest(QStringLiteral("World")).id;
+        using C = clipitto::db::Repository::ContentChange;
+        QCOMPARE(t.repo->setContent(b, QStringLiteral("hello"), 1024), C::Done); // case differs: another copy
+        t.repo->setIgnoreCase(true); // merges them into the most recently used
+        QCOMPARE(t.repo->count(), 1);
+        const auto c = t.repo->ingest(QStringLiteral("Other")).id;
+        QCOMPARE(t.repo->setContent(c, QStringLiteral("HELLO"), 1024), C::Duplicate);
+        Q_UNUSED(a);
+    }
+
+    void newestIdIsTheTopOfRecent()
+    {
+        TestDb t;
+        QVERIFY(!t.repo->newestId());
+        t.repo->ingest(QStringLiteral("a"));
+        const auto b = t.repo->ingest(QStringLiteral("b")).id;
+        QCOMPARE(*t.repo->newestId(), b);
+    }
+
     void groupAndNoteEditing()
     {
         TestDb t;

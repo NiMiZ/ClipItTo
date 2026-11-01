@@ -46,15 +46,6 @@ namespace {
 
 using Kind = HistoryModel::Kind;
 
-std::optional<QString> askNote(QWidget* parent, const QString& current, const QStringList&)
-{
-    bool ok = false;
-    const QString text = QInputDialog::getText(parent, PopupWindow::tr("Edit note"),
-                                               PopupWindow::tr("Title shown instead of the clipboard text:"),
-                                               QLineEdit::Normal, current, &ok);
-    return ok ? std::optional<QString>(text) : std::nullopt;
-}
-
 // Keeps the popup open while a dialog or menu has focus.
 class ModalGuard {
 public:
@@ -171,7 +162,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
     , m_groupPrompt(askGroup)
-    , m_notePrompt(askNote)
+    , m_editPrompt(defaultEditPrompt())
     , m_textPrompt(defaultTextPrompt())
     , m_confirm(defaultConfirmPrompt())
     , m_notify([](QWidget* parent, const QString& message) {
@@ -229,8 +220,9 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_clearButton->setMenu(clearMenu);
     connect(m_clearButton, &QToolButton::clicked, this, [this] { clearHistory(false); });
 
-    m_footer->setText(platformKeys(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+P pin · Ctrl+G group · Ctrl+E note · "
-                                      "Alt+↑↓ move · Del remove")));
+    m_footerHint = platformKeys(tr("Enter copy · → open · Ctrl+S ★ · Ctrl+P pin · Ctrl+G group · Ctrl+E edit · "
+                                   "Alt+↑↓ move · Del remove"));
+    m_footer->setText(m_footerHint);
     m_footer->setToolTip(platformKeys(tr("Alt+↑/↓ moves a group, or a pinned copy, up or down. Esc closes.")));
     m_footer->setFont(scaledFont(m_footer->font(), 0.85));
     m_footer->setEnabled(false); // dim
@@ -880,18 +872,57 @@ void PopupWindow::editNote(qint64 id)
         if (!e) {
             return;
         }
-        std::optional<QString> note;
+        std::optional<QString> text;
+        if (!e->image && !e->secret) {
+            text = e->content;
+        }
+        std::optional<QString> newText;
+        const EditApply apply = [&](const CopyEdit& edit) -> QString {
+            try {
+                if (edit.text && *edit.text != e->content) {
+                    switch (m_repo.setContent(id, *edit.text, m_maxItemBytes)) {
+                    case db::Repository::ContentChange::Done:
+                        newText = *edit.text;
+                        break;
+                    case db::Repository::ContentChange::Empty:
+                        return tr("The text can't be empty.");
+                    case db::Repository::ContentChange::TooLarge:
+                        return tr("The text is larger than the limit of %1 bytes.").arg(m_maxItemBytes);
+                    case db::Repository::ContentChange::Duplicate:
+                        return tr("Another copy already has this text.");
+                    case db::Repository::ContentChange::NotText:
+                    case db::Repository::ContentChange::Missing:
+                        return tr("This copy's text can't be edited.");
+                    }
+                }
+                m_repo.setNote(id, edit.note);
+            } catch (const db::DbError& err) {
+                qCWarning(lcPopup) << "edit copy failed:" << err.what();
+                return tr("Could not save: the history is unavailable.");
+            }
+            return {};
+        };
         {
             ModalGuard guard(m_modalDepth);
-            note = m_notePrompt(this, e->note, {});
+            m_editPrompt(this, e->note, text, apply);
         }
-        if (note) {
-            m_repo.setNote(id, *note);
+        if (newText) {
+            emit textEdited(id, *newText);
         }
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "edit note failed:" << err.what();
     }
     refreshSelecting(selectionOf(m_view->currentIndex()));
+}
+
+void PopupWindow::flash(const QString& message)
+{
+    m_footer->setText(message);
+    QTimer::singleShot(5000, this, [this, message] {
+        if (m_footer->text() == message) {
+            m_footer->setText(m_footerHint);
+        }
+    });
 }
 
 void PopupWindow::clearHistory(bool everything)
