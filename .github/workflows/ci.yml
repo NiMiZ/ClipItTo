@@ -164,9 +164,10 @@ jobs:
         with:
           name: clipitto-deb
           path: build/deb/clipitto_*.deb
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
 
       # apt wrote the cache as root; the cache action saves it as the runner user.
       - name: Let the package cache be saved
@@ -335,18 +336,20 @@ jobs:
         with:
           name: clipitto-windows-installer
           path: installer/*.exe
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
 
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: clipitto-windows-portable
           path: stage
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
 
   # macOS 11+, Apple Silicon and Intel in one binary. The unit tests run on the offscreen
   # platform; the smoke test then drives the daemon on the real pasteboard.
@@ -488,9 +491,10 @@ jobs:
         with:
           name: clipitto-macos
           path: build/macos-package/ClipItTo-*-macos.dmg
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
 
       # The bundled app alone: no Qt environment, a bare PATH, the real Cocoa platform and the
       # real pasteboard. A bundle that only works because the runner has Qt would fail here.
@@ -587,9 +591,10 @@ jobs:
         with:
           name: clipitto-appimage
           path: build/appimage/ClipItTo-*-x86_64.AppImage
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
 
       # apt wrote the cache as root; the cache action saves it as the runner user.
       - name: Let the package cache be saved
@@ -615,9 +620,10 @@ jobs:
         with:
           name: clipitto-snap
           path: ${{ steps.build.outputs.snap }}
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
 
   # Pushing a tag such as v0.1.0 publishes a GitHub Release with the Ubuntu .deb, the
   # AppImage, the snap, the macOS disk image and the Windows installer, once all were built
@@ -685,9 +691,10 @@ jobs:
         with:
           name: clipitto-snap
           path: dist
-          # A day for branch and PR runs (the files are only for the release job on a tag); the free storage
+          # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
+          # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 1 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
       - name: Find the snap
         if: steps.login.outputs.present == 'true'
         id: snap
@@ -704,7 +711,8 @@ jobs:
   release-check-linux:
     name: Install the release (Ubuntu)
     needs: release
-    if: ${{ !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    # These jobs install the release the way a stranger does (no login), which only works while the repository is public.
+    if: ${{ !github.event.repository.private && !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -761,7 +769,8 @@ jobs:
   release-check-windows:
     name: Install the release (Windows)
     needs: release
-    if: ${{ !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    # These jobs install the release the way a stranger does (no login), which only works while the repository is public.
+    if: ${{ !github.event.repository.private && !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
