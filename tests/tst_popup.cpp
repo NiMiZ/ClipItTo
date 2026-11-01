@@ -154,6 +154,15 @@ private slots:
         QCOMPARE(h.currentContent(), QStringLiteral("ssh -J bastion app"));
     }
 
+    void ctrlEInSearchRequestsNote()
+    {
+        // On its own: inside a popup the signal opens the (modal) note dialog.
+        clipitto::ui::SearchBar bar;
+        QSignalSpy spy(&bar, &clipitto::ui::SearchBar::editNoteRequested);
+        QTest::keyClick(&bar, Qt::Key_E, Qt::ControlModifier);
+        QCOMPARE(spy.count(), 1);
+    }
+
     void arrowsTraverseAndSkipHeaders()
     {
         Fixture f;

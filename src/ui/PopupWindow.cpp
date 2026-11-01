@@ -310,6 +310,14 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
             remove(m_view->currentIndex(), /*focusList=*/false); // typing stays in the search box
         }
     });
+    connect(m_search, &SearchBar::editNoteRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        if (const Entry* e = entryFor(m_view->currentIndex())) {
+            editNote(e->id);
+        }
+    });
     connect(m_search, &SearchBar::activateRequested, this, [this] {
         if (m_controller->isPending()) {
             m_controller->refresh(); // Enter right after typing: use the up-to-date results

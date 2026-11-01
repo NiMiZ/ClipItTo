@@ -166,6 +166,10 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
             return; // no cut/copy/undo of the masked text either
         }
     }
+    if (event->key() == Qt::Key_E && (event->modifiers() & ~Qt::KeypadModifier) == Qt::ControlModifier) {
+        emit editNoteRequested();
+        return;
+    }
     switch (event->key()) {
     case Qt::Key_Down:
         emit stepRequested(1);

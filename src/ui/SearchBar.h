@@ -27,6 +27,7 @@ signals:
     void openGroupsRequested(); // Right arrow in an empty search box
     // Delete with nothing after the text cursor: delete the copy selected in the list.
     void deleteCurrentRequested();
+    void editNoteRequested(); // Ctrl+E: add or edit the note of the copy selected in the list
     // A password search's text changed; also when entering it (empty) and leaving (`active`
     // false). Normal searches go through textChanged as before, which the owner ignores while
     // isPasswordMode().
