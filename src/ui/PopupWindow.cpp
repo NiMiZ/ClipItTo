@@ -826,13 +826,50 @@ void PopupWindow::togglePin(qint64 id)
     refreshSelecting(selectionOf(m_view->currentIndex()));
 }
 
+// Is `path` the Passwords group, or one of its sub-groups?
+static bool isPasswordsGroup(const QString& path)
+{
+    const QString normal = groups::normalize(path);
+    const QString passwords = PasswordKeeper::passwordsGroup();
+    return normal.compare(passwords, Qt::CaseInsensitive) == 0
+        || normal.startsWith(passwords + QLatin1Char('/'), Qt::CaseInsensitive);
+}
+
 void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
 {
+    // A text copy put in the Passwords group becomes a password copy at the same time (what "Mark as password" does):
+    // no need to do both. "Mark as password" stays for copies that should not move.
+    bool alsoMark = false;
+    if (isPasswordsGroup(group)) {
+        try {
+            const auto entry = m_repo.get(id);
+            alsoMark = entry && !entry->secret && !entry->image;
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "reading the copy failed:" << err.what();
+        }
+        if (alsoMark && (!m_passwords || !m_passwords->isSetUp())) {
+            // A plain text in a group called Passwords would look protected and not be: don't move it.
+            showMessage(tr("The Passwords group holds password copies, kept encrypted: set a master password in "
+                           "Settings › Passwords first."));
+            refreshSelecting(follow);
+            return;
+        }
+    }
     QString problem;
     try {
         const auto change = m_repo.setGroup(id, group);
         problem = refusal(change, m_repo.limits(), groups::normalize(group));
-        if (problem.isEmpty() && follow.kind == Kind::Entry && follow.id == id) {
+        if (problem.isEmpty() && alsoMark) {
+            // The same password may already be kept: that copy stays, and it goes to the group too.
+            const qint64 holder = m_passwords->markAsPassword(id).value_or(id);
+            if (holder != id) {
+                m_repo.setGroup(holder, group);
+            }
+            if (follow.kind == Kind::Entry && follow.id == id) {
+                follow.id = holder;
+            }
+        }
+        if (problem.isEmpty() && follow.kind == Kind::Entry && (follow.id == id || alsoMark)) {
             // The copy left its place in the group tree: find it again wherever it is now.
             follow.path.clear();
         }
