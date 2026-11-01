@@ -41,3 +41,9 @@ ClipItTo never downloads anything by itself.
   entries are absent.
 - Translating is private by construction, and you can check it: the libraries import no network functions, and a
   translation runs inside a Linux sandbox with no network at all (`unshare -rn`).
+- **If a translation seems stuck:** the popup stops waiting after 30 seconds and says so, and the next translation can
+  start. ClipItTo writes a small log, `translation/translation.log` in its data folder (`%APPDATA%` or
+  `%LOCALAPPDATA%\clipitto` on Windows, `~/.local/share/clipitto` on Linux, `~/Library/Application Support/clipitto` on
+  macOS), with the time, the pack, the length of the text, and how long each translation took. It never holds the text
+  itself. The engine uses one thread (`CLIPITTO_TRANSLATE_THREADS=N` in the environment changes it).
+

@@ -1,6 +1,7 @@
 #include "Translate.h"
 #include "ZipReader.h"
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -288,6 +289,27 @@ private slots:
         const auto sentence = translate(pack, QStringLiteral("Hello, how are you today?"), &error);
         QVERIFY(sentence.has_value());
         QVERIFY2(sentence->contains(QStringLiteral("איך")), qPrintable(*sentence));
+    }
+
+    // For diagnosing a text that "gets stuck": CLIPITTO_TEST_PACK_ANY is any pack, CLIPITTO_TEST_TEXT the text. It
+    // must come back within a few seconds.
+    void aTextFromTheEnvironmentTranslatesInTime()
+    {
+        const QString file = qEnvironmentVariable("CLIPITTO_TEST_PACK_ANY");
+        const QString text = qEnvironmentVariable("CLIPITTO_TEST_TEXT");
+        if (file.isEmpty() || text.isEmpty() || !builtIn()) {
+            QSKIP("set CLIPITTO_TEST_PACK_ANY and CLIPITTO_TEST_TEXT");
+        }
+        QTemporaryDir dir;
+        PackStore store(dir.path());
+        QString error;
+        QVERIFY2(store.install(file, &error), qPrintable(error));
+        QElapsedTimer timer;
+        timer.start();
+        const auto out = translate(store.installed().first(), text, &error);
+        qInfo().noquote() << "translated in" << timer.elapsed() << "ms:" << out.value_or(error);
+        QVERIFY2(out.has_value(), qPrintable(error));
+        QVERIFY2(timer.elapsed() < 10000, "took too long");
     }
 };
 

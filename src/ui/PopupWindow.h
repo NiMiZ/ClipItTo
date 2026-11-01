@@ -136,7 +136,10 @@ public:
     void addTranslateMenu(QMenu* menu, const QString& title, const QString& text, std::function<void(const QString& packId)> chosen);
     void previewTranslation();
     bool showQuiet(const QString& text, bool offerPaste = false); // see setTextViewer
+    // How long a translation may take before the popup stops waiting for it (tests shorten it).
+    void setTranslateTimeoutMs(int ms) { m_translateTimeoutMs = ms; }
     void translateAndPaste(const QString& packId, const QString& text);
+    void translateWithTimeout(const QString& packId, const QString& text, std::function<void(const QString&, const QString&)> done);
     void translatePictureAndPaste(qint64 id, const QString& packId);
     QMenu* createGroupMenu(const QString& path, QWidget* parent); // "" = the Groups row
     QMenu* createFavoritesMenu(QWidget* parent);
@@ -238,6 +241,7 @@ private:
     ConfirmPrompt m_confirm;
     Notify m_notify;
     TextViewer m_viewText;
+    int m_translateTimeoutMs = 30000;
     PasswordPrompt m_passwordPrompt;
     NamePrompt m_namePrompt;
     bool m_namingPassword = false; // a name box is open or about to open: one at a time
