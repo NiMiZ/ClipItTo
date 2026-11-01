@@ -261,6 +261,34 @@ private slots:
         QVERIFY(out->contains('\n')); // the line break survived
         QVERIFY(!out->contains(QChar(0x2581)));
     }
+
+    // With an English -> Hebrew pack (CLIPITTO_TEST_PACK_EN_HE): a single word is not said twice ("hello" used to give
+    // "שלום שלום" because the model was trained on sentences).
+    void aSingleWordIsNotRepeated()
+    {
+        const QString file = qEnvironmentVariable("CLIPITTO_TEST_PACK_EN_HE");
+        if (file.isEmpty() || !builtIn()) {
+            QSKIP("set CLIPITTO_TEST_PACK_EN_HE to an en->he .argosmodel and build with the translation libraries");
+        }
+        QTemporaryDir dir;
+        PackStore store(dir.path());
+        QString error;
+        QVERIFY2(store.install(file, &error), qPrintable(error));
+        const Pack pack = store.installed().first();
+        for (const QString& word : {QStringLiteral("hello"), QStringLiteral("Hello"), QStringLiteral("hello ")}) {
+            const auto out = translate(pack, word, &error);
+            QVERIFY2(out.has_value(), qPrintable(error));
+            const QStringList words = out->split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            QVERIFY2(!words.isEmpty(), qPrintable(word));
+            for (qsizetype i = 1; i < words.size(); ++i) {
+                QVERIFY2(words[i] != words[i - 1], qPrintable(word + " -> " + *out));
+            }
+        }
+        // A sentence is still translated as a whole.
+        const auto sentence = translate(pack, QStringLiteral("Hello, how are you today?"), &error);
+        QVERIFY(sentence.has_value());
+        QVERIFY2(sentence->contains(QStringLiteral("איך")), qPrintable(*sentence));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTranslate)

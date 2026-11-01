@@ -637,8 +637,15 @@ jobs:
           cp ../install.sh ../install.ps1 .
           sha256sum *.deb *.exe *.AppImage *.snap *.dmg install.sh install.ps1 > SHA256SUMS
           cat SHA256SUMS
+      # docs/releases/<tag>.md, when there is one, opens the release notes (the counts of fixes); GitHub's own
+      # list of merged pull requests follows it.
+      - name: Release notes
+        id: notes
+        run: |
+          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then echo "path=docs/releases/${GITHUB_REF_NAME}.md" >> "$GITHUB_OUTPUT"; fi
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             dist/*.deb
             dist/*.exe
