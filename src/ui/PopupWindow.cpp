@@ -37,6 +37,8 @@
 #include <QVBoxLayout>
 #include <QWindow>
 
+#include <memory>
+
 #include <algorithm>
 #include <utility>
 
@@ -1395,7 +1397,7 @@ void PopupWindow::previewTranslation()
         return;
     }
     setBusy(tr("Translating…"));
-    m_translation.translate(packs.first().id, text, [this, self = QPointer<PopupWindow>(this)](const QString& out, const QString& error) {
+    translateWithTimeout(packs.first().id, text, [this, self = QPointer<PopupWindow>(this)](const QString& out, const QString& error) {
         if (!self) {
             return;
         }
@@ -1411,6 +1413,30 @@ void PopupWindow::previewTranslation()
     });
 }
 
+// Translating runs on a worker thread and cannot be cancelled. If it has not answered after a while the popup stops waiting
+// (so it never stays stuck on "Translating…") and says so; a late answer is ignored.
+void PopupWindow::translateWithTimeout(const QString& packId, const QString& text,
+                                       std::function<void(const QString&, const QString&)> done)
+{
+    auto finished = std::make_shared<bool>(false);
+    QTimer::singleShot(m_translateTimeoutMs, this, [finished, done, this] {
+        if (*finished) {
+            return;
+        }
+        *finished = true;
+        done(QString(), tr("The translation did not finish in %1 seconds, so ClipItTo stopped waiting. Details are in "
+                           "translation/translation.log in ClipItTo's data folder.")
+                            .arg(m_translateTimeoutMs / 1000));
+    });
+    m_translation.translate(packId, text, [finished, done](const QString& out, const QString& error) {
+        if (*finished) {
+            return; // it came back after the popup gave up
+        }
+        *finished = true;
+        done(out, error);
+    });
+}
+
 bool PopupWindow::showQuiet(const QString& text, bool offerPaste)
 {
     ModalGuard guard(m_modalDepth);
@@ -1423,7 +1449,7 @@ void PopupWindow::translateAndPaste(const QString& packId, const QString& text)
         return;
     }
     setBusy(tr("Translating…"));
-    m_translation.translate(packId, text, [this, self = QPointer<PopupWindow>(this)](const QString& out, const QString& error) {
+    translateWithTimeout(packId, text, [this, self = QPointer<PopupWindow>(this)](const QString& out, const QString& error) {
         if (!self) {
             return;
         }
@@ -1464,7 +1490,7 @@ void PopupWindow::translatePictureAndPaste(qint64 id, const QString& packId)
             showQuiet(tr("The text in the picture does not look like the language this pack translates from."));
             return;
         }
-        m_translation.translate(packId, text, [this, self](const QString& out, const QString& err) {
+        translateWithTimeout(packId, text, [this, self](const QString& out, const QString& err) {
             if (!self) {
                 return;
             }

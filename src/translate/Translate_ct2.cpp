@@ -4,6 +4,11 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QStandardPaths>
+#include <QFileInfo>
+#include <QFile>
+#include <QElapsedTimer>
+#include <QDateTime>
 #include <algorithm>
 #include <QMutex>
 #include <QMutexLocker>
@@ -23,6 +28,31 @@ namespace {
 QString tr(const char* text)
 {
     return QCoreApplication::translate("clipitto::translate", text);
+}
+
+// A small log of what the engine is doing, for finding why a translation "gets stuck": the time, the pack, how many pieces
+// and sentences, how long it took. Never the text (the log must not hold clipboard contents).
+// <data folder>/translation/translation.log, cut back when it grows past 64 KiB.
+void logLine(const QString& line)
+{
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/translation/translation.log");
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    if (QFileInfo(path).size() > 64 * 1024) {
+        QFile::remove(path);
+    }
+    QFile file(path);
+    if (file.open(QIODevice::Append | QIODevice::Text)) {
+        file.write((QDateTime::currentDateTime().toString(Qt::ISODateWithMs) + QLatin1Char(' ') + line + QLatin1Char('\n')).toUtf8());
+    }
+}
+
+// One thread: a short text gains nothing from more (20 long sentences: 2.9 s on one thread, 1.4 s on four), and a
+// freeze on Windows turned up that more threads could explain. CLIPITTO_TRANSLATE_THREADS=N overrides it.
+int translationThreads()
+{
+    bool ok = false;
+    const int fromEnvironment = qEnvironmentVariable("CLIPITTO_TRANSLATE_THREADS").toInt(&ok);
+    return ok ? qBound(1, fromEnvironment, 16) : 1;
 }
 
 struct Loaded {
@@ -53,7 +83,7 @@ bool load(const Pack& pack, QString* error)
         loader.device = ctranslate2::Device::CPU;
         loader.compute_type = ctranslate2::ComputeType::DEFAULT;
         ctranslate2::ReplicaPoolConfig config;
-        config.num_threads_per_replica = qBound(1, QThread::idealThreadCount() / 2, 4);
+        config.num_threads_per_replica = translationThreads();
         g_loaded.translator = std::make_unique<ctranslate2::Translator>(loader, config);
     } catch (const std::exception& e) {
         if (error) {
@@ -105,10 +135,25 @@ bool builtIn()
 
 std::optional<QString> translate(const Pack& pack, const QString& text, QString* error)
 {
-    QMutexLocker lock(&g_mutex);
-    if (!load(pack, error)) {
+    // A translation still running (or stuck) must not make the next one wait for ever.
+    if (!g_mutex.tryLock(5000)) {
+        logLine(QStringLiteral("busy: another translation is still running"));
+        if (error) {
+            *error = tr("Another translation is still running. Try again in a moment.");
+        }
         return std::nullopt;
     }
+    struct Unlock {
+        ~Unlock() { g_mutex.unlock(); }
+    } unlock; // held by tryLock above; let go on every way out
+    QElapsedTimer timer;
+    timer.start();
+    if (!load(pack, error)) {
+        logLine(QStringLiteral("load failed %1").arg(pack.id));
+        return std::nullopt;
+    }
+    logLine(QStringLiteral("start %1 text=%2 chars, model ready after %3 ms, %4 thread(s)")
+                .arg(pack.id).arg(text.size()).arg(timer.elapsed()).arg(translationThreads()));
     try {
         const QList<Piece> pieces = splitSentences(text);
         std::vector<std::vector<std::string>> batch;
@@ -188,8 +233,10 @@ std::optional<QString> translate(const Pack& pack, const QString& text, QString*
             out += translated[i].isEmpty() && pieces[i].text.trimmed().isEmpty() ? pieces[i].text : translated[i];
             out += pieces[i].after;
         }
+        logLine(QStringLiteral("done in %1 ms").arg(timer.elapsed()));
         return out.trimmed();
     } catch (const std::exception& e) {
+        logLine(QStringLiteral("failed after %1 ms: %2").arg(timer.elapsed()).arg(QString::fromUtf8(e.what())));
         if (error) {
             *error = tr("Translation failed: %1").arg(QString::fromUtf8(e.what()));
         }

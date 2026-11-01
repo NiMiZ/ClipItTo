@@ -1217,6 +1217,31 @@ private slots:
         QVERIFY(warnings.isEmpty());
     }
 
+    void aTranslationThatNeverAnswersDoesNotLeaveThePopupStuck()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        QStringList warnings;
+        f.popup->setNotify([&](QWidget*, const QString& message) { warnings << message; });
+        auto support = fakeTranslation();
+        std::function<void(const QString&, const QString&)> late; // the answer, given after the popup gave up
+        support.translate = [&late](const QString&, const QString&, std::function<void(const QString&, const QString&)> done) {
+            late = std::move(done);
+        };
+        f.popup->setTranslation(support);
+        f.popup->setTranslateTimeoutMs(200);
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        f.popup->view()->selectIndex(f.model()->findEntry(f.t.repo->search(QStringLiteral("beta")).front().id));
+        f.popup->previewTranslation();
+        QVERIFY(f.popup->isBusy()); // "Translating…"
+        QTRY_VERIFY_WITH_TIMEOUT(!warnings.isEmpty(), 3000);
+        QVERIFY(!f.popup->isBusy()); // usable again
+        QVERIFY(warnings.at(0).contains(QStringLiteral("did not finish")));
+        late(QStringLiteral("too late"), QString()); // ignored
+        QCOMPARE(pasted.size(), 0);
+        QCOMPARE(warnings.size(), 1);
+    }
+
     void translateTextFromAPicture()
     {
         Fixture f;
