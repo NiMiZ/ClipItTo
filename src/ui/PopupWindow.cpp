@@ -17,6 +17,7 @@
 
 #include <QCursor>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -27,6 +28,7 @@
 #include <QMouseEvent>
 #include <QPixmapCache>
 #include <QPointer>
+#include <QPushButton>
 #include <QMessageBox>
 #include <QScreen>
 #include <QShortcut>
@@ -47,6 +49,29 @@ namespace {
 using Kind = HistoryModel::Kind;
 
 // Keeps the popup open while a dialog or menu has focus.
+// A quiet window for a text that is not a problem: no warning icon, no beep (QMessageBox::warning has both). The
+// text can be selected and copied; with `offerPaste` a Paste button is there too.
+bool defaultTextViewer(QWidget* parent, const QString& text, bool offerPaste)
+{
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QStringLiteral("ClipItTo"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* label = new QLabel(text, &dialog);
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    label->setMinimumWidth(320);
+    label->setMaximumWidth(560);
+    layout->addWidget(label);
+    auto* buttons = new QDialogButtonBox(&dialog);
+    QPushButton* paste = offerPaste ? buttons->addButton(QObject::tr("Paste"), QDialogButtonBox::AcceptRole) : nullptr;
+    QPushButton* close = buttons->addButton(QObject::tr("Close"), QDialogButtonBox::RejectRole);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    (paste ? paste : close)->setDefault(true);
+    return dialog.exec() == QDialog::Accepted;
+}
+
 class ModalGuard {
 public:
     explicit ModalGuard(int& depth) : m_depth(depth) { ++m_depth; }
@@ -168,6 +193,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_notify([](QWidget* parent, const QString& message) {
         QMessageBox::warning(parent, QStringLiteral("ClipItTo"), message);
     })
+    , m_viewText(defaultTextViewer)
     , m_passwordPrompt(defaultPasswordPrompt())
     , m_namePrompt(defaultNamePrompt())
 {
@@ -1363,9 +1389,9 @@ void PopupWindow::previewTranslation()
     const QString text = entry->content;
     const QList<TranslationPackInfo> packs = m_translation.packsFor(text);
     if (packs.isEmpty()) {
-        showMessage(m_translation.packsFor(QString()).isEmpty()
-                        ? tr("No language pack is installed: add one in Settings › Translation.")
-                        : tr("No installed language pack translates from the language of this text."));
+        showQuiet(m_translation.packsFor(QString()).isEmpty()
+                      ? tr("No language pack is installed: add one in Settings › Translation.")
+                      : tr("No installed language pack translates from the language of this text."));
         return;
     }
     setBusy(tr("Translating…"));
@@ -1374,8 +1400,21 @@ void PopupWindow::previewTranslation()
             return;
         }
         setBusy(QString());
-        showMessage(!error.isEmpty() ? error : out.trimmed().isEmpty() ? tr("The translation is empty.") : out);
+        if (!error.isEmpty()) {
+            showMessage(error); // a real problem: the warning box
+        } else if (out.trimmed().isEmpty()) {
+            showQuiet(tr("The translation is empty."));
+        } else if (showQuiet(out, /*offerPaste=*/true)) {
+            emit textActivated(out); // Paste was chosen in the window
+            hidePopup();
+        }
     });
+}
+
+bool PopupWindow::showQuiet(const QString& text, bool offerPaste)
+{
+    ModalGuard guard(m_modalDepth);
+    return m_viewText && m_viewText(this, text, offerPaste);
 }
 
 void PopupWindow::translateAndPaste(const QString& packId, const QString& text)
@@ -1392,7 +1431,7 @@ void PopupWindow::translateAndPaste(const QString& packId, const QString& text)
         if (!error.isEmpty()) {
             showMessage(error);
         } else if (out.trimmed().isEmpty()) {
-            showMessage(tr("The translation is empty."));
+            showQuiet(tr("The translation is empty."));
         } else {
             emit textActivated(out);
             hidePopup();
@@ -1413,12 +1452,16 @@ void PopupWindow::translatePictureAndPaste(qint64 id, const QString& packId)
         }
         if (!error.isEmpty() || text.trimmed().isEmpty()) {
             setBusy(QString());
-            showMessage(error.isEmpty() ? tr("No text found in the picture.") : error);
+            if (error.isEmpty()) {
+                showQuiet(tr("No text found in the picture."));
+            } else {
+                showMessage(error);
+            }
             return;
         }
         if (m_translation.fits && !m_translation.fits(packId, text)) {
             setBusy(QString());
-            showMessage(tr("The text in the picture does not look like the language this pack translates from."));
+            showQuiet(tr("The text in the picture does not look like the language this pack translates from."));
             return;
         }
         m_translation.translate(packId, text, [this, self](const QString& out, const QString& err) {
@@ -1429,7 +1472,7 @@ void PopupWindow::translatePictureAndPaste(qint64 id, const QString& packId)
             if (!err.isEmpty()) {
                 showMessage(err);
             } else if (out.trimmed().isEmpty()) {
-                showMessage(tr("The translation is empty."));
+                showQuiet(tr("The translation is empty."));
             } else {
                 emit textActivated(out);
                 hidePopup();
@@ -1512,7 +1555,7 @@ void PopupWindow::pasteTextFromPicture(qint64 id, std::optional<texttransform::K
         if (!error.isEmpty()) {
             showMessage(error);
         } else if (text.trimmed().isEmpty()) {
-            showMessage(tr("No text found in the picture."));
+            showQuiet(tr("No text found in the picture."));
         } else {
             QString out = text;
             if (kind) {

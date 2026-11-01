@@ -997,11 +997,17 @@ private slots:
 
         // A picture without text: nothing is pasted, and the user is told.
         QStringList messages;
+        QStringList hints;
         f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        f.popup->setTextViewer([&](QWidget*, const QString& text, bool) {
+            hints << text;
+            return false;
+        });
         reply = QStringLiteral("  \n ");
         entry(true);
         QCOMPARE(pasted.size(), 1);
-        QCOMPARE(messages, QStringList{QStringLiteral("No text found in the picture.")});
+        QCOMPARE(hints, QStringList{QStringLiteral("No text found in the picture.")}); // quiet: nothing went wrong
+        QVERIFY(messages.isEmpty());
 
         // The text changed: "one line" turns the lines into one. And the picture itself can be pasted.
         reply = QStringLiteral("line one\nline two");
@@ -1187,15 +1193,28 @@ private slots:
     {
         Fixture f;
         QVERIFY(f.show());
-        QStringList messages;
-        f.popup->setNotify([&](QWidget*, const QString& message) { messages << message; });
+        QStringList warnings; // the warning box (yellow sign, beep): for real problems only
+        QStringList shown; // the quiet window
+        bool pasteChosen = false;
+        f.popup->setNotify([&](QWidget*, const QString& message) { warnings << message; });
+        f.popup->setTextViewer([&](QWidget*, const QString& text, bool offerPaste) {
+            shown << (offerPaste ? text : QStringLiteral("(hint) ") + text);
+            return pasteChosen;
+        });
         f.popup->setTranslation(fakeTranslation());
         QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
         f.popup->view()->selectIndex(f.model()->findEntry(f.t.repo->search(QStringLiteral("beta")).front().id));
         f.popup->previewTranslation();
-        QCOMPARE(messages.size(), 1);
-        QCOMPARE(messages.at(0), QStringLiteral("[en-zh] beta"));
+        QCOMPARE(shown, QStringList{QStringLiteral("[en-zh] beta")});
+        QVERIFY(warnings.isEmpty()); // not shown as if something went wrong
         QCOMPARE(pasted.size(), 0);
+        // Paste chosen in the window: now it is pasted.
+        pasteChosen = true;
+        f.popup->view()->selectIndex(f.model()->findEntry(f.t.repo->search(QStringLiteral("beta")).front().id)); // the list was refreshed
+        f.popup->previewTranslation();
+        QCOMPARE(pasted.size(), 1);
+        QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("[en-zh] beta"));
+        QVERIFY(warnings.isEmpty());
     }
 
     void translateTextFromAPicture()
@@ -1247,9 +1266,15 @@ private slots:
         QCOMPARE(pasted.size(), 1);
         QCOMPARE(pasted.at(0).at(0).toString(), QStringLiteral("[zh-en] ") + read);
         // A pack for another language than the text: nothing is pasted, the user is told.
+        QStringList hints;
+        f.popup->setTextViewer([&](QWidget*, const QString& text, bool) {
+            hints << text;
+            return false;
+        });
         QVERIFY(choose(QStringLiteral("English → Chinese")));
         QCOMPARE(pasted.size(), 1);
-        QCOMPARE(messages.size(), 1);
+        QCOMPARE(hints.size(), 1); // told quietly: it is not a problem with ClipItTo
+        QVERIFY(messages.isEmpty());
     }
 
     void pasteAsMenuIsOrangeAndDarkerOnALightTheme()
