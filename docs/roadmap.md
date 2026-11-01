@@ -24,6 +24,26 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   user presses it), a short list of recommended packs, translating a picture in place (an overlay), and more
   pairs through English (Chinese → Hebrew goes via English today only if both packs are installed).
 
+- **Meanings of a word (dictionary lookup) — to investigate first.** A translation model gives one reading: for
+  "שלום" its six best candidates were all variations of "Peace of peace", never "hello" or "goodbye", because the models
+  are trained on sentences. A bilingual dictionary lists the separate meanings; the Translate menu for a single word
+  could offer **Meanings…** and paste the one the user picks. Before building it, find out and write down:
+  - **Data and licences.** Candidates: Wiktionary extracts (kaikki.org; CC BY-SA 4.0), CC-CEDICT for Chinese
+    (CC BY-SA), FreeDict (mostly GPL / CC BY-SA). Which pairs exist and how good they are (Hebrew ⇄ English, Chinese ⇄
+    English), whether the licence allows a pack the user adds (not bundled), and what attribution is required. The
+    share-alike terms have to be checked against the relicensing checklist in THIRD-PARTY-NOTICES.md.
+  - **Size.** The raw extracts are very large; what a compact per-language index weighs on disk (target: well
+    under the translation packs' 70-150 MB) and how big a download the user would have to make.
+  - **Speed and memory.** An indexed lookup (SQLite, which ClipItTo already has) should take about a millisecond; measure
+    it on a real index, together with the memory used and the first-use cost, on Linux, Windows and macOS.
+  - **Impact on the app.** A second pack type next to the translation packs (install, remove, list in Settings), no
+    cost at startup if loaded lazily, nothing on the clipboard path, and the effect on build and CI time (none if the
+    data is a downloaded pack).
+  - **UX.** One word or a short phrase only; a menu of meanings with the part of speech; Enter pastes the chosen one;
+    what to do for inflected forms (Hebrew prefixes and plurals, English "went" → "go").
+  - **Cheaper alternative.** A picker over the translation model's own alternatives needs no new data, but for single
+    words it mostly shows the same reading reworded, so it is not worth building on its own.
+
 ## Known gaps
 
 - **Passwords don't lock with the screen.** Today: `clipitto --lock` from a screen-lock hook, or a short
