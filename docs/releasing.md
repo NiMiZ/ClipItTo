@@ -43,3 +43,6 @@ Pushing a tag named `vX.Y.Z` makes GitHub Actions build every package and publis
 - A real test failure shows in the failing step's log (look for `FAIL!`), and needs a fix.
 - **The two *Install the release* jobs are skipped** while the repository is private: they download the release the way a
   stranger does, with no login, and a private repository answers 404. They run again when it is public.
+- **macOS job "failed because of a scheduled macOS 14 runner image brownout"**: GitHub is retiring the `macos-14` image
+  (November 2, 2026); the build now uses `macos-15`. When a runner image is retired the same happens again: change
+  `runs-on` in `.github/workflows/ci.yml`.
