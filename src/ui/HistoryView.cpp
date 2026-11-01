@@ -271,6 +271,11 @@ void HistoryView::keyPressEvent(QKeyEvent* event)
         }
     }
 
+    if (mods == Qt::NoModifier && event->key() == Qt::Key_F2) {
+        emit renameRequested(current);
+        return;
+    }
+
     if (mods == Qt::AltModifier && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
         if (current.isValid()) {
             emit moveRequested(current, event->key() == Qt::Key_Up ? -1 : 1);

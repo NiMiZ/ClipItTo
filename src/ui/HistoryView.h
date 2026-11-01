@@ -42,6 +42,7 @@ signals:
     void moveRequested(const QModelIndex& index, int delta); // Alt+Up (-1) / Alt+Down (+1)
     void editGroupRequested(const QModelIndex& index);
     void editNoteRequested(const QModelIndex& index);
+    void renameRequested(const QModelIndex& index); // F2
     void deleteRequested(const QModelIndex& index);
     void contextMenuRequested(const QModelIndex& index, const QPoint& globalPos);
 
