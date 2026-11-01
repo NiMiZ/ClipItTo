@@ -57,9 +57,14 @@ void HistoryView::selectFirstEntry(StartFocus focus)
 {
     if (m_model) {
         selectIndex(m_model->firstEntry(focus));
-        if (currentIndex() == firstSelectable() || currentIndex().row() <= 2) {
-            scrollToTop(); // keep the Groups row and a leading section header visible
-        }
+        keepTopVisible();
+    }
+}
+
+void HistoryView::keepTopVisible()
+{
+    if (currentIndex() == firstSelectable() || currentIndex().row() <= 2) {
+        scrollToTop(); // keep the Groups row and a leading section header visible
     }
 }
 

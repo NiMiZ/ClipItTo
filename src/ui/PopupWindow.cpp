@@ -428,6 +428,10 @@ void PopupWindow::showPopup(const QString& activationToken)
         qputenv("XDG_ACTIVATION_TOKEN", activationToken.toUtf8());
     }
     show();
+    // The view had no size while hidden, so scrolling then did not stick; once laid out it
+    // had scrolled to the selected Recent copy and hid the Groups row above it.
+    m_view->keepTopVisible();
+    QTimer::singleShot(0, m_view, [view = m_view] { view->keepTopVisible(); });
     raise();
     activateWindow();
     bringAppToFront(); // macOS: a menu-bar app must activate itself to take keyboard focus
