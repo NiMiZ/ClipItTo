@@ -33,6 +33,13 @@ or (no group) it is starred and meta `favorites_hide_from_recent = 1`.
   "Unlock to search inside passwords" hint.
 - `ignore_case` only changes the *dedupe hash* (`Repository::textHash`, case-folded), not FTS.
 
+## Search inside pictures
+Migration 007 `clip_text(clip_id, text)`, cascade-deleted with the picture; not in the FTS index. `Repository::search`
+merges `searchPictureText` (LIKE over image rows) into the normal result (`mergeNewest`); `searchFiltered` adds an EXISTS per
+word. `Daemon::indexNextPicture` reads one unread picture at a time on `m_helloPool` (after each stored copy, 3 s after start,
+and when the setting changes); an engine error sets `m_indexFailed` until the settings change; "" = read, nothing found.
+`index_pictures` off -> `clearPictureText`. Never log the text. Only Windows tests ran the OCR path; Tesseract not tried here.
+
 ## Popup placement on Wayland
 Wayland clients can't place windows; the GNOME extension does it: the daemon calls `ActivateWindowAt(position)`
 (falls back to `ActivateWindow` = "center" for an older extension, which stays loaded until re-login), the

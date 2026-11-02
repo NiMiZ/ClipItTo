@@ -128,6 +128,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_kept(new QSpinBox(this))
     , m_images(new QSpinBox(this))
     , m_ocrLanguages(new QLineEdit(this))
+    , m_indexPictures(new QCheckBox(tr("Search inside pictures"), this))
     , m_lines(new QSpinBox(this))
     , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
@@ -232,6 +233,13 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                            "plus your locale's language, and the language data has to be installed "
                                            "(for Hebrew: tesseract-ocr-heb).")));
     form->addRow(tr("Read pictures in:"), m_ocrLanguages);
+    m_indexPictures->setChecked(config.indexPictures);
+    m_indexPictures->setToolTip(QStringLiteral("<p>%1</p>")
+                                    .arg(tr("Read the text in every copied picture (on this computer, in the background) "
+                                            "and keep it with the picture, so typing a word finds the screenshot that "
+                                            "shows it. Turning this off deletes the text that was read; the pictures "
+                                            "stay. It is stored in the history file, so it is encrypted with it.")));
+    form->addRow(QString(), m_indexPictures);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
@@ -717,6 +725,7 @@ Config SettingsDialog::config() const
     c.maxHistory = m_kept->value();
     c.maxImages = m_images->value();
     c.ocrLanguages = m_ocrLanguages->text().trimmed();
+    c.indexPictures = m_indexPictures->isChecked();
     {
         QStringList ids;
         for (const QCheckBox* box : m_layoutBoxes) {

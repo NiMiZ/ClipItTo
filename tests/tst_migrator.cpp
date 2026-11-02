@@ -153,7 +153,7 @@ private slots:
         migrate(db, {migrations[0], migrations[1], migrations[2], migrations[3]}); // schema 4
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
         migrate(db);
-        QCOMPARE(schemaVersion(db), 6);
+        QCOMPARE(schemaVersion(db), 7);
 
         Stmt secret(db, "SELECT secret FROM clips WHERE content = 'old text'");
         QVERIFY(secret.step());

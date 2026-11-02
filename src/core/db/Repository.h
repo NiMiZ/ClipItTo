@@ -93,6 +93,13 @@ public:
     // The full picture (PNG) of an image entry; empty for text or a missing id.
     QByteArray imageData(qint64 id);
 
+    // Search inside pictures: the text read from a picture (see clip_text). nextPictureToIndex is the newest
+    // picture not read yet (0 = none); an empty text records "nothing found". clearPictureText forgets all of it.
+    qint64 nextPictureToIndex();
+    void setPictureText(qint64 id, const QString& text);
+    void clearPictureText();
+    qint64 countIndexedPictures();
+
     void setLimits(const Limits& limits) { m_limits = limits; }
     const Limits& limits() const { return m_limits; }
 
@@ -217,6 +224,8 @@ private:
     void scrub(); // after removing text: search index merged, WAL folded in
     void loadImageDetails(Entry& entry);
     std::vector<Entry> searchLike(const QStringList& tokens, int limit);
+    std::vector<Entry> searchPictureText(const QStringList& tokens, int limit);
+    static std::vector<Entry> mergeNewest(std::vector<Entry> a, std::vector<Entry> b, int limit);
     std::vector<Entry> searchFiltered(const SearchFilter& filter, int limit);
     Stmt& likeStatement(int tokenCount);
     int starsIn(const QString& group); // "" = Favorites (starred, no group)

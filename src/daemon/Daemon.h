@@ -113,6 +113,7 @@ private:
     void setUpWindowsHello(); // availability, and the popup's Hello unlock
     void setUpTranslation(); // the popup's Translate menus
     ui::TranslationSupport translationSupport();
+    void indexNextPicture(); // search inside pictures: reads the next picture that was not read yet, one at a time
     void setUpOcr(); // whether text can be read from pictures here, and the popup's menu entry
     void onTextActivated(const QString& text);
     void onTextEdited(qint64 id, const QString& text);
@@ -143,6 +144,8 @@ private:
     bool m_decodingImage = false; // an IngestImage picture is being decoded
     bool m_converting = false;
     QHash<QString, QDateTime> m_keyringAsked; // purpose -> when the keyring was last asked for it
+    bool m_indexing = false; // a picture is being read for the search
+    bool m_indexFailed = false; // reading failed (no language data, ...): not tried again until the settings change
     QString m_encryptionError;
     QString m_startupWarning; // shown once, the first time the popup opens
     bool m_removeKeyAfterStart = false;

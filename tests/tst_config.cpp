@@ -27,6 +27,13 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void indexPictures()
+    {
+        QVERIFY(Config().indexPictures);
+        QVERIFY(!Config::fromToml("index_pictures = false\n").indexPictures);
+        QVERIFY(Config::fromToml(Config().toToml()) == Config());
+    }
+
     void ocrLanguages()
     {
         QStringList warnings;

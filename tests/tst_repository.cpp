@@ -1142,6 +1142,43 @@ private slots:
         QCOMPARE(t.repo->search(QStringLiteral("li"), 5).size(), 5u);
     }
 
+    void searchFindsPicturesByTheTextReadFromThem()
+    {
+        TestDb t;
+        const qint64 shot = t.repo->ingestImage(fakeImage(1)).id;
+        const qint64 other = t.repo->ingestImage(fakeImage(2)).id;
+        t.repo->ingest(QStringLiteral("a plain text copy about invoices"));
+        QCOMPARE(t.repo->nextPictureToIndex(), other); // newest first
+        t.repo->setPictureText(other, QString()); // read, nothing found
+        QCOMPARE(t.repo->nextPictureToIndex(), shot);
+        t.repo->setPictureText(shot, QStringLiteral("Invoice 4711 total due: 120 EUR"));
+        QCOMPARE(t.repo->nextPictureToIndex(), qint64(0));
+        QCOMPARE(t.repo->countIndexedPictures(), qint64(1));
+
+        auto ids = [&](const QString& q, Repository::SearchMode mode = Repository::SearchMode::Auto) {
+            QList<qint64> out;
+            for (const Entry& e : t.repo->search(q, 20, mode)) {
+                out << e.id;
+            }
+            return out;
+        };
+        QVERIFY(ids(QStringLiteral("4711")).contains(shot)); // short: LIKE path
+        QVERIFY(ids(QStringLiteral("total due")).contains(shot)); // two words
+        QVERIFY(ids(QStringLiteral("invoice"), Repository::SearchMode::ForceLike).contains(shot));
+        QVERIFY(!ids(QStringLiteral("invoice")).contains(other));
+        QCOMPARE(ids(QStringLiteral("invoice")).size(), 2); // the picture and the text copy, once each
+        QVERIFY(ids(QStringLiteral("img: 4711")).contains(shot)); // with a filter
+        QVERIFY(!ids(QStringLiteral("text: 4711")).contains(shot));
+
+        t.repo->clearPictureText();
+        QVERIFY(!ids(QStringLiteral("4711")).contains(shot));
+        QCOMPARE(t.repo->nextPictureToIndex(), other); // read again when the search is turned back on
+
+        t.repo->setPictureText(shot, QStringLiteral("secret words"));
+        t.repo->clearHistory(true);
+        QCOMPARE(t.repo->countIndexedPictures(), qint64(0)); // went with its picture
+    }
+
     void searchTreatsSyntaxLiterally_data()
     {
         QTest::addColumn<QString>("query");
