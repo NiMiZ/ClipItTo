@@ -1,4 +1,5 @@
 #include "FakeKeyStore.h"
+#include "KeyStore.h"
 #include "PasswordKeeper.h"
 #include "TestDb.h"
 
@@ -59,6 +60,46 @@ private slots:
         again.reload();
         QVERIFY(again.isSetUp());
         QVERIFY(again.canMatch());
+    }
+
+    // A locked keyring must not be asked about at every start: the match key is read when a password is first
+    // copied or searched.
+    void theKeyringIsFirstAskedWhenTheMatchKeyIsNeeded()
+    {
+        Fixture f;
+        f.keeper.reload();
+        QVERIFY(wait([&](auto done) { f.keeper.setMasterPassword("master", done); }));
+
+        int asked = 0;
+        QStringList purposes;
+        auto notice = std::make_shared<std::function<void(const QString&)>>([&](const QString& purpose) {
+            ++asked;
+            purposes << purpose;
+        });
+        auto counted = std::make_shared<clipitto::AnnouncingKeyStore>(f.keys, QStringLiteral("passwords"), notice);
+        PasswordKeeper restarted(*f.t.repo, counted);
+        restarted.setKdfCost({64, 1});
+        restarted.reload();
+        QVERIFY(restarted.isSetUp());
+        QCOMPARE(asked, 0); // starting asks nothing
+        QVERIFY(restarted.canMatch()); // "not asked yet" is not "missing"
+
+        QByteArray plain = "hunter2";
+        QVERIFY(!restarted.vault().match(plain).isEmpty()); // the first need asks, once
+        QCOMPARE(asked, 1);
+        QVERIFY(!restarted.vault().match(plain).isEmpty());
+        QCOMPARE(asked, 1);
+        QCOMPARE(purposes, QStringList{QStringLiteral("passwords")});
+
+        // Without a keyring the answer comes at the first need, and canMatch() turns false then.
+        f.keys->isAvailable = false;
+        PasswordKeeper nokeys(*f.t.repo, counted);
+        nokeys.setKdfCost({64, 1});
+        nokeys.reload();
+        QVERIFY(nokeys.canMatch());
+        QVERIFY(nokeys.vault().match(plain).isEmpty());
+        QVERIFY(!nokeys.canMatch());
+        QVERIFY(!nokeys.matchProblem().isEmpty());
     }
 
     void withoutAMasterPasswordItIsOpenAtEveryStartAndNeverLocks()

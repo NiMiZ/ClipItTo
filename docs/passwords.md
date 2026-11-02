@@ -2,6 +2,21 @@
 
 Back to the [README](../README.md).
 
+## When ClipItTo uses the keyring
+
+Only two features use the system keyring, and ClipItTo asks it only when one of them needs it:
+
+- **Encrypted history** keeps its key there. It is read at every start while the history is encrypted (the history
+  can't be opened without it).
+- **Password copies** keep a second key there, used only to recognise the same password copied again and to find a
+  whole password while locked. It is read the first time a password is copied or searched, not at start. Your master
+  password and the passwords themselves never go to the keyring, so password copies work without one (no
+  duplicate detection, no whole-password search while locked).
+
+With both off, ClipItTo never touches the keyring. Before it does, a notification says what it is asking for, at
+most every ten minutes, because the keyring (GNOME Keyring, KWallet) may show its own "unlock" window.
+`clipitto --status` has a *keyring* line with the last time each key was asked for.
+
 ## Encrypted history
 
 Settings › *Encrypt the history on disk* encrypts `history.db` (copies, notes, groups, the

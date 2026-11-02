@@ -5,6 +5,7 @@
 #include "MacApp.h"
 #include "Paths.h"
 #include "PopupWindow.h"
+#include "KeyStore.h"
 #include "SystemKeyStore.h"
 
 #include <QApplication>
@@ -88,8 +89,12 @@ int main(int argc, char* argv[])
     options.configPath = clipitto::paths::configFile();
     options.databasePath = clipitto::paths::databaseFile();
     options.session = clipitto::SessionEnv::detect();
-    options.keyStore = clipitto::createSystemKeyStore();
-    options.matchKeyStore = clipitto::createSystemKeyStore(QStringLiteral("password-match-key"));
+    // The keyring may show its own "unlock" window: the daemon says why just before (see announceKeyring()).
+    auto keyringNotice = std::make_shared<std::function<void(const QString&)>>();
+    options.keyStore = std::make_shared<clipitto::AnnouncingKeyStore>(
+        clipitto::createSystemKeyStore(), QStringLiteral("history"), keyringNotice);
+    options.matchKeyStore = std::make_shared<clipitto::AnnouncingKeyStore>(
+        clipitto::createSystemKeyStore(QStringLiteral("password-match-key")), QStringLiteral("passwords"), keyringNotice);
 
 #ifdef CLIPITTO_USE_DBUS
     clipitto::Daemon daemon(options,
@@ -98,6 +103,8 @@ int main(int argc, char* argv[])
 #else
     clipitto::Daemon daemon(options, std::make_unique<clipitto::localipc::LocalControlChannel>());
 #endif
+
+    *keyringNotice = [&daemon](const QString& purpose) { daemon.announceKeyring(purpose); };
 
     QString error;
     switch (daemon.start(&error)) {

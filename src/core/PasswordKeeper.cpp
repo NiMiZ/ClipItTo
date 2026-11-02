@@ -61,7 +61,7 @@ void PasswordKeeper::reload()
     }
     ++m_generation;
     m_lockTimer.stop();
-    m_vault.setMatchKey(isSetUp() ? matchKey(false) : QByteArray());
+    setMatchKeyLazily();
     try {
         m_open = isSetUp() && m_repo.vaultOpen();
     } catch (const db::DbError&) {
@@ -72,6 +72,18 @@ void PasswordKeeper::reload()
     }
     if (m_open) {
         unlock(openPassword(), [](bool) {});
+    }
+}
+
+// The key is read from the keyring when a password is first copied or searched, not at start (a locked keyring
+// would ask for its password before ClipItTo has done anything that needs it).
+void PasswordKeeper::setMatchKeyLazily()
+{
+    m_matchProblem.clear();
+    if (isSetUp()) {
+        m_vault.setMatchKeyProvider([this] { return matchKey(false); });
+    } else {
+        m_vault.setMatchKey({});
     }
 }
 
@@ -289,7 +301,8 @@ void PasswordKeeper::applyRekey(std::optional<PasswordVault::Rekeyed> rekeyed, c
             done(false);
             return;
         }
-        const QByteArray match = m_vault.canMatch() ? matchKey(false) : QByteArray();
+        const bool matchAsked = m_vault.matchKeyLoaded(); // else it is still to be read when needed
+        const QByteArray match = matchAsked && m_vault.canMatch() ? matchKey(false) : QByteArray();
         if (m_open) {
             m_open = false; // a real master password from now on
             try {
@@ -299,7 +312,11 @@ void PasswordKeeper::applyRekey(std::optional<PasswordVault::Rekeyed> rekeyed, c
         }
         lockNow();
         m_vault.load(rekeyed->stored);
-        m_vault.setMatchKey(match);
+        if (matchAsked) {
+            m_vault.setMatchKey(match);
+        } else {
+            setMatchKeyLazily();
+        }
         emit vaultChanged();
         done(true);
 }

@@ -60,7 +60,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   thumbnail (blurry on HiDPI).
 - **Security:** text over D-Bus (`Ingest`) has no sender check.
 - **KDE, Sway and others:** no shortcut helper; users bind `clipitto --toggle` themselves.
-- **Keyring prompts without an explanation.** A user saw "unlock keyring" dialogs several times and didn't
+- **DONE (0.11.1): Keyring prompts without an explanation.** A user saw "unlock keyring" dialogs several times and didn't
   know what asked for them (a Linux keyring unlock wants the *keyring's* password, which is often not the
   sudo password). Wanted: say before touching the keyring why ("ClipItTo needs the key that protects your
   history / password copies"), touch it only when a feature needs it, and show in `--status` when a keyring

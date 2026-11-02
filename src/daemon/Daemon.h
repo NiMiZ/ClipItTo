@@ -62,6 +62,11 @@ class Daemon : public QObject {
 public:
     using StartResult = ControlChannel::StartResult;
 
+    // The system keyring is about to be asked for the key `purpose` ("history" or "passwords"): says so in a
+    // side notification (at most every ten minutes per purpose), because the keyring may show its own
+    // "unlock" window and nobody would know what wanted it. Also what `--status` reports as "keyring".
+    void announceKeyring(const QString& purpose);
+
     Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
            std::unique_ptr<DesktopIntegration> integration = nullptr, QObject* parent = nullptr);
     ~Daemon() override;
@@ -138,6 +143,7 @@ private:
     bool m_encrypted = false;
     bool m_decodingImage = false; // an IngestImage picture is being decoded
     bool m_converting = false;
+    QHash<QString, QDateTime> m_keyringAsked; // purpose -> when the keyring was last asked for it
     bool m_indexing = false; // a picture is being read for the search
     bool m_indexFailed = false; // reading failed (no language data, ...): not tried again until the settings change
     QString m_encryptionError;
