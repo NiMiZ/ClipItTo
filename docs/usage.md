@@ -44,6 +44,12 @@ ids: `upper`, `lower`, `title`, `trim`, `collapse`, `oneline`, `json_pretty`, `j
 `url_decode`, `base64_encode`, `base64_decode`, `layout` (keyboard layout), `translate`. Picture ids:
 `pic_text`, `pic_changed`, `pic_translate`, `pic_paste`.
 
+**Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
+with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
+screenshot that shows it, together with `img:`. Pictures copied before are read a few seconds after the start.
+Turn it off with Settings › *Search inside pictures* (`index_pictures = false`): the text that was read is deleted.
+If recognition is not available (for example no language data on Linux) the reading stops quietly.
+
 **Translation.** Shift+Enter › *Translate* translates a copy, or the text in a picture, with a language pack you
 add in Settings › Translation. It runs on your computer only; see [Translation](translation.md).
 
