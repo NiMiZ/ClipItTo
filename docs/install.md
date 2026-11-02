@@ -13,7 +13,7 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and run
-`sudo apt install ./clipitto_0.10.0_amd64.deb`. [install.sh](../install.sh) also takes
+`sudo apt install ./clipitto_0.10.1_amd64.deb`. [install.sh](../install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run

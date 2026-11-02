@@ -15,13 +15,13 @@ from PIL import Image, ImageDraw
 SS = 4  # draw at 4x, scale down: smooth edges
 
 
-def artwork(size):
+def artwork(size, margin_frac=100 / 1024):
     """The icon at `size` px: a light rounded square with the clipboard on it."""
     big = size * SS
     img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     # macOS Big Sur+ icons: the rounded square fills 824/1024 of the canvas.
-    margin = big * 100 // 1024
+    margin = int(big * margin_frac)
     d.rounded_rectangle([margin, margin, big - margin, big - margin], radius=big * 185 // 1024, fill=(226, 234, 247, 255))
     # The clipboard on a 32x32 grid, drawn in the middle 60% of the square.
     side = (big - 2 * margin) * 0.62

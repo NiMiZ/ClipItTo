@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(ClipItTo
-    VERSION 0.10.0
+    VERSION 0.10.1
     DESCRIPTION "Clipboard manager with history, groups and favorites for Linux, Windows and macOS"
     LANGUAGES C CXX)
+
+if(WIN32)
+    enable_language(RC) # the executables carry the ClipItTo icon (packaging/windows/clipitto.rc)
+endif()
 
 if(APPLE)
     # The macOS pasteboard, source-app and (later) hotkey code is Objective-C++ (.mm).
