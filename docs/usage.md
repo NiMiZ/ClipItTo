@@ -35,7 +35,7 @@ and Greek keep capital letters. It works key for key, with no dictionary and no 
 
 **Choosing the Paste as… items.** Settings › *Paste as* lists the menu's items, one list for text and one for
 pictures: tick an item to show it, untick to hide it, move it with *Move up* / *Move down* (or drag it), and
-*Reset to default* restores the built-in list and order. The right-click *Paste as* submenu follows the same
+*Reset to default* restores the built-in list and order. The menu ends with *Others*, a submenu with the unticked items (turn it off with *Show the other items in the menu*; `paste_as_others` in the config). Shift+Enter opens the menu with the first item selected, so Enter picks it. The right-click *Paste as* submenu follows the same
 list. When two shown items would use the same underlined letter, the later one loses it. With every item hidden
 the menu shows only "No items selected". Stored as `paste_as_text` and `paste_as_picture` in the config: a
 comma list of item ids in menu order, `-` before an id hides it (`"lower,upper,-title"`); empty or missing is

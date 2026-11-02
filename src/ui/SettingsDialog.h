@@ -202,6 +202,7 @@ private:
     Config m_config;
     PasteAsEditor m_pasteAsText;
     PasteAsEditor m_pasteAsPicture;
+    QCheckBox* m_pasteAsOthers = nullptr;
     db::Repository& m_repo;
     QString m_hotkey; // last valid shortcut, canonical spelling
     bool m_groupsChanged = false;

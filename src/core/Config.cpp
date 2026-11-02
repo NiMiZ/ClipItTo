@@ -235,6 +235,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.languages("keyboard_layouts", config.keyboardLayouts);
     r.idList("paste_as_text", config.pasteAsText);
     r.idList("paste_as_picture", config.pasteAsPicture);
+    r.boolean("paste_as_others", config.pasteAsOthers);
     r.integer("max_image_bytes", config.maxImageBytes, 1, 512LL * 1024 * 1024);
     r.boolean("capture_primary", config.capturePrimary);
     r.boolean("paste_on_enter", config.pasteOnEnter);
@@ -322,6 +323,7 @@ std::vector<Line> lines(const Config& c)
         {"paste_as_text", tomlString(c.pasteAsText.toStdString()),
          "items of the Paste as… menu for text, in order, \"-\" hides one: \"upper,-lower,title\"; empty = all, built-in order"},
         {"paste_as_picture", tomlString(c.pasteAsPicture.toStdString()), "the same for pictures"},
+        {"paste_as_others", tomlBool(c.pasteAsOthers), "the Paste as… menu ends with \"Others\", the items left unticked"},
         {"max_image_bytes", std::to_string(c.maxImageBytes), "larger pictures are not recorded"},
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},

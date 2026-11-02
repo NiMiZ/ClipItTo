@@ -59,6 +59,8 @@ private slots:
         QCOMPARE(c.pasteAsText, QStringLiteral("lower,-upper,translate"));
         QCOMPARE(c.pasteAsPicture, QStringLiteral("pic_paste"));
         QVERIFY(warnings.isEmpty());
+        QVERIFY(Config().pasteAsOthers);
+        QVERIFY(!Config::fromToml("paste_as_others = false\n").pasteAsOthers);
         QVERIFY(Config::fromToml(c.toToml()) == c);
         Config::fromToml("paste_as_text = \"a; b\"\n", &warnings);
         QCOMPARE(warnings.size(), 1);

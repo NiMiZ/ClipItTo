@@ -35,6 +35,7 @@ struct Config {
     QString keyboardLayouts; // layouts offered by Paste as…: "he, ru, el"; "" = the system language's; "none"
     QString pasteAsText; // items of the Paste as… menu for text, see PasteAs.h; "" = the built-in list
     QString pasteAsPicture; // the same for pictures
+    bool pasteAsOthers = true; // the Paste as… menu ends with "Others": the items left unticked
     int maxImages = 100; // unsaved pictures kept, apart from maxHistory; 0 = don't record pictures
     qint64 maxImageBytes = 50LL * 1024 * 1024; // larger pictures (PNG-encoded) are skipped
     bool capturePrimary = false;

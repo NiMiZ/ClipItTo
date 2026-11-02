@@ -5,6 +5,7 @@
 #include "TextTransform.h"
 #include "Translation.h"
 #include "HistoryModel.h"
+#include "PasteAs.h"
 #include "Prompts.h"
 
 #include <QSet>
@@ -130,6 +131,8 @@ public:
     static void fixMnemonics(QMenu* menu);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
     void pasteAs(const QModelIndex& index);
+    void addOthersMenu(QMenu* menu, const QList<pasteas::Item>& items, const QStringList& shown,
+                       const std::function<void(QMenu*, const QString&)>& addItem);
     // Reads the text in picture `id` and pastes it, changed by `kind` when given.
     void pasteTextFromPicture(qint64 id, std::optional<texttransform::Kind> kind = std::nullopt);
     QMenu* createPictureMenu(const Entry& picture, QWidget* parent);
@@ -250,6 +253,7 @@ private:
     TranslationSupport m_translation;
     QString m_pasteAsText; // paste_as_text / paste_as_picture: which Paste as… items, in what order
     QString m_pasteAsPicture;
+    bool m_pasteAsOthers = true; // paste_as_others: an "Others" submenu with the unticked items
     QStringList m_keyboardLayouts; // layouts besides English that Paste as… converts to and from
     HelloUnlock m_helloUnlock;
     TextFromPicture m_textFromPicture;
