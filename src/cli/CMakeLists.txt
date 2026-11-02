@@ -1,4 +1,7 @@
 qt_add_executable(clipitto main.cpp)
+if(WIN32)
+    target_sources(clipitto PRIVATE ${PROJECT_SOURCE_DIR}/packaging/windows/clipitto.rc)
+endif()
 target_compile_definitions(clipitto PRIVATE CLIPITTO_VERSION="${PROJECT_VERSION}")
 # Deliberately no Gui/Widgets dependency: the shortcut path must start fast.
 if(CLIPITTO_DBUS)

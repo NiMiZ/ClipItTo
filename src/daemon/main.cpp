@@ -11,6 +11,10 @@
 #include <QCommandLineParser>
 #include <QLoggingCategory>
 
+#include <chrono>
+#include <cstdlib>
+#include <thread>
+
 #ifdef CLIPITTO_USE_DBUS
 #include "DbusControlChannel.h"
 #include "GnomeShellIntegration.h"
@@ -34,6 +38,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QSystemTrayIcon>
+
 #endif
 
 namespace {
@@ -170,5 +175,13 @@ int main(int argc, char* argv[])
     clipitto::setNotifyTray(&tray); // edited-text notices use the tray where the desktop has one
 #endif
 
+    // However long shutting down takes (a translation stuck in the engine cannot be stopped, and Qt waits for its thread),
+    // the process ends five seconds after the quit request: an installer or an upgrade must not be kept waiting.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [] {
+        std::thread([] {
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::_Exit(0);
+        }).detach();
+    });
     return app.exec();
 }

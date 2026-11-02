@@ -6,7 +6,7 @@
   #error Define StageDir: the directory produced by "cmake --install build/windows --prefix <absolute dir>"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.10.0"
+  #define AppVersion "0.10.1"
 #endif
 #ifndef OutputDir
   #define OutputDir "Output"
@@ -30,6 +30,7 @@ OutputBaseFilename=ClipItTo-{#AppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=ClipItTo.ico
 UninstallDisplayIcon={app}\bin\clipitto-daemon.exe
 UninstallDisplayName=ClipItTo
 
@@ -46,19 +47,46 @@ Name: "{autostartup}\ClipItTo"; Filename: "{app}\bin\clipitto-daemon.exe"; Tasks
 [Run]
 Filename: "{app}\bin\clipitto-daemon.exe"; Description: "Start ClipItTo now"; Flags: nowait postinstall skipifsilent
 
-[UninstallRun]
-Filename: "{app}\bin\clipitto.exe"; Parameters: "--quit"; Flags: runhidden; RunOnceId: "StopClipItTo"
-
 [Code]
-// Stop a running ClipItTo so an upgrade can replace its files.
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+// Is clipitto-daemon.exe running? `find` ends with 0 when tasklist's answer contains the name.
+function DaemonIsRunning: Boolean;
 var
   ResultCode: Integer;
 begin
+  Result := Exec(ExpandConstant('{cmd}'),
+    '/C tasklist /FI "IMAGENAME eq clipitto-daemon.exe" /NH | find /I "clipitto-daemon.exe"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+// Stop a running ClipItTo so its files can be replaced or removed: ask it to quit, give it a few seconds, then end it.
+// (A daemon busy with a stuck translation, or one started from another folder, may not quit on its own.)
+procedure StopClipItTo;
+var
+  ResultCode, I: Integer;
+begin
   if FileExists(ExpandConstant('{app}\bin\clipitto.exe')) then
-  begin
     Exec(ExpandConstant('{app}\bin\clipitto.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  for I := 1 to 10 do
+  begin
+    if not DaemonIsRunning then
+      Break;
+    Sleep(500);
+  end;
+  if DaemonIsRunning then
+  begin
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM clipitto-daemon.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Sleep(1000);
   end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopClipItTo;
   Result := '';
+end;
+
+function InitializeUninstall: Boolean;
+begin
+  StopClipItTo;
+  Result := True;
 end;
