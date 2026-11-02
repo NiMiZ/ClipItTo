@@ -23,6 +23,7 @@ or (no group) it is starred and meta `favorites_hide_from_recent = 1`.
 - `latest_after_paste`: choosing a copy bumps it, except saved ones (`Daemon::onEntryActivated`).
 
 ## Search
+- Results of every kind (pinned/grouped/unsaved) are listed newest first (`last_used DESC`), not by relevance or saved-first. Start focus "Unsaved" = top of Recent (first entry after the Pinned section), or the top search result.
 - Ordinary: FTS5 trigram over content + note + group (`Repository::search`). Pictures match note/group/"image".
   Passwords match by note/group only (content is the label "Password").
 - Password search: typing the keyword (default `p[]`) + space switches `SearchBar` to a masked mode:

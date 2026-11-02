@@ -306,9 +306,9 @@ private slots:
         QVERIFY(t.repo->search(QStringLiteral("work"), 100, m).empty());
         t.repo->setGroup(loose, QStringLiteral("Jobs/Servers"));
         QCOMPARE(idSet(t.repo->search(QStringLiteral("Servers"), 100, m)), (QSet<qint64>{ssh, loose}));
-        // Grouped (saved) copies rank before others matching only by text.
+        // Results are newest first, saved or not.
         const auto other = t.repo->ingest(QStringLiteral("Servers list, not grouped")).id;
-        QCOMPARE(t.repo->search(QStringLiteral("Servers"), 100, m).back().id, other);
+        QCOMPARE(t.repo->search(QStringLiteral("Servers"), 100, m).front().id, other);
     }
 
     void picturesAreStoredWithThumbnailAndDeduplicated()
@@ -1081,28 +1081,28 @@ private slots:
         QVERIFY(t.repo->search(QStringLiteral("   ")).empty());
     }
 
-    void searchRanksSavedFirst()
+    void searchIsNewestFirstSavedOrNot()
     {
         TestDb t;
         const auto saved = t.repo->ingest(QStringLiteral("deploy staging")).id;
         const auto plain = t.repo->ingest(QStringLiteral("deploy production now")).id;
         t.repo->setGroup(saved, QStringLiteral("Commands"));
 
-        QCOMPARE(ids(t.repo->search(QStringLiteral("deploy"))), (QList<qint64>{saved, plain}));
-        QCOMPARE(ids(t.repo->search(QStringLiteral("de"))), (QList<qint64>{saved, plain}));
+        QCOMPARE(ids(t.repo->search(QStringLiteral("deploy"))), (QList<qint64>{plain, saved}));
+        QCOMPARE(ids(t.repo->search(QStringLiteral("de"))), (QList<qint64>{plain, saved}));
     }
 
-    void searchRanksNoteAboveContent()
+    void searchIsNewestFirstNotByRelevance()
     {
         TestDb t;
         const auto byContent = t.repo->ingest(QStringLiteral("rsync backup script")).id;
         const auto byNote = t.repo->ingest(QStringLiteral("tar czf /tmp/x.tgz ~/docs")).id;
         t.repo->setNote(byNote, QStringLiteral("backup"));
-        t.repo->touch(byContent); // most recent, so recency alone would put it first
+        t.repo->touch(byContent); // most recent: first, although the other matches by note
 
-        QCOMPARE(ids(t.repo->search(QStringLiteral("backup"))), (QList<qint64>{byNote, byContent}));
+        QCOMPARE(ids(t.repo->search(QStringLiteral("backup"))), (QList<qint64>{byContent, byNote}));
         QCOMPARE(ids(t.repo->search(QStringLiteral("backup"), 100, Repository::SearchMode::ForceLike)),
-                 (QList<qint64>{byNote, byContent}));
+                 (QList<qint64>{byContent, byNote}));
     }
 
     void searchMatchesGroupName()
