@@ -99,6 +99,7 @@ private:
     void lockNow();
     void applyRekey(std::optional<PasswordVault::Rekeyed> rekeyed, const PasswordVault::Stored& current, Done done);
     QByteArray matchKey(bool create);
+    void setMatchKeyLazily();
 
     db::Repository& m_repo;
     std::shared_ptr<KeyStore> m_matchKeys;

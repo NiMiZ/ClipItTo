@@ -329,8 +329,16 @@ std::optional<QByteArray> openWith(const QByteArray& secret, const QByteArray& p
 
 } // namespace
 
+void PasswordVault::setMatchKeyProvider(std::function<QByteArray()> provider)
+{
+    wipe(m_matchKey);
+    m_matchProvider = std::move(provider);
+    m_matchLoaded = !m_matchProvider;
+}
+
 void PasswordVault::setMatchKey(const QByteArray& key)
 {
+    m_matchLoaded = true;
     wipe(m_matchKey);
     if (key.size() == kKeySize) {
         m_matchKey = key;
@@ -339,6 +347,13 @@ void PasswordVault::setMatchKey(const QByteArray& key)
 
 QString PasswordVault::match(const QByteArray& plain) const
 {
+    if (!m_matchLoaded) {
+        m_matchLoaded = true; // asked once; a failure is reported by canMatch() / matchProblem()
+        const QByteArray key = m_matchProvider ? m_matchProvider() : QByteArray();
+        if (key.size() == kKeySize) {
+            m_matchKey = key;
+        }
+    }
     if (m_matchKey.isEmpty()) {
         return {};
     }

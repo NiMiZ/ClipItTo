@@ -390,6 +390,28 @@ void Daemon::onTextEdited(qint64 id, const QString& text)
     }
 }
 
+void Daemon::announceKeyring(const QString& purpose)
+{
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDateTime last = m_keyringAsked.value(purpose);
+    m_keyringAsked.insert(purpose, now);
+    if (last.isValid() && last.secsTo(now) < 600) {
+        return;
+    }
+    const bool history = purpose == QLatin1String("history");
+    qCInfo(lcDaemon) << "asking the system keyring for the" << purpose << "key";
+    const QString title = QStringLiteral("ClipItTo");
+    const QString body = history
+        ? tr("ClipItTo asks your keyring for the key that protects your history. If the keyring asks you to unlock "
+             "it, that is why. (Turn off encryption in Settings to stop this.)")
+        : tr("ClipItTo asks your keyring for the key that finds a copied password again; it is not your master "
+             "password. If the keyring asks you to unlock it, that is why.");
+    const bool shown = m_options.notify ? m_options.notify(title, body) : desktopNotify(title, body);
+    if (!shown && m_popup) {
+        m_popup->flash(body);
+    }
+}
+
 void Daemon::onTextActivated(const QString& text)
 {
     m_writer->setText(text); // a transformed copy: the stored one keeps its place and text
@@ -1001,6 +1023,14 @@ QVariantMap Daemon::status() const
         encryption += QStringLiteral(" (problem: %1)").arg(m_encryptionError);
     }
     s[QStringLiteral("encryption")] = encryption;
+    if (!m_keyringAsked.isEmpty()) {
+        QStringList asked;
+        for (auto it = m_keyringAsked.cbegin(); it != m_keyringAsked.cend(); ++it) {
+            asked << QStringLiteral("%1 key at %2").arg(it.key(), it.value().toString(QStringLiteral("HH:mm:ss")));
+        }
+        asked.sort();
+        s[QStringLiteral("keyring")] = QStringLiteral("last asked for: ") + asked.join(QStringLiteral(", "));
+    }
     if (m_options.session.display == SessionEnv::Display::MacOS) {
         // Auto-paste (⌘V into the previous app) needs this permission; copying doesn't.
         s[QStringLiteral("accessibility")] = macAccessibilityGranted()

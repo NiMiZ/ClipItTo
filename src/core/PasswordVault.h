@@ -4,6 +4,7 @@
 #include <QString>
 #include <QtGlobal>
 
+#include <functional>
 #include <optional>
 
 namespace clipitto {
@@ -101,7 +102,12 @@ public:
     std::optional<QByteArray> open(const QByteArray& sealed) const;
 
     void setMatchKey(const QByteArray& key); // 32 bytes; empty: no keyring, no matching
-    bool canMatch() const { return !m_matchKey.isEmpty(); }
+    // The key is fetched from the keyring (by `provider`) the first time it is needed, not at start, so a locked
+    // keyring is not asked about before a password is copied or searched. A null provider: no key until set.
+    void setMatchKeyProvider(std::function<QByteArray()> provider);
+    bool matchKeyLoaded() const { return m_matchLoaded; }
+    // True while the key has not been asked for yet (it may turn out to be missing).
+    bool canMatch() const { return !m_matchKey.isEmpty() || !m_matchLoaded; }
     // "secret:<hex>": a memory-hard keyed hash of `plain` (Argon2id keyed with the match key),
     // so even with the keyring at hand every guess costs real memory and time. Empty without
     // a match key.
@@ -115,7 +121,9 @@ public:
 private:
     std::optional<Stored> m_stored;
     QByteArray m_secret; // the X25519 secret key while unlocked
-    QByteArray m_matchKey;
+    mutable QByteArray m_matchKey; // loaded on first use when there is a provider
+    mutable bool m_matchLoaded = true;
+    std::function<QByteArray()> m_matchProvider;
     VaultKdfCost m_matchCost{16 * 1024, 2}; // 16 MiB: ~20 ms per capture or search in a release build
 };
 
