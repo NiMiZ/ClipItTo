@@ -232,6 +232,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("max_item_bytes", config.maxItemBytes, 1, 64LL * 1024 * 1024);
     r.integer("max_images", config.maxImages, 0, 100'000);
     r.languages("ocr_languages", config.ocrLanguages);
+    r.boolean("index_pictures", config.indexPictures);
     r.languages("keyboard_layouts", config.keyboardLayouts);
     r.idList("paste_as_text", config.pasteAsText);
     r.idList("paste_as_picture", config.pasteAsPicture);
@@ -318,6 +319,7 @@ std::vector<Line> lines(const Config& c)
         {"max_item_bytes", std::to_string(c.maxItemBytes), ""},
         {"max_images", std::to_string(c.maxImages), "unsaved pictures kept; 0 = don't record pictures"},
         {"ocr_languages", tomlString(c.ocrLanguages.toStdString()), "languages read in pictures, e.g. \"en, he\"; empty = automatic"},
+        {"index_pictures", tomlBool(c.indexPictures), "read the text in copied pictures so a search finds them by it"},
         {"keyboard_layouts", tomlString(c.keyboardLayouts.toStdString()),
          "layouts offered by Paste as… for text typed with the wrong keyboard: \"he, ru, el\"; empty = the system language's; \"none\""},
         {"paste_as_text", tomlString(c.pasteAsText.toStdString()),

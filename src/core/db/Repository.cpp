@@ -476,6 +476,34 @@ QByteArray Repository::imageData(qint64 id)
     return s.step() ? s.colBlob(0) : QByteArray();
 }
 
+qint64 Repository::nextPictureToIndex()
+{
+    Stmt s(m_db, "SELECT i.clip_id FROM clip_images i LEFT JOIN clip_text t ON t.clip_id = i.clip_id "
+                 "WHERE t.clip_id IS NULL ORDER BY i.clip_id DESC LIMIT 1");
+    return s.step() ? s.colInt(0) : 0;
+}
+
+void Repository::setPictureText(qint64 id, const QString& text)
+{
+    Stmt s(m_db, "INSERT OR REPLACE INTO clip_text(clip_id, text) SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM clips WHERE id = ?1)");
+    s.bindInt(1, id).bindText(2, text);
+    s.run();
+}
+
+void Repository::clearPictureText()
+{
+    Transaction tx(m_db);
+    m_db.exec("DELETE FROM clip_text");
+    tx.commit();
+    checkpoint(); // freed pages were zeroed (secure_delete); the log may still hold the text
+}
+
+qint64 Repository::countIndexedPictures()
+{
+    Stmt s(m_db, "SELECT count(*) FROM clip_text WHERE text <> ''");
+    return s.step() ? s.colInt(0) : 0;
+}
+
 void Repository::loadImageDetails(Entry& entry)
 {
     Stmt& s = *m_imageDetails;
@@ -616,13 +644,53 @@ std::vector<Entry> Repository::search(const QString& query, int limit, SearchMod
     if (tokens.isEmpty()) {
         return {};
     }
+    // Pictures are also found by the text read from them.
     if (mode == SearchMode::ForceLike || !fts::canUseTrigram(tokens)) {
-        return searchLike(tokens, limit);
+        return mergeNewest(searchLike(tokens, limit), searchPictureText(tokens, limit), limit);
     }
     Stmt& s = *m_searchFts;
     s.reset();
     s.bindText(1, fts::matchExpression(tokens)).bindInt(2, limit);
+    return mergeNewest(collect(s), searchPictureText(tokens, limit), limit);
+}
+
+std::vector<Entry> Repository::searchPictureText(const QStringList& tokens, int limit)
+{
+    QStringList where;
+    for (int i = 1; i <= tokens.size(); ++i) {
+        where << QStringLiteral(R"(t.text LIKE ?%1 ESCAPE '\')").arg(i);
+    }
+    const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS " FROM clips c JOIN clip_text t ON t.clip_id = c.id "
+                                       "WHERE %1 ORDER BY c.last_used DESC, c.id DESC LIMIT ?%2")
+                            .arg(where.join(QLatin1String(" AND ")))
+                            .arg(tokens.size() + 1);
+    Stmt s(m_db, sql.toUtf8());
+    for (int i = 0; i < tokens.size(); ++i) {
+        s.bindText(i + 1, fts::likePattern(tokens[i]));
+    }
+    s.bindInt(int(tokens.size()) + 1, limit);
     return collect(s);
+}
+
+// Both lists are newest first; the result is too, without a copy twice, at most `limit` long.
+std::vector<Entry> Repository::mergeNewest(std::vector<Entry> a, std::vector<Entry> b, int limit)
+{
+    if (b.empty()) {
+        return a;
+    }
+    for (Entry& e : b) {
+        const bool known = std::any_of(a.begin(), a.end(), [&e](const Entry& x) { return x.id == e.id; });
+        if (!known) {
+            a.push_back(std::move(e));
+        }
+    }
+    std::stable_sort(a.begin(), a.end(), [](const Entry& x, const Entry& y) {
+        return x.lastUsed != y.lastUsed ? x.lastUsed > y.lastUsed : x.id > y.id;
+    });
+    if (int(a.size()) > limit) {
+        a.resize(size_t(limit));
+    }
+    return a;
 }
 
 Stmt& Repository::likeStatement(int tokenCount)
@@ -693,7 +761,8 @@ std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int li
     }
     for (const QString& word : filter.words) {
         const QString p = bind(fts::likePattern(word));
-        where << QStringLiteral(R"((c.tag_or_note LIKE %1 ESCAPE '\' OR c.group_name LIKE %1 ESCAPE '\' OR c.content LIKE %1 ESCAPE '\'))").arg(p);
+        where << QStringLiteral(R"((c.tag_or_note LIKE %1 ESCAPE '\' OR c.group_name LIKE %1 ESCAPE '\' OR c.content LIKE %1 ESCAPE '\'
+            OR EXISTS (SELECT 1 FROM clip_text t WHERE t.clip_id = c.id AND t.text LIKE %1 ESCAPE '\')))").arg(p);
     }
     const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS " FROM clips c WHERE %1 "
                                        "ORDER BY c.last_used DESC, c.id DESC LIMIT ?%2")

@@ -568,6 +568,9 @@ private slots:
         QVERIFY(d.askNoteBox()->toolTip().contains(QLatin1String("name")));
         QVERIFY(d.config().passwordAskNote);
         QVERIFY(d.ocrLanguagesEdit()->text().isEmpty());
+        QVERIFY(d.indexPicturesBox()->isChecked() && d.config().indexPictures); // on by default
+        d.indexPicturesBox()->setChecked(false);
+        QVERIFY(!d.config().indexPictures);
         d.ocrLanguagesEdit()->setText(QStringLiteral(" en, he "));
         QCOMPARE(d.config().ocrLanguages, QStringLiteral("en, he"));
         // Keyboard layouts for Paste as…: unchanged keeps the setting; ticking writes the list.

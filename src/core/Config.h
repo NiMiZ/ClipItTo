@@ -32,6 +32,7 @@ struct Config {
     int favoritesLimit = 10; // starred copies without a group (1..20); 10 per group otherwise
     qint64 maxItemBytes = 1024 * 1024;
     QString ocrLanguages; // languages to read in pictures, e.g. "en, he"; empty = automatic
+    bool indexPictures = true; // read the text in copied pictures, so a search finds them by it
     QString keyboardLayouts; // layouts offered by Paste as…: "he, ru, el"; "" = the system language's; "none"
     QString pasteAsText; // items of the Paste as… menu for text, see PasteAs.h; "" = the built-in list
     QString pasteAsPicture; // the same for pictures

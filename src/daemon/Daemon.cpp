@@ -193,6 +193,12 @@ Daemon::StartResult Daemon::start(QString* error)
     m_popup->setPasswords(m_passwords.get());
     setUpWindowsHello();
     setUpOcr();
+    connect(m_pipeline.get(), &CapturePipeline::stored, this, [this](qint64, bool inserted) {
+        if (inserted) {
+            indexNextPicture();
+        }
+    });
+    QTimer::singleShot(3000, this, [this] { indexNextPicture(); }); // the pictures from before
     setUpTranslation();
     connect(m_popup.get(), &ui::PopupWindow::settingsRequested, this, &Daemon::openSettings);
     connect(this, &Daemon::encryptionFinished, m_popup.get(), [this](bool ok, const QString& error) {
@@ -807,6 +813,59 @@ void Daemon::setUpTranslation()
     m_popup->setTranslation(translationSupport());
 }
 
+void Daemon::indexNextPicture()
+{
+    if (!m_config.indexPictures || !ocr::builtIn() || m_indexing || m_indexFailed || m_converting || !m_repo) {
+        return;
+    }
+    qint64 id = 0;
+    QByteArray png;
+    try {
+        id = m_repo->nextPictureToIndex();
+        if (id) {
+            png = m_repo->imageData(id);
+        }
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "search inside pictures:" << e.what();
+        return;
+    }
+    if (!id) {
+        return;
+    }
+    const auto next = [this] { QTimer::singleShot(0, this, [this] { indexNextPicture(); }); };
+    if (png.isEmpty()) {
+        m_repo->setPictureText(id, QString()); // nothing to read
+        next();
+        return;
+    }
+    m_indexing = true;
+    const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
+    runOn<std::pair<QString, QString>>(
+        &m_helloPool, this,
+        [png, languages] {
+            QString error;
+            const std::optional<QString> text = ocr::recognize(png, languages, &error);
+            return text ? std::pair<QString, QString>(*text, QString())
+                        : std::pair<QString, QString>(QString(), error.isEmpty() ? QStringLiteral("failed") : error);
+        },
+        [this, id, next](std::pair<QString, QString> result) {
+            m_indexing = false;
+            if (!result.second.isEmpty()) {
+                // Never the text itself in a log; the reason is the engine's message.
+                qCInfo(lcDaemon) << "search inside pictures stopped:" << result.second;
+                m_indexFailed = true;
+                return;
+            }
+            try {
+                m_repo->setPictureText(id, m_config.indexPictures ? result.first : QString());
+            } catch (const db::DbError& e) {
+                qCWarning(lcDaemon) << "search inside pictures:" << e.what();
+                return;
+            }
+            next();
+        });
+}
+
 void Daemon::setUpOcr()
 {
     // Whether the build has text recognition is known at once; whether it can read right now (a language
@@ -961,6 +1020,14 @@ void Daemon::reload(bool forceShortcut)
     }
     if (m_config.encryptHistory != previous.encryptHistory) {
         setEncryption(m_config.encryptHistory);
+    }
+    if (m_config.indexPictures != previous.indexPictures || m_config.ocrLanguages != previous.ocrLanguages) {
+        m_indexFailed = false;
+        if (!m_config.indexPictures && !m_converting) {
+            m_repo->clearPictureText();
+        } else {
+            indexNextPicture();
+        }
     }
     if (m_config.maxImages < previous.maxImages && !m_converting) {
         m_repo->pruneImages(m_config.maxImages); // 0: "don't record pictures" removes the unsaved ones
