@@ -1,7 +1,10 @@
 name: CI
 
+# Tests run on pull requests; a pushed tag vX.Y.Z builds and publishes the release. Plain pushes to a branch
+# (including main after a merge) do not start a run.
 on:
   push:
+    tags: ['v*']
   pull_request:
 
 # A newer push to the same branch or tag cancels the run still going for the older one.
@@ -167,7 +170,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
 
       # apt wrote the cache as root; the cache action saves it as the runner user.
       - name: Let the package cache be saved
@@ -339,7 +342,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
 
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
@@ -349,7 +352,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
 
   # macOS 11+, Apple Silicon and Intel in one binary. The unit tests run on the offscreen
   # platform; the smoke test then drives the daemon on the real pasteboard.
@@ -494,7 +497,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
 
       # The bundled app alone: no Qt environment, a bare PATH, the real Cocoa platform and the
       # real pasteboard. A bundle that only works because the runner has Qt would fail here.
@@ -594,7 +597,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
 
       # apt wrote the cache as root; the cache action saves it as the runner user.
       - name: Let the package cache be saved
@@ -623,7 +626,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
 
   # Pushing a tag such as v0.1.0 publishes a GitHub Release with the Ubuntu .deb, the
   # AppImage, the snap, the macOS disk image and the Windows installer, once all were built
@@ -694,7 +697,7 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 3 || 1 }}
+          retention-days: 3
       - name: Find the snap
         if: steps.login.outputs.present == 'true'
         id: snap
