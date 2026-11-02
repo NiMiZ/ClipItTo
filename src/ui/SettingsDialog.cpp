@@ -302,7 +302,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_startFocus->setCurrentIndex(m_startFocus->findData(int(config.startFocus)));
     m_startFocus->setToolTip(tr("Where the selection starts when the popup opens and after each search: on the "
                                 "first copy of that kind (the first copy when there is none). Unsaved history: "
-                                "copies that aren't pinned, starred or in a group."));
+                                "the top of Recent, saved or not."));
     form->addRow(tr("Start on:"), m_startFocus);
 
     auto* shortcutRow = new QHBoxLayout;

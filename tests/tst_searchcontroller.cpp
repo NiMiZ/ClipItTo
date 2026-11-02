@@ -240,7 +240,7 @@ private slots:
         QCOMPARE(titles(m), (QStringList{QStringLiteral("alpha")}));
     }
 
-    void searchListsSavedMatchesFirstWithoutHeaders()
+    void searchListsMatchesNewestFirstWithoutHeaders()
     {
         TestDb t;
         const auto grouped = t.repo->ingest(QStringLiteral("deploy prod")).id;
@@ -250,7 +250,7 @@ private slots:
         SearchController c(*t.repo, m);
         c.setQuery(QStringLiteral("deploy"));
         c.refresh();
-        QCOMPARE(titles(m), (QStringList{QStringLiteral("deploy prod"), QStringLiteral("deploy dev")}));
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("deploy dev"), QStringLiteral("deploy prod")}));
     }
 };
 

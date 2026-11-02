@@ -98,7 +98,7 @@ Repository::Repository(Db& db, Clock clock)
             bm25(clips_fts, 10.0, 5.0, 1.0) AS score
         FROM clips_fts JOIN clips c ON c.id = clips_fts.rowid
         WHERE clips_fts MATCH ?1
-        ORDER BY c.is_saved DESC, score ASC, c.last_used DESC, c.id DESC
+        ORDER BY c.last_used DESC, c.id DESC
         LIMIT ?2)");
 
     m_get = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.id = ?1");
@@ -647,8 +647,7 @@ Stmt& Repository::likeStatement(int tokenCount)
     }
     const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS ", (%1) AS note_hits, (%2) AS group_hits "
                                        "FROM clips c WHERE %3 "
-                                       "ORDER BY c.is_saved DESC, note_hits DESC, group_hits DESC, "
-                                       "c.last_used DESC, c.id DESC LIMIT ?%4")
+                                       "ORDER BY c.last_used DESC, c.id DESC LIMIT ?%4")
                             .arg(noteHits.join(QLatin1String(" + ")), groupHits.join(QLatin1String(" + ")),
                                  where.join(QLatin1String(" AND ")))
                             .arg(tokenCount + 1);
@@ -697,7 +696,7 @@ std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int li
         where << QStringLiteral(R"((c.tag_or_note LIKE %1 ESCAPE '\' OR c.group_name LIKE %1 ESCAPE '\' OR c.content LIKE %1 ESCAPE '\'))").arg(p);
     }
     const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS " FROM clips c WHERE %1 "
-                                       "ORDER BY c.is_saved DESC, c.last_used DESC, c.id DESC LIMIT ?%2")
+                                       "ORDER BY c.last_used DESC, c.id DESC LIMIT ?%2")
                             .arg(where.join(QLatin1String(" AND ")))
                             .arg(binds.size() + 1);
     Stmt s(m_db, sql.toUtf8());

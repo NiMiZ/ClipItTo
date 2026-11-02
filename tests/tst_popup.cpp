@@ -574,15 +574,11 @@ private slots:
         auto unsaved = start(clipitto::StartFocus::Unsaved, QStringLiteral("Work"));
         QVERIFY(unsaved->show());
         QCOMPARE(unsaved->currentContent(), QStringLiteral("gamma ray"));
-        // After a search too: the first unsaved match, not the pinned one listed above it.
+        // After a search too: the top result (all kinds, newest first).
         QTest::keyClicks(unsaved->popup->searchBar(), QStringLiteral("a"));
         unsaved->popup->controller()->refresh();
-        QVERIFY(!unsaved->model()->entryAt(unsaved->current())->isSaved());
-        // Enter from the search box copies that one.
-        QSignalSpy activated(unsaved->popup.get(), &PopupWindow::entryActivated);
-        QTest::keyClick(unsaved->popup->searchBar(), Qt::Key_Return);
-        QCOMPARE(activated.size(), 1);
-        QVERIFY(!activated.at(0).at(0).value<Entry>().isSaved());
+        QCOMPARE(unsaved->model()->entryAt(unsaved->current())->id,
+                 unsaved->model()->entryAt(unsaved->model()->firstEntry())->id);
 
         // Nothing of that kind: the first copy.
         auto none = start(clipitto::StartFocus::Grouped, QString());
@@ -602,6 +598,17 @@ private slots:
         QTest::keyClicks(f.popup->searchBar(), QStringLiteral("needle"));
         f.popup->controller()->refresh();
         QCOMPARE(f.currentContent(), QStringLiteral("a needle in a very long line of other words to dilute it"));
+    }
+
+    void unsavedStartFocusStartsOnTopOfRecentEvenWhenSaved()
+    {
+        Config cfg;
+        cfg.startFocus = clipitto::StartFocus::Unsaved;
+        Fixture f(cfg);
+        f.t.repo->ingest(QStringLiteral("newest saved copy"));
+        f.t.repo->setGroup(f.t.repo->search(QStringLiteral("newest saved")).front().id, QStringLiteral("Work"));
+        QVERIFY(f.show());
+        QCOMPARE(f.currentContent(), QStringLiteral("newest saved copy"));
     }
 
     void choosingACopyHidesThePopup()

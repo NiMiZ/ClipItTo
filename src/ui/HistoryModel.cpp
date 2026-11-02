@@ -425,33 +425,26 @@ QModelIndex HistoryModel::firstEntry() const
 
 QModelIndex HistoryModel::firstEntry(StartFocus focus) const
 {
-    const auto matches = [focus](const Entry& e) {
-        switch (focus) {
-        case StartFocus::Pinned:
-            return e.pinned();
-        case StartFocus::Grouped:
-            return !e.group.isEmpty();
-        case StartFocus::Unsaved:
-            return !e.isSaved();
+    if (focus == StartFocus::Unsaved) {
+        // The top of Recent, saved or not: after the Pinned section when there is one (a second
+        // header). Search results have no headers and are newest first, so the top one is it.
+        int headers = 0;
+        for (const auto& child : m_root->children) {
+            if (child->kind == Kind::Header) {
+                ++headers;
+            } else if (child->kind == Kind::Entry && headers != 1) {
+                return indexFor(child.get());
+            }
         }
-        return false;
-    };
-    // Search results are ranked by relevance, not by time, so for the unsaved history "first" means
-    // the most recently used match (in the plain list this is simply the first one).
-    const Node* best = nullptr;
+        return firstEntry();
+    }
     for (const auto& child : m_root->children) {
-        if (child->kind != Kind::Entry || !matches(child->entry)) {
+        if (child->kind != Kind::Entry) {
             continue;
         }
-        if (focus != StartFocus::Unsaved) {
+        if (focus == StartFocus::Pinned ? child->entry.pinned() : !child->entry.group.isEmpty()) {
             return indexFor(child.get());
         }
-        if (!best || child->entry.lastUsed > best->entry.lastUsed) {
-            best = child.get();
-        }
-    }
-    if (best) {
-        return indexFor(best);
     }
     return firstEntry();
 }
