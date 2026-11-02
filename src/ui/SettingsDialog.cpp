@@ -609,6 +609,9 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         box->addWidget(intro);
         m_pasteAsText = createPasteAsEditor(page, box, tr("For text"), pasteas::textItems(), config.pasteAsText);
         m_pasteAsPicture = createPasteAsEditor(page, box, tr("For pictures"), pasteas::pictureItems(), config.pasteAsPicture);
+        m_pasteAsOthers = new QCheckBox(tr("Show the other items in the menu, under \"Others\""), page);
+        m_pasteAsOthers->setChecked(config.pasteAsOthers);
+        box->addWidget(m_pasteAsOthers);
         m_tabs->addTab(page, tr("Paste as"));
     }
     m_translation = std::move(translation);
@@ -727,6 +730,7 @@ Config SettingsDialog::config() const
     }
     c.pasteAsText = pasteAsSetting(m_pasteAsText, m_config.pasteAsText);
     c.pasteAsPicture = pasteAsSetting(m_pasteAsPicture, m_config.pasteAsPicture);
+    c.pasteAsOthers = m_pasteAsOthers->isChecked();
     c.previewLines = m_lines->value();
     c.favoritesLimit = m_favorites->value();
     c.hotkey = m_hotkey;

@@ -439,6 +439,7 @@ void PopupWindow::applyConfig(const Config& config)
     m_keyboardLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
     m_pasteAsText = config.pasteAsText;
     m_pasteAsPicture = config.pasteAsPicture;
+    m_pasteAsOthers = config.pasteAsOthers;
     m_controller->applyConfig(config);
     m_hideOnFocusLoss = config.hideOnFocusLoss;
     m_singleClick = config.clickToCopy == ClickMode::Single;
@@ -1306,6 +1307,30 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     return menu;
 }
 
+// "Others": a submenu with the items the Paste as setting leaves unticked, unless paste_as_others is off.
+void PopupWindow::addOthersMenu(QMenu* menu, const QList<pasteas::Item>& items, const QStringList& shown,
+                                const std::function<void(QMenu*, const QString&)>& addItem)
+{
+    if (!m_pasteAsOthers) {
+        return;
+    }
+    auto* others = new QMenu(tr("Ot&hers"), menu);
+    for (const pasteas::Item& item : items) {
+        if (!shown.contains(item.id)) {
+            addItem(others, item.id);
+        }
+    }
+    if (others->isEmpty()) {
+        delete others;
+        return;
+    }
+    fixMnemonics(others);
+    if (menu->actions().size() > 0) {
+        menu->addSeparator();
+    }
+    menu->addMenu(others);
+}
+
 // The choices for a picture (Shift+Enter, and the right-click menu): the items of the paste_as_picture setting,
 // by default its text first, then that text changed, then the picture itself.
 QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
@@ -1320,13 +1345,13 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
     for (const pasteas::Item& item : items) {
         labels.insert(item.id, item.label);
     }
-    for (const QString& itemId : pasteas::shownIds(m_pasteAsPicture, items)) {
+    const auto addItem = [&](QMenu* target, const QString& itemId) {
         const QString label = labels.value(itemId);
         QAction* action = nullptr;
         if (itemId == QLatin1String(pasteas::kPictureText)) {
-            action = menu->addAction(label, this, [this, id] { pasteTextFromPicture(id); });
+            action = target->addAction(label, this, [this, id] { pasteTextFromPicture(id); });
         } else if (itemId == QLatin1String(pasteas::kPictureChanged)) {
-            QMenu* changed = menu->addMenu(label);
+            QMenu* changed = target->addMenu(label);
             action = changed->menuAction();
             // The changes that make sense for recognized text; the rest (JSON, URL, Base64) stay for text copies.
             for (const texttransform::Info& info : texttransform::all()) {
@@ -1340,13 +1365,13 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
             }
         } else if (itemId == QLatin1String(pasteas::kPictureTranslate)) {
             // Read the text, then translate it with a pack.
-            const int before = int(menu->actions().size());
-            addTranslateMenu(menu, label, QString(),
+            const int before = int(target->actions().size());
+            addTranslateMenu(target, label, QString(),
                              [this, id](const QString& packId) { translatePictureAndPaste(id, packId); });
-            action = menu->actions().size() > before ? menu->actions().last() : nullptr;
+            action = target->actions().size() > before ? target->actions().last() : nullptr;
         } else if (itemId == QLatin1String(pasteas::kPicturePaste)) {
             const Entry copy = picture;
-            menu->addAction(label, this, [this, copy] {
+            target->addAction(label, this, [this, copy] {
                 emit entryActivated(copy);
                 hidePopup();
             });
@@ -1354,9 +1379,14 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
         if (action && !canRead && itemId != QLatin1String(pasteas::kPicturePaste)) {
             action->setEnabled(false);
             action->setToolTip(reason);
-            menu->setToolTipsVisible(true);
+            target->setToolTipsVisible(true);
         }
+    };
+    const QStringList shown = pasteas::shownIds(m_pasteAsPicture, items);
+    for (const QString& itemId : shown) {
+        addItem(menu, itemId);
     }
+    addOthersMenu(menu, items, shown, addItem);
     return menu;
 }
 
@@ -1390,11 +1420,11 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
     styleTransformMenu(menu, palette());
     const QString text = entry.content;
     const QList<texttransform::Info> transforms = texttransform::all();
-    for (const QString& itemId : pasteas::shownIds(m_pasteAsText, pasteas::textItems())) {
+    const auto addItem = [&](QMenu* target, const QString& itemId) {
         if (itemId == QLatin1String(pasteas::kKeyboardLayout)) {
-            addKeyboardLayoutEntries(menu, text);
+            addKeyboardLayoutEntries(target, text);
         } else if (itemId == QLatin1String(pasteas::kTranslate)) {
-            addTranslateMenu(menu, tr("Tran&slate"), text,
+            addTranslateMenu(target, tr("Tran&slate"), text,
                              [this, text](const QString& packId) { translateAndPaste(packId, text); });
         } else {
             for (const texttransform::Info& info : transforms) {
@@ -1402,7 +1432,7 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
                     continue;
                 }
                 const texttransform::Kind kind = info.kind;
-                menu->addAction(info.label, this, [this, text, kind] {
+                target->addAction(info.label, this, [this, text, kind] {
                     QString why;
                     const std::optional<QString> out = texttransform::apply(kind, text, &why);
                     if (!out) {
@@ -1414,7 +1444,13 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
                 });
             }
         }
+    };
+    const QList<pasteas::Item> items = pasteas::textItems();
+    const QStringList shown = pasteas::shownIds(m_pasteAsText, items);
+    for (const QString& itemId : shown) {
+        addItem(menu, itemId);
     }
+    addOthersMenu(menu, items, shown, addItem);
     fixMnemonics(menu);
     if (menu->isEmpty()) {
         QAction* hint = menu->addAction(tr("No items selected: see Settings › Paste as"));
@@ -1640,10 +1676,17 @@ void PopupWindow::pasteAs(const QModelIndex& index)
     }
     QMenu* menu = createPasteAsMenu(*e, this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
+    QAction* first = nullptr; // the first choice is ready: one Enter picks it
+    for (QAction* action : menu->actions()) {
+        if (!action->isSeparator() && action->isEnabled()) {
+            first = action;
+            break;
+        }
+    }
     const QRect row = m_view->visualRect(index);
     {
         ModalGuard guard(m_modalDepth); // the menu takes the focus; the popup must not hide because of it
-        menu->exec(m_view->viewport()->mapToGlobal(row.bottomLeft()));
+        menu->exec(m_view->viewport()->mapToGlobal(row.bottomLeft()), first);
     }
     if (isVisible()) {
         m_search->setFocus();

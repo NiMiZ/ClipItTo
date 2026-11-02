@@ -67,6 +67,7 @@ private slots:
         QCOMPARE(text.list->item(0)->data(Qt::UserRole).toString(), QStringLiteral("upper"));
         QVERIFY(d.config().pasteAsText.isEmpty()); // untouched: the built-in list
         QVERIFY(d.config().pasteAsPicture.isEmpty());
+        QVERIFY(d.config().pasteAsOthers); // on by default
         QVERIFY(!text.up->isEnabled());
 
         text.list->setCurrentRow(0);

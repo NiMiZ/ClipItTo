@@ -1121,6 +1121,7 @@ private slots:
         const auto set = [&](const char* items) {
             clipitto::Config c;
             c.pasteAsText = QString::fromLatin1(items);
+            c.pasteAsOthers = false; // the "Others" submenu has its own test
             f.popup->applyConfig(c);
         };
         const int all = int(texts(text).size());
@@ -1152,6 +1153,54 @@ private slots:
         custom = texts(text);
         QCOMPARE(custom.size(), 1);
         QVERIFY(custom.first().contains(QLatin1String("No items selected")));
+    }
+
+    void pasteAsEndsWithOthersAndStartsOnTheFirstItem()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        Entry text = *f.model()->entryAt(f.model()->index(4, 0));
+        text.content = QStringLiteral("Hello");
+        const auto pasteAsMenu = [&](std::unique_ptr<QMenu>& owner) -> QMenu* {
+            owner.reset(f.popup->createContextMenu(text, f.popup.get()));
+            for (QAction* a : owner->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    return a->menu();
+                }
+            }
+            return nullptr;
+        };
+        const auto others = [](QMenu* menu) -> QMenu* {
+            QAction* last = menu->actions().isEmpty() ? nullptr : menu->actions().last();
+            return last && last->menu() && last->text().remove(QLatin1Char('&')) == QLatin1String("Others") ? last->menu()
+                                                                                                           : nullptr;
+        };
+        std::unique_ptr<QMenu> owner;
+        clipitto::Config c;
+        c.pasteAsText = QStringLiteral("lower,upper,-title,-trim");
+        f.popup->applyConfig(c); // pasteAsOthers is on by default
+        QMenu* menu = pasteAsMenu(owner);
+        QVERIFY(menu);
+        QMenu* more = others(menu);
+        QVERIFY(more);
+        QStringList hidden;
+        for (QAction* a : more->actions()) {
+            hidden << a->text().remove(QLatin1Char('&'));
+        }
+        QVERIFY(hidden.contains(QLatin1String("Title Case")));
+        QVERIFY(hidden.contains(QLatin1String("Trim white space at the ends")));
+        QVERIFY(!hidden.contains(QLatin1String("lower case")));
+
+        // Nothing hidden: no empty submenu.
+        c.pasteAsText.clear();
+        f.popup->applyConfig(c);
+        QVERIFY(!others(pasteAsMenu(owner)));
+
+        // Switched off: no submenu either.
+        c.pasteAsText = QStringLiteral("lower,-upper");
+        c.pasteAsOthers = false;
+        f.popup->applyConfig(c);
+        QVERIFY(!others(pasteAsMenu(owner)));
     }
 
     // A fake translation engine: packs zh→en (Han text) and en→zh (Latin text); "translating" upper-cases and prefixes.
