@@ -1,6 +1,7 @@
 #include "HistoryDelegate.h"
 
 #include "HistoryModel.h"
+#include "Previews.h"
 
 #include <QApplication>
 #include <QPainter>
@@ -79,6 +80,50 @@ void drawPadlock(QPainter* painter, const QRectF& box, const QColor& color)
     painter->setPen(Qt::NoPen);
     painter->setBrush(color);
     painter->drawRoundedRect(body, h / 10, h / 10);
+    painter->restore();
+}
+
+// A colour swatch: the colour over a light/dark check when it is see-through, framed.
+void drawSwatch(QPainter* painter, const QRectF& box, const QColor& color, const QColor& frame)
+{
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    const QRectF inner = box.adjusted(0.5, 0.5, -0.5, -0.5);
+    if (color.alpha() < 255) {
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(0xdd, 0xdd, 0xdd));
+        painter->drawRoundedRect(inner, 3, 3);
+        painter->setBrush(QColor(0x99, 0x99, 0x99));
+        painter->drawRect(QRectF(inner.left(), inner.top(), inner.width() / 2, inner.height() / 2));
+        painter->drawRect(QRectF(inner.center().x(), inner.center().y(), inner.width() / 2, inner.height() / 2));
+    }
+    painter->setPen(QPen(frame, 1));
+    painter->setBrush(color);
+    painter->drawRoundedRect(inner, 3, 3);
+    painter->restore();
+}
+
+// A sheet of paper with a folded corner (a copied file), drawn like the padlock.
+void drawFile(QPainter* painter, const QRectF& box, const QColor& color)
+{
+    const qreal h = box.height() * 0.85;
+    const qreal w = h * 0.75;
+    const QRectF page(box.center().x() - w / 2, box.center().y() - h / 2, w, h);
+    const qreal fold = w * 0.4;
+    QPainterPath outline;
+    outline.moveTo(page.left(), page.top());
+    outline.lineTo(page.right() - fold, page.top());
+    outline.lineTo(page.right(), page.top() + fold);
+    outline.lineTo(page.right(), page.bottom());
+    outline.lineTo(page.left(), page.bottom());
+    outline.closeSubpath();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(color, qMax(1.2, h / 11), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(outline);
+    painter->drawLine(QPointF(page.right() - fold, page.top()), QPointF(page.right() - fold, page.top() + fold));
+    painter->drawLine(QPointF(page.right() - fold, page.top() + fold), QPointF(page.right(), page.top() + fold));
     painter->restore();
 }
 
@@ -269,9 +314,25 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         content.setLeft(content.left() + fm.height() + kGap / 2);
     }
 
-    const QString title = index.data(HistoryModel::TitleRole).toString();
-    const QString preview = index.data(HistoryModel::PreviewRole).toString();
+    // One colour: a swatch of it before the text. A list of files: a file icon, and the names instead of the paths.
+    const QColor swatch = index.data(HistoryModel::ColorRole).value<QColor>();
+    if (swatch.isValid()) {
+        QColor frame = text;
+        frame.setAlphaF(0.4);
+        drawSwatch(painter, QRectF(content.left(), content.top(), fm.height(), fm.height()), swatch, frame);
+        content.setLeft(content.left() + fm.height() + kGap / 2);
+    }
+    const QStringList files = index.data(HistoryModel::FilesRole).toStringList();
+    if (!files.isEmpty()) {
+        drawFile(painter, QRectF(content.left(), content.top(), fm.height(), fm.height()), text);
+        content.setLeft(content.left() + fm.height() + kGap / 2);
+    }
+
+    // With a note the note stays the title; the file names are what the text shows.
     const bool hasNote = index.data(HistoryModel::HasNoteRole).toBool();
+    const QString title = !files.isEmpty() && !hasNote ? preview::fileSummary(files)
+                                                         : index.data(HistoryModel::TitleRole).toString();
+    const QString preview = index.data(HistoryModel::PreviewRole).toString();
     const QRect titleRect(content.left(), content.top(), right - content.left(), fm.height());
     const QFont titleFont = hasNote ? bold(option.font) : option.font;
     painter->setFont(titleFont);

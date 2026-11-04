@@ -18,6 +18,7 @@ add_library(clipitto_core STATIC
     SearchFilter.cpp SearchFilter.h
     PasswordVault.cpp PasswordVault.h
     Paths.cpp Paths.h
+    Previews.cpp Previews.h
     RichText.cpp RichText.h
     SessionEnv.cpp SessionEnv.h
     db/FtsQuery.cpp db/FtsQuery.h

@@ -53,6 +53,13 @@ copied text* (`keep_formatting`) turns it off and deletes the formatted versions
 password manager never keep one. Editing a copy's text drops its formatted version. Not included in a backup.
 On GNOME (Wayland) it needs the updated extension (log out and in once after the update).
 
+**Colours and files in the list.** A copy that is one colour (`#ff8800`, `#f80`, `#ff880080`, `rgb(255, 136, 0)`,
+`rgba(0, 0, 0, 0.5)`) shows a swatch of it before the text. A copy that is a list of files (one path per line, or
+`file://` links) shows a file icon and the names (`report.pdf, notes.txt, +1 more`); the paths are still the text, so
+search and paste work on them. Files copied in a file manager that gives no text (Windows Explorer, macOS Finder) are
+recorded as their paths, which is what pasting them into a text box gives. Only paths and colours are looked at: the
+files are never opened or read, and the disk is not touched to draw the list.
+
 **Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
 with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
 screenshot that shows it, together with `img:`. Pictures copied before are read a few seconds after the start.

@@ -1,7 +1,9 @@
 #include "QtClipboardBackend.h"
 
 #include <QGuiApplication>
+#include <QDir>
 #include <QMimeData>
+#include <QUrl>
 #include <QSignalSpy>
 #include <QBuffer>
 #include <QImage>
@@ -76,6 +78,29 @@ private slots:
         QCOMPARE(captured.at(0).at(0).toString(), QStringLiteral("copied text"));
         QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("text/html")));
         QCOMPARE(captured.at(0).at(2).toString(), QStringLiteral("<b>copied</b> text")); // the formatted version too
+    }
+
+    void copiedFilesAreRecordedAsTheirPaths()
+    {
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
+        backend.start();
+        auto* data = new QMimeData;
+        data->setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/a b.txt")), QUrl::fromLocalFile(QStringLiteral("/tmp/c.txt")),
+                       QUrl(QStringLiteral("https://example.org/x"))});
+        QGuiApplication::clipboard()->setMimeData(data);
+        QTRY_COMPARE(captured.size(), 1);
+        const QString expected = QDir::toNativeSeparators(QStringLiteral("/tmp/a b.txt")) + QLatin1Char('\n')
+            + QDir::toNativeSeparators(QStringLiteral("/tmp/c.txt"));
+        QCOMPARE(captured.at(0).at(0).toString(), expected); // web links are not files
+
+        // A password manager's marker wins over everything.
+        auto* marked = new QMimeData;
+        marked->setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/secret.kdbx"))});
+        marked->setData(QStringLiteral("x-kde-passwordManagerHint"), "secret");
+        QGuiApplication::clipboard()->setMimeData(marked);
+        QTRY_COMPARE(captured.size(), 2);
+        QVERIFY(captured.at(1).at(0).toString().isEmpty()); // only the markers, as for any marked copy
     }
 
     void formattedVersionIsLeftOutWhenOffOrWhenItIsForAnotherText()
