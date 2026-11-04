@@ -71,6 +71,9 @@ QString fileName(const QString& path)
 
 std::optional<Rgba> colorOf(const QString& text)
 {
+    if (text.size() > 80) {
+        return std::nullopt; // before trimming: this runs for every painted row
+    }
     const QString t = text.trimmed();
     if (t.isEmpty() || t.size() > 40 || t.contains(QLatin1Char('\n'))) {
         return std::nullopt;

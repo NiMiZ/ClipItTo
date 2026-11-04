@@ -112,7 +112,8 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
 // recorded as the copy, so the list shows the files and pasting gives the paths.
 bool QtClipboardBackend::emitFiles(const QMimeData* data, const QStringList& formats)
 {
-    if (!data || !data->hasUrls() || ClipFilter::isSensitive(formats)) {
+    // Checked on what is read now as well: the clipboard may have changed since a native read.
+    if (!data || !data->hasUrls() || ClipFilter::isSensitive(formats) || ClipFilter::isSensitive(data->formats())) {
         return false;
     }
     QStringList paths;
