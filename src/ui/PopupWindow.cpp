@@ -194,6 +194,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_editPrompt(defaultEditPrompt())
     , m_textPrompt(defaultTextPrompt())
     , m_confirm(defaultConfirmPrompt())
+    , m_qrView(defaultQrView())
     , m_notify([](QWidget* parent, const QString& message) {
         QMessageBox::warning(parent, QStringLiteral("ClipItTo"), message);
     })
@@ -1277,6 +1278,23 @@ void PopupWindow::onResultsUpdated()
     }
 }
 
+// Read again when chosen, not when the menu was built: the copy may have become a password meanwhile, and a
+// password's text must never reach the screen.
+void PopupWindow::showQrCode(qint64 id)
+{
+    std::optional<Entry> entry;
+    try {
+        entry = m_repo.get(id);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "reading a copy for its QR code failed:" << err.what();
+        return;
+    }
+    if (!entry || entry->secret || entry->image || entry->content.isEmpty()) {
+        return;
+    }
+    m_qrView(this, entry->content);
+}
+
 QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
 {
     const qint64 id = entry.id;
@@ -1320,6 +1338,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
         menu->addMenu(createPasteAsMenu(entry, menu)); // Paste text from picture comes first in it
     } else {
         menu->addMenu(createPasteAsMenu(entry, menu));
+        menu->addAction(tr("Show as QR code…"), this, [this, id] { showQrCode(id); });
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
         if (!m_passwords || !m_passwords->isSetUp()) {
             mark->setEnabled(false);

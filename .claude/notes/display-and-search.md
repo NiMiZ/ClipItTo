@@ -61,6 +61,13 @@ before the text, and the file names replace the paths as the title unless the co
 `QtClipboardBackend::emitFiles` records copied files (urls, no text/plain) as native-separator paths, also after a
 native `NoText` (Explorer, Finder). The GNOME extension and wl-paste read text only. Windows/macOS part is CI-compiled only.
 
+## QR code view
+Right-click a text copy (not a password, not a picture) › "Show as QR code…" -> `PopupWindow::m_qrView` (injectable `QrView`,
+`defaultQrView()` in Prompts.cpp: modal dialog, Esc closes). `ui::qrImage(text, minSide, &error)` (QrImage.cpp) renders
+with Nayuki's qrcodegen 1.8.0 (`clipitto_qrcodegen`, FetchContent in cmake/Dependencies.cmake, sha pinned; offline:
+FETCHCONTENT_SOURCE_DIR_QRCODEGEN): ECC medium, falling back to low, 4-module quiet zone, whole pixels per module;
+over 2953 UTF-8 bytes -> null + message. Nothing is logged or stored.
+
 ## Popup placement on Wayland
 Wayland clients can't place windows; the GNOME extension does it: the daemon calls `ActivateWindowAt(position)`
 (falls back to `ActivateWindow` = "center" for an older extension, which stays loaded until re-login), the

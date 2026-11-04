@@ -4,6 +4,7 @@ add_library(clipitto_ui STATIC
     HistoryModel.cpp HistoryModel.h
     HistoryView.cpp HistoryView.h
     PopupWindow.cpp PopupWindow.h
+    QrImage.cpp QrImage.h
     Prompts.cpp Prompts.h
     SearchBar.cpp SearchBar.h
     SearchController.cpp SearchController.h
@@ -21,5 +22,5 @@ else()
 endif()
 
 target_include_directories(clipitto_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(clipitto_ui PUBLIC clipitto_core Qt6::Widgets)
+target_link_libraries(clipitto_ui PUBLIC clipitto_core Qt6::Widgets PRIVATE clipitto_qrcodegen)
 clipitto_set_warnings(clipitto_ui)

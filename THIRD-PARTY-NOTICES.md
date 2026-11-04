@@ -9,6 +9,7 @@ It uses the components below, under their own licenses, all compatible with the 
 | SQLite3 Multiple Ciphers (with the parts listed below) | MIT | built in | built in | built in |
 | toml++ | MIT | system package (not shipped) | built in | built in |
 | Monocypher | CC0-1.0 or BSD-2-Clause | built in | built in | built in |
+| QR Code generator library (Project Nayuki) | MIT | built in | built in | built in |
 | Qt 6 | LGPL-3.0 | system packages (not shipped) | DLLs shipped, unmodified | frameworks shipped, unmodified |
 | QtKeychain | BSD-3-Clause | system package (not shipped) | not used | not used (the macOS Keychain, through Apple's Security framework) |
 | Tesseract OCR | Apache-2.0 | system package (Depends: libtesseract5) | not used (Windows.Media.Ocr, part of Windows) | not used (the Vision framework, part of macOS) |
@@ -125,6 +126,29 @@ it under the BSD-2-Clause license:
 > TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 > SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## QR Code generator library
+
+https://www.nayuki.io/page/qr-code-generator-library (version 1.8.0, `cpp/qrcodegen.cpp` and `.hpp`; the QR view of
+a copy). MIT License:
+
+> Copyright (c) Project Nayuki.
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of
+> this software and associated documentation files (the "Software"), to deal in
+> the Software without restriction, including without limitation the rights to
+> use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+> the Software, and to permit persons to whom the Software is furnished to do so,
+> subject to the following conditions:
+> - The above copyright notice and this permission notice shall be included in
+>   all copies or substantial portions of the Software.
+> - The Software is provided "as is", without warranty of any kind, express or
+>   implied, including but not limited to the warranties of merchantability,
+>   fitness for a particular purpose and noninfringement. In no event shall the
+>   authors or copyright holders be liable for any claim, damages or other
+>   liability, whether in an action of contract, tort or otherwise, arising from,
+>   out of or in connection with the Software or the use or other dealings in the
+>   Software.
+
 ## Qt 6
 
 https://www.qt.io (Qt Core, Gui, Widgets and Network; D-Bus on Linux; the Windows build also
@@ -168,7 +192,7 @@ version is ever released under another licence, each component has to be looked 
 
 | Component | Can stay in a build under another licence? | What to do |
 |---|---|---|
-| SQLite, SQLite3 Multiple Ciphers, toml++, Monocypher, CTranslate2, spdlog | Yes (public domain / MIT / CC0 / BSD) | Keep the copyright notices and licence texts. |
+| SQLite, SQLite3 Multiple Ciphers, toml++, Monocypher, QR Code generator, CTranslate2, spdlog | Yes (public domain / MIT / CC0 / BSD) | Keep the copyright notices and licence texts. |
 | SentencePiece, Tesseract, cpu_features, ruy | Yes (Apache-2.0) | Keep the licence and NOTICE texts; say so when a file is changed. |
 | Leptonica, cpuinfo, QtKeychain | Yes (BSD) | Keep the copyright notices. |
 | Qt 6 | Only as LGPL-3.0: linked dynamically, users able to replace it | Ship the LGPL text and keep it as shared libraries. Other Qt licences need a commercial Qt licence. |
