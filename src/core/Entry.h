@@ -29,6 +29,10 @@ struct Entry {
     // (Repository::sealedSecret) and shown or pasted only after an unlock.
     bool secret = false;
 
+    // A text copy that also has its formatted (HTML) version, which "Paste with formatting" puts back
+    // (Repository::richText).
+    bool rich = false;
+
     bool pinned() const { return pinPosition >= 0; }
     // Saved items are immune to pruning and rank first in search.
     bool isSaved() const { return favorite || !group.isEmpty() || pinned(); }

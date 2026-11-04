@@ -220,10 +220,32 @@ export default class ClipItToExtension extends Extension {
         St.Clipboard.get_default().get_text(stType, (_clipboard, text) => {
             if (!text || text.length > MAX_TEXT_LENGTH)
                 return;
-            // NO_AUTO_START: a stopped daemon stays stopped; the copy simply isn't recorded.
-            this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, mimeTypes]),
-                Gio.DBusCallFlags.NO_AUTO_START);
+            // The formatted version too, for the clipboard (not the primary selection) when the copy offers one;
+            // the daemon keeps it only if it has formatting and keep_formatting is on.
+            if (stType === St.ClipboardType.CLIPBOARD && mimeTypes.includes('text/html')) {
+                St.Clipboard.get_default().get_content(stType, 'text/html', (_c, bytes) => {
+                    const size = bytes?.get_size() ?? 0;
+                    // The clipboard may have changed since the text was read: only if it still offers the same
+                    // kinds of data (and none is a password manager's marker) is this HTML that copy's.
+                    const now = this._selection?.get_mimetypes(type) ?? [];
+                    const same = now.length === mimeTypes.length && now.every((t, i) => t === mimeTypes[i]);
+                    if (same && !isSensitive(now) && size > 0 && size <= MAX_TEXT_LENGTH) {
+                        const html = new TextDecoder().decode(bytes.toArray());
+                        this._callDaemon('IngestRich', new GLib.Variant('(ssas)', [text, html, mimeTypes]),
+                            Gio.DBusCallFlags.NO_AUTO_START, () => this._ingestText(text, mimeTypes));
+                        return;
+                    }
+                    this._ingestText(text, mimeTypes);
+                });
+                return;
+            }
+            this._ingestText(text, mimeTypes);
         });
+    }
+
+    // NO_AUTO_START: a stopped daemon stays stopped; the copy simply isn't recorded.
+    _ingestText(text, mimeTypes) {
+        this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, mimeTypes]), Gio.DBusCallFlags.NO_AUTO_START);
     }
 
     // Asks the daemon first: without a master password it keeps no password copies, and then
@@ -265,12 +287,18 @@ export default class ClipItToExtension extends Extension {
         });
     }
 
-    _callDaemon(method, parameters, flags) {
+    // `ifUnknown`: called when the daemon is older and has no such method (IngestRich), to send the plain version.
+    _callDaemon(method, parameters, flags, ifUnknown = null) {
         Gio.DBus.session.call(DAEMON_NAME, DAEMON_PATH, DAEMON_IFACE, method, parameters, null,
             flags, -1, null, (connection, result) => {
                 try {
                     connection.call_finish(result);
                 } catch (e) {
+                    if (ifUnknown && (e.matches?.(Gio.DBusError, Gio.DBusError.UNKNOWN_METHOD) ||
+                        e.matches?.(Gio.DBusError, Gio.DBusError.INVALID_ARGS))) {
+                        ifUnknown();
+                        return;
+                    }
                     // A daemon that is not running is normal (logged out of it, not installed).
                     const notRunning = e.matches?.(Gio.DBusError, Gio.DBusError.SERVICE_UNKNOWN) ||
                         e.matches?.(Gio.DBusError, Gio.DBusError.NAME_HAS_NO_OWNER);

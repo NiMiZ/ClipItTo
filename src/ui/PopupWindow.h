@@ -180,6 +180,8 @@ signals:
     // "Paste as…": this text (the copy, transformed) goes to the clipboard and into the window; the
     // stored copy is not touched.
     void textActivated(const QString& text);
+    // "With formatting": paste the copy with its HTML version too (the owner reads it: Repository::richText).
+    void richActivated(const clipitto::Entry& entry);
     // Ctrl+E saved a new text for this copy (its place and time are unchanged).
     void textEdited(qint64 id, const QString& text);
     void aboutToShow(); // before the popup takes focus (the previous window still has it)

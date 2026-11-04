@@ -38,6 +38,7 @@ private:
     void onWatcherFinished();
     void fetch();
     void fetchText(const QStringList& mimeTypes);
+    void fetchHtml(const QString& plain, const QStringList& mimeTypes); // then reports the text with it
     void fetchImage(const QStringList& mimeTypes);
     void fetchDone();
 

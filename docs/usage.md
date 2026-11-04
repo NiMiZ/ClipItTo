@@ -44,6 +44,15 @@ ids: `upper`, `lower`, `title`, `trim`, `collapse`, `oneline`, `json_pretty`, `j
 `url_decode`, `base64_encode`, `base64_decode`, `layout` (keyboard layout), `translate`. Picture ids:
 `pic_text`, `pic_changed`, `pic_translate`, `pic_paste`.
 
+**Paste with formatting.** ClipItTo keeps plain text, which is what is pasted by default. When a copy also has
+formatting (bold, italics, links, lists, tables, headings, pictures in the page), the formatted (HTML) version is kept
+next to its text, and *Shift+Enter › With formatting* (also in the right-click *Paste as* menu) pastes it as it was,
+with the plain text alongside for programs that take only that. Copies whose HTML only wraps plain text (what a
+browser adds to everything) keep nothing extra, and the item is not offered for them. Settings › *Keep formatting of
+copied text* (`keep_formatting`) turns it off and deletes the formatted versions kept so far. Copies marked by a
+password manager never keep one. Editing a copy's text drops its formatted version. Not included in a backup.
+On GNOME (Wayland) it needs the updated extension (log out and in once after the update).
+
 **Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
 with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
 screenshot that shows it, together with `img:`. Pictures copied before are read a few seconds after the start.

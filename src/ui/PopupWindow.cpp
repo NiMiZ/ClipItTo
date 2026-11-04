@@ -1426,6 +1426,13 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
         } else if (itemId == QLatin1String(pasteas::kTranslate)) {
             addTranslateMenu(target, tr("Tran&slate"), text,
                              [this, text](const QString& packId) { translateAndPaste(packId, text); });
+        } else if (itemId == QLatin1String(pasteas::kRich)) {
+            if (entry.rich) { // a copy without a formatted version has nothing to offer here
+                target->addAction(tr("With &formatting"), this, [this, entry] {
+                    emit richActivated(entry);
+                    hidePopup();
+                });
+            }
         } else {
             for (const texttransform::Info& info : transforms) {
                 if (info.id != itemId) {

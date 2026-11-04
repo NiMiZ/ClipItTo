@@ -56,6 +56,15 @@ void ClipboardWriter::setText(const QString& text)
     }
 }
 
+void ClipboardWriter::setRich(const QString& text, const QString& html)
+{
+    m_filter.noteOwnWrite(text);
+    auto* data = new QMimeData;
+    data->setText(text); // for apps that take plain text only
+    data->setHtml(html); // Qt converts it to "HTML Format" on Windows and public.html on macOS
+    m_clipboard->setMimeData(data, QClipboard::Clipboard);
+}
+
 void ClipboardWriter::clear()
 {
     if (m_integration && m_integration->isAvailable()) {

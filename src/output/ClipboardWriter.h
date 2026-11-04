@@ -23,6 +23,10 @@ public:
     // managers (and Windows' clipboard history) skip it too. Through the GNOME extension the
     // markers can't be added (the shell takes one format per write); the text goes alone.
     void setPassword(const QString& text);
+    // A copy with its formatted (HTML) version too. Always through the Qt clipboard: the GNOME extension
+    // takes one format per write, so it can't carry both. (Without an integration on Wayland this needs focus, as
+    // for every write; the popup still has it when a copy is chosen.)
+    void setRich(const QString& text, const QString& html);
     // Empties the clipboard (a pasted password's time is up).
     void clear();
     // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo.

@@ -27,6 +27,12 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void keepFormatting()
+    {
+        QVERIFY(Config().keepFormatting);
+        QVERIFY(!Config::fromToml("keep_formatting = false\n").keepFormatting);
+    }
+
     void indexPictures()
     {
         QVERIFY(Config().indexPictures);

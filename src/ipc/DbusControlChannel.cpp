@@ -106,6 +106,15 @@ void DbusControlChannel::Ingest(const QString& text, const QStringList& mimeType
     emit ingestRequested(text, mimeTypes);
 }
 
+void DbusControlChannel::IngestRich(const QString& text, const QString& html, const QStringList& mimeTypes)
+{
+    if (ClipFilter::isSensitive(mimeTypes)) {
+        sendErrorReply(QDBusError::AccessDenied, QStringLiteral("a marked copy never carries a formatted version"));
+        return;
+    }
+    emit ingestRequested(text, mimeTypes, html);
+}
+
 bool DbusControlChannel::WantsPasswords()
 {
     return passwordsWanted();

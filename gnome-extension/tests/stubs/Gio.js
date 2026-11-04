@@ -5,7 +5,7 @@ let nextNameId = 1;
 export default {
     DBusCallFlags: {NONE: 0, NO_AUTO_START: 1},
     BusNameOwnerFlags: {NONE: 0},
-    DBusError: {SERVICE_UNKNOWN: 2, NAME_HAS_NO_OWNER: 3},
+    DBusError: {SERVICE_UNKNOWN: 2, NAME_HAS_NO_OWNER: 3, UNKNOWN_METHOD: 4, INVALID_ARGS: 5},
     DBus: {
         session: {
             call(name, path, iface, method, params, _replyType, flags, _timeout, _cancellable, callback) {

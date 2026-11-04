@@ -75,6 +75,35 @@ private slots:
         QTRY_COMPARE(captured.size(), 1);
         QCOMPARE(captured.at(0).at(0).toString(), QStringLiteral("copied text"));
         QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("text/html")));
+        QCOMPARE(captured.at(0).at(2).toString(), QStringLiteral("<b>copied</b> text")); // the formatted version too
+    }
+
+    void formattedVersionIsLeftOutWhenOffOrWhenItIsForAnotherText()
+    {
+        QtClipboardBackend backend(QGuiApplication::clipboard(), false);
+        QSignalSpy captured(&backend, &QtClipboardBackend::captured);
+        backend.setReadRichText(false);
+        backend.start();
+        auto* off = new QMimeData;
+        off->setText(QStringLiteral("plain"));
+        off->setHtml(QStringLiteral("<b>plain</b>"));
+        QGuiApplication::clipboard()->setMimeData(off);
+        QTRY_COMPARE(captured.size(), 1);
+        QVERIFY(captured.at(0).at(2).toString().isEmpty());
+        backend.stop();
+
+        // A native read whose text isn't the one now on the clipboard (it changed in between): no HTML is
+        // taken from the other copy.
+        QtClipboardBackend native(QGuiApplication::clipboard(), false, nullptr, [] { return ok(QStringLiteral("older")); });
+        QSignalSpy nativeCaptured(&native, &QtClipboardBackend::captured);
+        native.start();
+        auto* newer = new QMimeData;
+        newer->setText(QStringLiteral("newer"));
+        newer->setHtml(QStringLiteral("<b>newer</b>"));
+        QGuiApplication::clipboard()->setMimeData(newer);
+        QTRY_COMPARE(nativeCaptured.size(), 1);
+        QCOMPARE(nativeCaptured.at(0).at(0).toString(), QStringLiteral("older"));
+        QVERIFY(nativeCaptured.at(0).at(2).toString().isEmpty());
     }
 
     void markedTextIsReadOnlyWhenPasswordsAreKept()

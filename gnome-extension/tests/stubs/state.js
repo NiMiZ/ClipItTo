@@ -130,6 +130,7 @@ export function resetState() {
     state.service = null;
     state.textReads = 0;
     state.contentReads = [];
+    state.html = {};
     state.clipboardSet = [];
     state.activated = [];
     state.moved = [];

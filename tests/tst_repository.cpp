@@ -1142,6 +1142,38 @@ private slots:
         QCOMPARE(t.repo->search(QStringLiteral("li"), 5).size(), 5u);
     }
 
+    void formattedVersionGoesWithItsCopyAndIsDroppedOnEdit()
+    {
+        TestDb t;
+        const auto a = t.repo->ingest(QStringLiteral("bold word"));
+        t.repo->setRich(a.id, QStringLiteral("<b>bold</b> word"));
+        QVERIFY(t.repo->get(a.id)->rich);
+        QCOMPARE(t.repo->richText(a.id), QStringLiteral("<b>bold</b> word"));
+        t.repo->setRich(a.id, QStringLiteral("<i>bold</i> word")); // replaces
+        QCOMPARE(t.repo->richText(a.id), QStringLiteral("<i>bold</i> word"));
+
+        // Not in the search index: only the text is searched.
+        QVERIFY(t.repo->search(QStringLiteral("<i>"), 10).empty());
+
+        // Editing the text makes the old formatted version wrong: it goes.
+        QCOMPARE(t.repo->setContent(a.id, QStringLiteral("changed"), 4096), Repository::ContentChange::Done);
+        QVERIFY(!t.repo->get(a.id)->rich);
+        QVERIFY(t.repo->richText(a.id).isEmpty());
+
+        // Deleting the copy deletes it too; a missing copy gets nothing.
+        const auto b = t.repo->ingest(QStringLiteral("second"));
+        t.repo->setRich(b.id, QStringLiteral("<b>second</b>"));
+        t.repo->remove(b.id);
+        QVERIFY(t.repo->richText(b.id).isEmpty());
+        t.repo->setRich(9999, QStringLiteral("<b>nobody</b>"));
+        QVERIFY(t.repo->richText(9999).isEmpty());
+
+        const auto c = t.repo->ingest(QStringLiteral("third"));
+        t.repo->setRich(c.id, QStringLiteral("<b>third</b>"));
+        t.repo->clearAllRich();
+        QVERIFY(!t.repo->get(c.id)->rich);
+    }
+
     void searchFindsPicturesByTheTextReadFromThem()
     {
         TestDb t;

@@ -24,6 +24,8 @@ public slots: // D-Bus methods
     void Show(const QString& activationToken);
     void Hide();
     void Ingest(const QString& text, const QStringList& mimeTypes);
+    // A text copy with its HTML version (from the GNOME extension); never for a marked copy.
+    void IngestRich(const QString& text, const QString& html, const QStringList& mimeTypes);
     // Only from GNOME Shell (where the ClipItTo extension runs): pictures are big, and no
     // other session client should be able to slip one into the history.
     void IngestImage(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);

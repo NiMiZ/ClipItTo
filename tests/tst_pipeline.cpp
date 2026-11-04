@@ -29,6 +29,53 @@ class TestPipeline : public QObject {
     Q_OBJECT
 
 private slots:
+    void keepsTheFormattedVersionOnlyWhenItHasFormatting()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 4096);
+        const QStringList plain{QStringLiteral("text/plain"), QStringLiteral("text/html")};
+
+        p.process(QStringLiteral("bold word"), plain, QStringLiteral("<b>bold</b> word"));
+        const auto bold = t.repo->recent(10, false);
+        QCOMPARE(bold.size(), 1);
+        QVERIFY(bold.front().rich);
+        QCOMPARE(t.repo->richText(bold.front().id), QStringLiteral("<b>bold</b> word"));
+
+        // A browser's wrapper around plain text says nothing more than the text.
+        p.process(QStringLiteral("only text"), plain, QStringLiteral("<span style=\"color: red\">only text</span>"));
+        QVERIFY(!t.repo->recent(10, false).front().rich);
+
+        // The same text copied again, now without formatting: the newest copy decides.
+        p.process(QStringLiteral("bold word"), {QStringLiteral("text/plain")});
+        for (const auto& e : t.repo->recent(10, false)) {
+            QVERIFY2(!e.rich, qPrintable(e.content));
+        }
+    }
+
+    void aKeyOrTokenNeverGetsAFormattedVersion()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 4096);
+        p.setDetectSecrets(true); // no master password: the copy is stored as before, but plain
+        const QString token = QStringLiteral("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB");
+        p.process(token, {QStringLiteral("text/html")}, QStringLiteral("<b>") + token + QStringLiteral("</b>"));
+        QVERIFY(!t.repo->recent(10, false).front().rich);
+        // HTML for another copy than the text is not kept.
+        p.process(QStringLiteral("first copy here"), {}, QStringLiteral("<b>some other copy entirely</b>"));
+        QVERIFY(!t.repo->recent(10, false).front().rich);
+    }
+
+    void keepsNoFormattedVersionWhenTurnedOffOrTooLarge()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 64);
+        p.process(QStringLiteral("big"), {}, QStringLiteral("<b>") + QString(200, QLatin1Char('x')) + QStringLiteral("</b>"));
+        QVERIFY(!t.repo->recent(10, false).front().rich); // over max_item_bytes, like the text itself
+        p.setKeepFormatting(false);
+        p.process(QStringLiteral("off"), {}, QStringLiteral("<b>off</b>"));
+        QVERIFY(!t.repo->recent(10, false).front().rich);
+    }
+
     void storesAcceptedText()
     {
         TestDb t;

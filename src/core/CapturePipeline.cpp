@@ -1,5 +1,6 @@
 #include "CapturePipeline.h"
 
+#include "RichText.h"
 #include "SecretScan.h"
 #include "PasswordVault.h"
 #include "db/Repository.h"
@@ -36,6 +37,16 @@ void CapturePipeline::setImageLimits(int maxImages, qint64 maxImageBytes)
     }
 }
 
+void CapturePipeline::setKeepFormatting(bool on)
+{
+    m_keepFormatting = on;
+    if (!on) {
+        for (Text& waiting : m_waiting) {
+            waiting.html.clear(); // turned off while paused: what is queued keeps no formatted version either
+        }
+    }
+}
+
 void CapturePipeline::setPasswords(const PasswordVault* vault, bool keep, const QString& group)
 {
     m_vault = vault;
@@ -54,9 +65,9 @@ void CapturePipeline::setPaused(bool paused)
     if (paused) {
         return;
     }
-    const QList<QString> waiting = std::exchange(m_waiting, {});
-    for (const QString& text : waiting) {
-        store(text);
+    const QList<Text> waiting = std::exchange(m_waiting, {});
+    for (const Text& copy : waiting) {
+        store(copy);
     }
     const QList<SealedCopy> secrets = std::exchange(m_waitingSecrets, {});
     for (const SealedCopy& copy : secrets) {
@@ -103,9 +114,11 @@ void CapturePipeline::storeImage(const ImageClip& image)
     }
 }
 
-void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
+void CapturePipeline::process(const QString& text, const QStringList& mimeTypes, const QString& html)
 {
     ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
+    // A key or token is never given a formatted version, whether it is kept as a password copy or not.
+    const bool looksSecret = verdict == ClipFilter::Verdict::Accept && m_detectSecrets && !secretscan::kindOf(text).isEmpty();
     QString detected; // what an unmarked copy looks like, when it is kept as a password anyway
     if (verdict == ClipFilter::Verdict::Accept && m_detectSecrets && keepsPasswords()) {
         detected = secretscan::kindOf(text);
@@ -148,15 +161,22 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes)
         emit rejected(verdict);
         return;
     }
+    // Only a version that says more than the text, and fits the same size cap as a copy.
+    QString rich;
+    if (m_keepFormatting && !looksSecret && !html.isEmpty() && html.toUtf8().size() <= m_filter.maxBytes()
+        && richtext::hasFormatting(html) && richtext::matchesText(html, text)) {
+        rich = html;
+    }
     if (m_paused) {
-        m_waiting.removeAll(text); // the same text copied twice is one entry anyway
-        m_waiting << text;
+        m_waiting.removeIf([&](const Text& w) { return w.text == text; }); // the same text copied twice is one entry anyway
+        constexpr qsizetype kMaxWaitingRich = 50; // HTML can be large and is held in memory while paused
+        m_waiting << Text{text, m_waiting.size() < kMaxWaitingRich ? rich : QString()};
         while (m_waiting.size() > m_maxHistory) {
             m_waiting.removeFirst(); // keep memory bounded: the oldest would be pruned anyway
         }
         return;
     }
-    store(text);
+    store({text, rich});
 }
 
 void CapturePipeline::storeSecret(const SealedCopy& copy)
@@ -175,10 +195,18 @@ void CapturePipeline::storeSecret(const SealedCopy& copy)
     }
 }
 
-void CapturePipeline::store(const QString& text)
+void CapturePipeline::store(const Text& copy)
 {
     try {
-        const auto result = m_repo.ingest(text);
+        const auto result = m_repo.ingest(copy.text);
+        // The newest copy of this text decides: with formatting now, or plain this time.
+        if (copy.html.isEmpty()) {
+            if (!result.inserted) {
+                m_repo.clearRich(result.id);
+            }
+        } else {
+            m_repo.setRich(result.id, copy.html);
+        }
         if (result.inserted) {
             // The prune query is index-backed and cheap, so the limit is kept exact.
             m_repo.prune(m_maxHistory);

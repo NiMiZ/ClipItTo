@@ -4,6 +4,7 @@ import System from 'system';
 
 import {CLIPBOARD, PRIMARY, makeWindow, resetState, state} from './stubs/state.js';
 import GLib from 'gi://GLib';
+import Gio from './stubs/Gio.js';
 
 import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupMain, isPopupWindow, isSensitive, popupPlacement, sourceAppName} from './extension.js';
 
@@ -73,6 +74,38 @@ test('clipboard text is sent to the daemon without auto-starting it', () => {
         ['io.github.nimiz.ClipItTo', '/io/github/nimiz/ClipItTo', 'Ingest']);
     assertEq(call.params.deepUnpack(), ['hello', TEXT], 'params');
     assertEq(call.flags, NO_AUTO_START, 'flags');
+    ext.disable();
+});
+
+test('a copy with a formatted version is sent as IngestRich', () => {
+    const ext = enabled();
+    const types = [...TEXT, 'text/html'];
+    state.html[CLIPBOARD] = new TextEncoder().encode('<b>bold</b> word');
+    state.selection.setOwner(CLIPBOARD, types, 'bold word');
+    assertEq(state.dbusCalls.length, 1, 'calls');
+    assertEq(state.dbusCalls[0].method, 'IngestRich');
+    assertEq(state.dbusCalls[0].params.deepUnpack(), ['bold word', '<b>bold</b> word', types]);
+    assertEq(state.dbusCalls[0].flags, NO_AUTO_START, 'flags');
+
+    // An older daemon has no IngestRich: the plain text is sent instead.
+    state.dbusCalls[0].callback({
+        call_finish: () => {
+            const e = new Error('No such method');
+            e.matches = (_domain, code) => code === Gio.DBusError.UNKNOWN_METHOD;
+            throw e;
+        },
+    }, null);
+    assertEq(state.dbusCalls[1].method, 'Ingest');
+    assertEq(state.dbusCalls[1].params.deepUnpack(), ['bold word', types]);
+
+    // Offered but unreadable: plain. Not offered: plain, and nothing is read. Primary: plain.
+    state.html = {};
+    state.selection.setOwner(CLIPBOARD, types, 'no html');
+    assertEq(state.dbusCalls[2].method, 'Ingest');
+    state.contentReads = [];
+    state.selection.setOwner(CLIPBOARD, TEXT, 'plain');
+    assertEq(state.contentReads, [], 'content reads');
+    assertEq(state.dbusCalls[3].method, 'Ingest');
     ext.disable();
 });
 

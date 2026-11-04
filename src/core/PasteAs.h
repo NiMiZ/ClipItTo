@@ -19,6 +19,7 @@ struct Item {
 // Ids of the items that are not text transforms.
 inline constexpr const char* kKeyboardLayout = "layout";
 inline constexpr const char* kTranslate = "translate";
+inline constexpr const char* kRich = "rich"; // only offered for a copy that has a formatted version
 inline constexpr const char* kPictureText = "pic_text";
 inline constexpr const char* kPictureChanged = "pic_changed";
 inline constexpr const char* kPictureTranslate = "pic_translate";

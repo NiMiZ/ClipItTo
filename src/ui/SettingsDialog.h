@@ -136,6 +136,7 @@ public:
     QSpinBox* imagesBox() const { return m_images; }
     QLineEdit* ocrLanguagesEdit() const { return m_ocrLanguages; }
     QCheckBox* indexPicturesBox() const { return m_indexPictures; }
+    QCheckBox* keepFormattingBox() const { return m_keepFormatting; }
     QCheckBox* layoutBox(const QString& id) const;
     QToolButton* encryptionInfo() const { return m_encryptionInfo; }
     QToolButton* shortcutInfo() const { return m_shortcutInfo; }
@@ -214,6 +215,7 @@ private:
     QSpinBox* m_images;
     QLineEdit* m_ocrLanguages;
     QCheckBox* m_indexPictures;
+    QCheckBox* m_keepFormatting;
     QList<QCheckBox*> m_layoutBoxes; // keyboard layouts for Paste as…, in texttransform::layouts() order
     QString m_layoutsSetting; // keyboard_layouts as loaded
     QSpinBox* m_lines;

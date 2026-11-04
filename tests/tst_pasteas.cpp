@@ -31,9 +31,10 @@ private slots:
         }
         const QList<Item> text = textItems();
         QCOMPARE(text.first().id, QStringLiteral("upper"));
-        QCOMPARE(text.at(text.size() - 2).id, QStringLiteral("layout"));
-        QCOMPARE(text.last().id, QStringLiteral("translate"));
-        QCOMPARE(text.size(), 14);
+        QCOMPARE(text.at(text.size() - 3).id, QStringLiteral("layout"));
+        QCOMPARE(text.at(text.size() - 2).id, QStringLiteral("translate"));
+        QCOMPARE(text.last().id, QStringLiteral("rich")); // offered only for a copy that has a formatted version
+        QCOMPARE(text.size(), 15);
         QCOMPARE(pictureItems().size(), 4);
     }
 

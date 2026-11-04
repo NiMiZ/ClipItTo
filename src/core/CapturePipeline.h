@@ -33,6 +33,8 @@ public:
     bool keepsPasswords() const;
     // Copies that look like a secret (secretscan) are kept as password copies when passwords are kept.
     void setDetectSecrets(bool on) { m_detectSecrets = on; }
+    // Keep the HTML of a copy that has formatting next to its text (keep_formatting).
+    void setKeepFormatting(bool on);
 
     // While paused (the database is busy elsewhere, e.g. being encrypted), accepted clips
     // wait in memory; resuming stores them in order.
@@ -40,7 +42,8 @@ public:
     bool isPaused() const { return m_paused; }
 
 public slots:
-    void process(const QString& text, const QStringList& mimeTypes);
+    // `html`: the copy's formatted version when the backend has it; kept only if it has formatting (RichText.h).
+    void process(const QString& text, const QStringList& mimeTypes, const QString& html = QString());
     void processImage(const clipitto::ImageClip& image, const QStringList& mimeTypes);
 
 signals:
@@ -53,7 +56,11 @@ signals:
     void passwordStored(qint64 id, const QString& sourceApp);
 
 private:
-    void store(const QString& text);
+    struct Text {
+        QString text;
+        QString html;
+    };
+    void store(const Text& copy);
     void storeImage(const ImageClip& image);
     struct SealedCopy {
         QByteArray sealed;
@@ -67,12 +74,13 @@ private:
     int m_maxHistory;
     int m_maxImages = 100;
     bool m_paused = false;
-    QList<QString> m_waiting;
+    QList<Text> m_waiting;
     QList<ImageClip> m_waitingImages; // a few at most: pictures are big
     QList<SealedCopy> m_waitingSecrets; // sealed already: never held in clear
     const PasswordVault* m_vault = nullptr;
     bool m_keepPasswords = false;
     bool m_detectSecrets = false;
+    bool m_keepFormatting = true;
     QString m_passwordGroup;
 };
 

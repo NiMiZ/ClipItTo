@@ -62,7 +62,7 @@ private slots:
         const auto& text = d.pasteAsEditor(false);
         const auto& picture = d.pasteAsEditor(true);
         QVERIFY(text.list && picture.list);
-        QCOMPARE(text.list->count(), 14);
+        QCOMPARE(text.list->count(), 15);
         QCOMPARE(picture.list->count(), 4);
         QCOMPARE(text.list->item(0)->data(Qt::UserRole).toString(), QStringLiteral("upper"));
         QVERIFY(d.config().pasteAsText.isEmpty()); // untouched: the built-in list
@@ -571,6 +571,9 @@ private slots:
         QVERIFY(d.indexPicturesBox()->isChecked() && d.config().indexPictures); // on by default
         d.indexPicturesBox()->setChecked(false);
         QVERIFY(!d.config().indexPictures);
+        QVERIFY(d.keepFormattingBox()->isChecked() && d.config().keepFormatting); // on by default
+        d.keepFormattingBox()->setChecked(false);
+        QVERIFY(!d.config().keepFormatting);
         d.ocrLanguagesEdit()->setText(QStringLiteral(" en, he "));
         QCOMPARE(d.config().ocrLanguages, QStringLiteral("en, he"));
         // Keyboard layouts for Paste as…: unchanged keeps the setting; ticking writes the list.
