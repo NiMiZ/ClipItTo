@@ -1,6 +1,7 @@
 #include "Prompts.h"
 
 #include "PasswordPolicy.h"
+#include "QrImage.h"
 
 #include <QComboBox>
 #include <QCoreApplication>
@@ -12,6 +13,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -142,6 +144,40 @@ ConfirmPrompt defaultConfirmPrompt()
 {
     return [](QWidget* parent, const QString& question) {
         return QMessageBox::question(parent, QStringLiteral("ClipItTo"), question) == QMessageBox::Yes;
+    };
+}
+
+QrView defaultQrView()
+{
+    return [](QWidget* parent, const QString& text) {
+        const auto tr = [](const char* s) { return QCoreApplication::translate("clipitto::ui::PopupWindow", s); };
+        QDialog dialog(parent);
+        dialog.setWindowTitle(tr("QR code"));
+        auto* layout = new QVBoxLayout(&dialog);
+        QString error;
+        const QImage image = qrImage(text, 360, &error);
+        auto* picture = new QLabel(&dialog);
+        picture->setObjectName(QStringLiteral("qrPicture"));
+        picture->setAlignment(Qt::AlignCenter);
+        if (image.isNull()) {
+            picture->setText(error);
+            picture->setWordWrap(true);
+        } else {
+            picture->setPixmap(QPixmap::fromImage(image));
+        }
+        layout->addWidget(picture);
+        if (!image.isNull()) {
+            auto* hint = new QLabel(tr("Point your phone's camera at the code. It shows this copy; "
+                                       "nothing leaves this computer."),
+                                    &dialog);
+            hint->setWordWrap(true);
+            hint->setAlignment(Qt::AlignCenter);
+            layout->addWidget(hint);
+        }
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(buttons);
+        dialog.exec();
     };
 }
 

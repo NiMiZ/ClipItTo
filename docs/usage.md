@@ -53,6 +53,12 @@ copied text* (`keep_formatting`) turns it off and deletes the formatted versions
 password manager never keep one. Editing a copy's text drops its formatted version. Not included in a backup.
 On GNOME (Wayland) it needs the updated extension (log out and in once after the update).
 
+**QR code.** Right-click a text copy › *Show as QR code…* shows it as a QR code you scan with your phone's camera:
+a link to open there, Wi-Fi details (`WIFI:T:WPA;S:name;P:password;;`), a short note. It is drawn on this computer
+and goes nowhere else. About 2,900 characters fit at most; a longer copy says so. Not offered for password copies
+(their text is never put on the screen) or pictures. A code is on the screen like any text: a screenshot or screen
+sharing can capture it, so close it when done (Esc), especially for Wi-Fi details.
+
 **Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
 with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
 screenshot that shows it, together with `img:`. Pictures copied before are read a few seconds after the start.

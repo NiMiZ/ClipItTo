@@ -71,6 +71,24 @@ else()
     target_compile_options(clipitto_monocypher PRIVATE -w)
 endif()
 
+# QR Code generator library by Project Nayuki (MIT): the QR view of a copy (Show as QR code). Two files
+# (cpp/qrcodegen.cpp and .hpp), built in on every platform. Offline builds can point
+# FETCHCONTENT_SOURCE_DIR_QRCODEGEN at an unpacked copy of the same tarball.
+FetchContent_Declare(qrcodegen
+    URL https://github.com/nayuki/QR-Code-generator/archive/refs/tags/v1.8.0.tar.gz
+    URL_HASH SHA256=2ec0a4d33d6f521c942eeaf473d42d5fe139abcfa57d2beffe10c5cf7d34ae60
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+    SOURCE_SUBDIR no-cmake-project) # sources only: its Makefile is not used
+FetchContent_MakeAvailable(qrcodegen)
+add_library(clipitto_qrcodegen STATIC ${qrcodegen_SOURCE_DIR}/cpp/qrcodegen.cpp)
+target_include_directories(clipitto_qrcodegen SYSTEM PUBLIC ${qrcodegen_SOURCE_DIR}/cpp)
+set_target_properties(clipitto_qrcodegen PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+    target_compile_options(clipitto_qrcodegen PRIVATE /w)
+else()
+    target_compile_options(clipitto_qrcodegen PRIVATE -w)
+endif()
+
 # The history key's keyring: Windows uses the Credential Manager API directly; Linux uses
 # Secret Service through qtkeychain (distro package), optional.
 if(UNIX AND NOT APPLE)

@@ -55,4 +55,8 @@ struct MasterPasswordAnswer {
 using MasterPasswordPrompt = std::function<std::optional<MasterPasswordAnswer>(QWidget* parent, bool change)>;
 MasterPasswordPrompt defaultMasterPasswordPrompt();
 
+// Shows a copy's text as a QR code to scan with a phone (modal, closes with Esc). `text` is never logged.
+using QrView = std::function<void(QWidget* parent, const QString& text)>;
+QrView defaultQrView();
+
 } // namespace clipitto::ui

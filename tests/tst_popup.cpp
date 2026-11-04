@@ -1194,6 +1194,47 @@ private slots:
         QVERIFY(custom.first().contains(QLatin1String("No items selected")));
     }
 
+    void contextMenuShowsATextCopyAsAQrCode()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        QString shown;
+        f.popup->setQrView([&](QWidget*, const QString& text) { shown = text; });
+        const Entry text = *f.t.repo->get(f.t.repo->ingest(QStringLiteral("https://example.org/a")).id);
+        const auto qrAction = [&](const Entry& entry, std::unique_ptr<QMenu>& owner) -> QAction* {
+            owner.reset(f.popup->createContextMenu(entry, f.popup.get()));
+            for (QAction* a : owner->actions()) {
+                if (a->text().remove(QLatin1Char('&')).startsWith(QLatin1String("Show as QR code"))) {
+                    return a;
+                }
+            }
+            return nullptr;
+        };
+        std::unique_ptr<QMenu> menu;
+        QAction* action = qrAction(text, menu);
+        QVERIFY(action);
+        action->trigger();
+        QCOMPARE(shown, QStringLiteral("https://example.org/a"));
+
+        // Chosen after the copy became a password meanwhile: nothing is shown.
+        const auto live = f.t.repo->ingest(QStringLiteral("hunter2 or so"));
+        Entry liveEntry = *f.t.repo->get(live.id);
+        shown.clear();
+        QAction* late = qrAction(liveEntry, menu);
+        QVERIFY(late);
+        f.t.repo->convertToSecret(live.id, QByteArray("sealed"), QString());
+        late->trigger();
+        QVERIFY2(shown.isEmpty(), "a password's text reached the QR view");
+
+        // Not for a password (its text must never be put on a screen) and not for a picture.
+        Entry secret = text;
+        secret.secret = true;
+        QVERIFY(!qrAction(secret, menu));
+        Entry picture = text;
+        picture.image = true;
+        QVERIFY(!qrAction(picture, menu));
+    }
+
     void pasteAsOffersFormattingOnlyForACopyThatHasIt()
     {
         Fixture f;

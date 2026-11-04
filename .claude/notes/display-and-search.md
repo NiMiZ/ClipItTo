@@ -53,6 +53,13 @@ Mark as password drops it; turning the setting off deletes all (`clearAllRich`).
 -> `ClipboardWriter::setRich` (Qt clipboard with text + html, even with the GNOME integration, which takes one format per
 write). Not in backups. Windows/macOS read path compiled by CI only.
 
+## QR code view
+Right-click a text copy (not a password, not a picture) › "Show as QR code…" -> `PopupWindow::m_qrView` (injectable `QrView`,
+`defaultQrView()` in Prompts.cpp: modal dialog, Esc closes). `ui::qrImage(text, minSide, &error)` (QrImage.cpp) renders
+with Nayuki's qrcodegen 1.8.0 (`clipitto_qrcodegen`, FetchContent in cmake/Dependencies.cmake, sha pinned; offline:
+FETCHCONTENT_SOURCE_DIR_QRCODEGEN): ECC medium, falling back to low, 4-module quiet zone, whole pixels per module;
+over 2953 UTF-8 bytes -> null + message. Nothing is logged or stored.
+
 ## Popup placement on Wayland
 Wayland clients can't place windows; the GNOME extension does it: the daemon calls `ActivateWindowAt(position)`
 (falls back to `ActivateWindow` = "center" for an older extension, which stays loaded until re-login), the
