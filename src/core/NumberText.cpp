@@ -80,4 +80,21 @@ QString bitsText(std::uint64_t value)
     return parts.join(QLatin1Char(' '));
 }
 
+QString hexText(std::uint64_t value)
+{
+    return QString::number(value, 16);
+}
+
+QString decText(std::uint64_t value)
+{
+    return QString::number(value, 10);
+}
+
+QString binaryText(std::uint64_t value)
+{
+    QString s = QString::number(value, 2);
+    const qsizetype width = (s.size() + 7) / 8 * 8;
+    return s.rightJustified(width, QLatin1Char('0'));
+}
+
 } // namespace clipitto::numbertext

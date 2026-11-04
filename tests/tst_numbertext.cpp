@@ -52,6 +52,21 @@ private slots:
         QVERIFY(!parse(QStringLiteral("18446744073709551616")));
     }
 
+    void conversions()
+    {
+        const auto hex = parse(QStringLiteral("2c"));
+        QVERIFY(hex);
+        QCOMPARE(decText(hex->hexValue), QStringLiteral("44"));
+        QCOMPARE(binaryText(hex->hexValue), QStringLiteral("00101100"));
+        const auto dec = parse(QStringLiteral("123"));
+        QVERIFY(dec);
+        QCOMPARE(hexText(dec->decValue), QStringLiteral("7b"));
+        QCOMPARE(decText(dec->hexValue), QStringLiteral("291"));
+        QCOMPARE(binaryText(dec->hexValue), QStringLiteral("0000000100100011"));
+        QCOMPARE(binaryText(0), QStringLiteral("00000000"));
+        QCOMPARE(binaryText(UINT64_MAX).size(), 64);
+    }
+
     void zeroHasNoBits()
     {
         const auto zero = parse(QStringLiteral("0"));
