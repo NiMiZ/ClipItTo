@@ -132,6 +132,7 @@ public:
     void showQrCode(qint64 id);
     static void fixMnemonics(QMenu* menu);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
+    void addNumberBits(QMenu* target, const QString& text);
     void pasteAs(const QModelIndex& index);
     void addOthersMenu(QMenu* menu, const QList<pasteas::Item>& items, const QStringList& shown,
                        const std::function<void(QMenu*, const QString&)>& addItem);

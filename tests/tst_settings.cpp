@@ -62,7 +62,7 @@ private slots:
         const auto& text = d.pasteAsEditor(false);
         const auto& picture = d.pasteAsEditor(true);
         QVERIFY(text.list && picture.list);
-        QCOMPARE(text.list->count(), 15);
+        QCOMPARE(text.list->count(), 16);
         QCOMPARE(picture.list->count(), 4);
         QCOMPARE(text.list->item(0)->data(Qt::UserRole).toString(), QStringLiteral("upper"));
         QVERIFY(d.config().pasteAsText.isEmpty()); // untouched: the built-in list

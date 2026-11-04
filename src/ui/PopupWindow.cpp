@@ -7,6 +7,7 @@
 #include "HistoryView.h"
 #include "MacApp.h"
 #include "PasswordKeeper.h"
+#include "NumberText.h"
 #include "PasteAs.h"
 #include "PlatformKeys.h"
 #include "SearchBar.h"
@@ -1452,6 +1453,44 @@ static void styleTransformMenu(QMenu* menu, const QPalette& around)
                             .arg(orange, onOrange));
 }
 
+// The "Number" item for a copy that is one number: the numbers of its set bits (0-based, as in 0x123 = 8 5 1 0).
+// A single reading with up to 4 bits set is one line in the menu; a number that can be read in both bases, or
+// has more bits set, gets a "Number" submenu with every reading. The lines are information, not choices.
+void PopupWindow::addNumberBits(QMenu* target, const QString& text)
+{
+    const std::optional<numbertext::Number> number = numbertext::parse(text);
+    if (!number) {
+        return;
+    }
+    QStringList lines;
+    bool manyBits = false;
+    const auto add = [&](const QString& name, std::uint64_t value) {
+        const QList<int> bits = numbertext::setBits(value);
+        if (bits.isEmpty()) {
+            return;
+        }
+        manyBits = manyBits || bits.size() > 4;
+        lines << tr("%1 bits: %2").arg(name, numbertext::bitsText(value));
+    };
+    if (number->canBeHex) {
+        add(tr("Hex"), number->hexValue);
+    }
+    if (number->canBeDec) {
+        add(tr("Dec"), number->decValue);
+    }
+    if (lines.isEmpty()) {
+        return;
+    }
+    if (lines.size() == 1 && !manyBits) {
+        target->addAction(lines.first())->setEnabled(false);
+        return;
+    }
+    QMenu* sub = target->addMenu(tr("&Number"));
+    for (const QString& line : lines) {
+        sub->addAction(line)->setEnabled(false);
+    }
+}
+
 QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
 {
     if (entry.image) {
@@ -1480,6 +1519,8 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
                     hidePopup();
                 });
             }
+        } else if (itemId == QLatin1String(pasteas::kNumber)) {
+            addNumberBits(target, text);
         } else {
             for (const texttransform::Info& info : transforms) {
                 if (info.id != itemId) {

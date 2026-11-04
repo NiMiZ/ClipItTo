@@ -20,6 +20,7 @@ struct Item {
 inline constexpr const char* kKeyboardLayout = "layout";
 inline constexpr const char* kTranslate = "translate";
 inline constexpr const char* kRich = "rich"; // only offered for a copy that has a formatted version
+inline constexpr const char* kNumber = "number"; // only offered for a copy that is a number: its set bits
 inline constexpr const char* kPictureText = "pic_text";
 inline constexpr const char* kPictureChanged = "pic_changed";
 inline constexpr const char* kPictureTranslate = "pic_translate";
