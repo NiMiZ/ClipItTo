@@ -806,6 +806,9 @@ void PopupWindow::markAsPassword(qint64 id)
     }
     const std::optional<qint64> holder = m_passwords->markAsPassword(id);
     refreshSelecting(Selection{Kind::Entry, holder.value_or(id), {}});
+    if (holder && *holder == id) { // not when the same password was already kept
+        emit passwordMarked(id);
+    }
 }
 
 void PopupWindow::unmarkPassword(qint64 id)
@@ -877,6 +880,7 @@ void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
     // A text copy put in the Passwords group becomes a password copy at the same time (what "Mark as password" does):
     // no need to do both. "Mark as password" stays for copies that should not move.
     bool alsoMark = false;
+    qint64 markedNow = 0; // became a new password copy in this step
     if (isPasswordsGroup(group)) {
         try {
             const auto entry = m_repo.get(id);
@@ -901,6 +905,8 @@ void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
             const qint64 holder = m_passwords->markAsPassword(id).value_or(id);
             if (holder != id) {
                 m_repo.setGroup(holder, group);
+            } else if (m_repo.get(id) && m_repo.get(id)->secret) {
+                markedNow = id;
             }
             if (follow.kind == Kind::Entry && follow.id == id) {
                 follow.id = holder;
@@ -917,6 +923,9 @@ void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
         showMessage(problem);
     }
     refreshSelecting(follow);
+    if (markedNow != 0) {
+        emit passwordMarked(markedNow);
+    }
 }
 
 void PopupWindow::moveGroup(const QString& path, int delta)
