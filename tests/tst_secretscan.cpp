@@ -54,6 +54,51 @@ private slots:
         QVERIFY2(!looksSecret(text), qPrintable(kindOf(text)));
     }
 
+    void generatedPasswordShape_data()
+    {
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<bool>("match");
+        QTest::newRow("troubador") << "Tr0ub4dor&3x" << true;
+        QTest::newRow("random symbols") << "k9#Vf2!qLm8@Zp" << true;
+        QTest::newRow("no symbol") << "aB3dE5gH7jK9" << true;
+        QTest::newRow("passphrase") << "correct-horse-battery" << false;
+        QTest::newRow("word") << "hello" << false;
+        QTest::newRow("long word") << "internationalization" << false;
+        QTest::newRow("camelCase") << "getUserName" << false;
+        QTest::newRow("camelCase digit") << "getUserName2" << false;
+        QTest::newRow("snake") << "my_Variable_name2" << false;
+        QTest::newRow("capitalised word number") << "Password123" << false;
+        QTest::newRow("with space") << "Tr0ub4dor &3x" << false;
+        QTest::newRow("two lines") << "Tr0ub4dor&3x\nk9#Vf2!qLm" << false;
+        QTest::newRow("too short") << "aB3#e" << false;
+        QTest::newRow("too long") << QString(65, QLatin1Char('a')) + "B3#" << false;
+        QTest::newRow("url") << "https://Example.com/a?b=1&c=2" << false;
+        QTest::newRow("www") << "www.Example.com/Path1" << false;
+        QTest::newRow("unix path") << "/home/User1/Docs/a.txt" << false;
+        QTest::newRow("home path") << "~/Projects/Foo-1/src" << false;
+        QTest::newRow("windows path") << "C:\\Users\\Bob\\file1.txt" << false;
+        QTest::newRow("relative path") << "src/core/SecretScan.cpp" << false;
+        QTest::newRow("email") << "Jane.Doe1@example.com" << false;
+        QTest::newRow("colour") << "#A1b2C3" << false;
+        QTest::newRow("css colour") << "rgb(10,20,30)" << false;
+        QTest::newRow("uuid") << "123e4567-e89b-12d3-a456-426614174000" << false;
+        QTest::newRow("uuid upper") << "123E4567-E89B-12D3-A456-426614174000" << false;
+        QTest::newRow("sha256") << "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" << false;
+        QTest::newRow("mixed hex hash") << "9F86D081884C7d659a2feaa0c55ad015" << false;
+        QTest::newRow("number") << "1234567890.123" << false;
+        QTest::newRow("date") << "2024-01-15T10:30:00Z" << false;
+        QTest::newRow("version") << "v1.2.3-beta.4" << false;
+        QTest::newRow("call") << "getToken();" << false;
+        QTest::newRow("non ascii") << QString::fromUtf8("Tr0ub4dor&3\xc3\xa9x") << false;
+        QTest::newRow("empty") << "" << false;
+    }
+    void generatedPasswordShape()
+    {
+        QFETCH(QString, text);
+        QFETCH(bool, match);
+        QCOMPARE(looksLikeGeneratedPassword(text), match);
+    }
+
     void luhn()
     {
         QVERIFY(luhnValid(QStringLiteral("4111111111111111")));

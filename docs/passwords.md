@@ -93,6 +93,17 @@ then it takes an ordinary copy: *Not a password* in the right-click menu turns i
 off with *Keep copies that look like secrets as password copies* (`detect_secrets`). Without a master
 password nothing changes.
 
+**Copies that look like generated passwords (off by default).** A copy from a browser's "new password"
+field carries no marker, so nothing tells it from text. Tick *Keep copies that look like generated
+passwords as password copies* (`detect_passwords`) and a single-line copy of 8 to 64 characters without
+spaces that mixes at least three of lower case, upper case, digits and symbols (with at least four letters)
+is kept like any password copy, with the note "Looks like a password". URLs, paths, email addresses,
+colours, UUIDs, hashes, dates and names made of plain words and numbers (`getUserName2`, `Password123`) are
+left alone, and so are passphrases of words (`correct-horse-battery`). **This is a guess and will take some
+ordinary copies** (an unusual identifier, a code, a token of an unknown service); they then show as `●●●●`
+until you use *Not a password* in the right-click menu. That is why it is off. Like the option above, it
+needs a master password (or *Use without one…*); otherwise the box is disabled.
+
 **Choosing a master password.** The dialog lists the rules and ticks them as you type: at least 8
 characters with an uppercase letter, a lowercase letter and a digit; no form of "password", "admin" or
 "root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row

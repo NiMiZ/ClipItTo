@@ -65,6 +65,60 @@ bool luhnValid(const QString& digits)
     return sum % 10 == 0;
 }
 
+bool looksLikeGeneratedPassword(const QString& text)
+{
+    if (text.size() < 8 || text.size() > 64) {
+        return false;
+    }
+    bool lower = false, upper = false, digit = false, symbol = false;
+    int letters = 0;
+    for (const QChar c : text) {
+        const char16_t u = c.unicode();
+        if (u <= 0x20 || u >= 0x7f) {
+            return false; // spaces, line breaks, control and non-ASCII characters: not a generated password
+        }
+        if (u >= 'a' && u <= 'z') {
+            lower = true;
+            ++letters;
+        } else if (u >= 'A' && u <= 'Z') {
+            upper = true;
+            ++letters;
+        } else if (u >= '0' && u <= '9') {
+            digit = true;
+        } else {
+            symbol = true;
+        }
+    }
+    if (int(lower) + int(upper) + int(digit) + int(symbol) < 3 || letters < 4) {
+        return false;
+    }
+    static const QRegularExpression notPassword(QStringLiteral(
+        "^(?:[A-Za-z][A-Za-z0-9+.-]*://.*"                                                   // URL
+        "|www\\..*"
+        "|[A-Za-z]:[\\\\/].*"                                                                // C:\\dir
+        "|[/~\\\\].*"                                                                        // /path, ~/path, \\server
+        "|[^@]+@[^@]+\\.[A-Za-z]{2,}"                                                        // email address
+        "|#[0-9A-Fa-f]{3,8}"                                                                 // colour
+        "|(?:rgb|hsl)a?\\(.*"
+        "|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"       // UUID
+        "|[0-9A-Fa-f]{32,}"                                                                  // hash
+        "|\\d{4}-\\d{2}-\\d{2}.*"                                                            // date
+        "|.*\\(\\).*)$"));                                                                   // call: foo()
+    if (text.contains(notPassword)) {
+        return false;
+    }
+    // Plain words and numbers joined by _ - . / \ : (camelCase names, snake_case, file names,
+    // versions, "Password123") are text: a generated password has digits or symbols inside its words.
+    static const QRegularExpression wordLike(QStringLiteral("^[A-Za-z]*\\d{0,4}$"));
+    static const QRegularExpression joiners(QStringLiteral("[_./\\\\:-]"));
+    for (const QString& part : text.split(joiners)) {
+        if (!part.contains(wordLike)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 QString kindOf(const QString& text)
 {
     constexpr qsizetype kLimit = 64 * 1024;

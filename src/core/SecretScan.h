@@ -14,6 +14,13 @@ namespace secretscan {
 QString kindOf(const QString& text);
 inline bool looksSecret(const QString& text) { return !kindOf(text).isEmpty(); }
 
+// Does a whole copy look like a generated password (a browser's "new password" field, a generator)?
+// One line, no spaces, 8-64 printable ASCII characters, at least three of lower case, upper case,
+// digits and symbols, at least four letters, and not a URL, path, email address, colour, UUID, hash,
+// date, call or a name made of plain words and numbers. A guess: it will take some ordinary copies,
+// so callers keep it behind an off-by-default setting. Never logs the text.
+bool looksLikeGeneratedPassword(const QString& text);
+
 // Luhn check over the digits of `digits` (13-19 of them).
 bool luhnValid(const QString& digits);
 

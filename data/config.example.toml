@@ -52,6 +52,9 @@ passwords_in_group = true   # put new password copies in the "Passwords" group
                             # (false: only in the group and in the p[] search)
 detect_secrets = true       # a copy that looks like an API key, token, private key or card number is
                             # kept as a password copy too (once a master password is set)
+detect_passwords = false    # a single-line copy that looks like a generated password (8-64 characters,
+                            # no spaces, three of lower/upper/digits/symbols) is kept as a password
+                            # copy too. A guess: it can take ordinary text, so it is off by default
 passwords_per_note = true   # the same password under a different note is kept as a separate copy
 password_ask_note = true    # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
