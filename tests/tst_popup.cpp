@@ -166,6 +166,38 @@ private slots:
         QCOMPARE(spy.count(), 1);
     }
 
+    void groupStarAndPinShortcutsWorkFromTheSearchBox()
+    {
+        clipitto::ui::SearchBar bar;
+        QSignalSpy group(&bar, &clipitto::ui::SearchBar::editGroupRequested);
+        QSignalSpy star(&bar, &clipitto::ui::SearchBar::toggleFavoriteRequested);
+        QSignalSpy pin(&bar, &clipitto::ui::SearchBar::togglePinRequested);
+        QTest::keyClick(&bar, Qt::Key_G, Qt::ControlModifier);
+        QTest::keyClick(&bar, Qt::Key_S, Qt::ControlModifier);
+        QTest::keyClick(&bar, Qt::Key_P, Qt::ControlModifier);
+        QCOMPARE(group.count(), 1);
+        QCOMPARE(star.count(), 1);
+        QCOMPARE(pin.count(), 1);
+        QTest::keyClick(&bar, Qt::Key_G); // a plain g is text
+        QCOMPARE(group.count(), 1);
+        QCOMPARE(bar.text(), QStringLiteral("g"));
+    }
+
+    void ctrlGFromTheSearchBoxOpensTheGroupPrompt()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        f.popup->searchBar()->setFocus();
+        int asked = 0;
+        f.popup->setGroupPrompt([&](QWidget*, const QString&, const QStringList&) -> std::optional<QString> {
+            ++asked;
+            return std::nullopt;
+        });
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_Down); // onto a copy
+        QTest::keyClick(f.popup->searchBar(), Qt::Key_G, Qt::ControlModifier);
+        QCOMPARE(asked, 1);
+    }
+
     void arrowsTraverseAndSkipHeaders()
     {
         Fixture f;
