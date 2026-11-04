@@ -2,7 +2,9 @@
 
 #include "GroupPath.h"
 #include "PasswordVault.h"
+#include "Previews.h"
 
+#include <QColor>
 #include <QHash>
 #include <QLocale>
 #include <QPixmap>
@@ -266,6 +268,15 @@ QVariant HistoryModel::data(const QModelIndex& index, int role) const
         return e.image || e.secret ? QVariant() : QVariant(e.content.left(2000));
     case SecretRole:
         return e.secret;
+    case ColorRole: {
+        if (e.image || e.secret) {
+            return QColor();
+        }
+        const auto c = preview::colorOf(e.content);
+        return c ? QColor(c->r, c->g, c->b, c->a) : QColor();
+    }
+    case FilesRole:
+        return e.image || e.secret ? QStringList() : preview::filePaths(e.content);
     case FavoriteRole:
         return e.favorite;
     case HasNoteRole:

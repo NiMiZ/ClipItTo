@@ -10,6 +10,7 @@ the real clipboard where it can. These need a person at the machine. Tick them o
 | Windows Hello | turn it on, unlock with face/fingerprint/PIN, cancel, *Forgot it…* reset | Windows with Hello set up |
 | Source app of a password copy | the note is the real app's name for KeePass, KeePassXC, Bitwarden, 1Password | Windows, X11, GNOME |
 | Copy with formatting | copy from Word, a web page and a mail, then *Shift+Enter › With formatting* into Word / a mail editor; the plain paste stays plain | Windows (HTML Format), macOS (public.html), GNOME extension, KDE / wlroots (wl-paste), X11 |
+| Copied files | copy files in Windows Explorer and in Finder: the row shows the file names, pasting gives the paths | Windows, macOS |
 | Pictures | copy and paste back on GNOME Wayland (extension), KDE, wlroots; paste into Office and browsers on Windows | each desktop |
 | History encryption | the key kept in a real GNOME Keyring / KWallet / Credential Manager | Linux, Windows |
 | Backup across systems | export on one OS, import on another (JSON is plain, so it should work) | any two OSes |

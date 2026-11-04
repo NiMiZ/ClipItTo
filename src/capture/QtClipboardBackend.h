@@ -52,6 +52,7 @@ private:
     // Reports a text copy; a marked one with its source app, or without its text when
     // password copies aren't kept.
     void emitText(const QString& text, QStringList formats, const QString& html = QString());
+    bool emitFiles(const QMimeData* data, const QStringList& formats); // copied files as a list of paths; false when it holds none
     QString htmlOf(const QMimeData* data, const QString& text) const;
     void readImage(const QStringList& formats); // the clipboard's picture through Qt, if any
 

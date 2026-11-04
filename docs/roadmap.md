@@ -108,5 +108,7 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
     database change (the rich flavour stored next to the text, with a size cap), capture in each backend
     (`text/html` and RTF on Wayland and X11, `HTML Format` and `Rich Text Format` on Windows, `public.html`
     on macOS), and the writer putting both flavours on the clipboard. Encrypted history covers it too.
-15. **Previews for more kinds:** **DONE: QR code view** (right-click › *Show as QR code…*, to scan with a phone; MIT
-    library by Project Nayuki). Colour swatch for `#rrggbb`, code highlighting, file-path list for copied files.
+15. **Previews for more kinds:** **DONE: colour swatch** (`#rrggbb`, `rgb()`...), **file-path list** (names and an icon;
+    files copied in Explorer or Finder are recorded as paths) **and QR code view** (right-click › *Show as QR code…*, to
+    scan with a phone; MIT library by Project Nayuki). Still open: code highlighting, thumbnails of copied picture
+    files, and files copied on GNOME (the extension reads text only).

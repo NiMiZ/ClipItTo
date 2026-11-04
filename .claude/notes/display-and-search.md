@@ -53,6 +53,14 @@ Mark as password drops it; turning the setting off deletes all (`clearAllRich`).
 -> `ClipboardWriter::setRich` (Qt clipboard with text + html, even with the GNOME integration, which takes one format per
 write). Not in backups. Windows/macOS read path compiled by CI only.
 
+## Colour swatch and file list rows
+`src/core/Previews.{h,cpp}`: `colorOf(text)` (whole text is one colour), `filePaths(text)` (every line an absolute path or
+`file://` URI, never touches the disk; a lone `/help` is not one), `fileSummary`. `HistoryModel` roles `ColorRole`,
+`FilesRole` (computed in `data()`, not for pictures or passwords); `HistoryDelegate` draws `drawSwatch` / `drawFile`
+before the text, and the file names replace the paths as the title unless the copy has a note. Capture:
+`QtClipboardBackend::emitFiles` records copied files (urls, no text/plain) as native-separator paths, also after a
+native `NoText` (Explorer, Finder). The GNOME extension and wl-paste read text only. Windows/macOS part is CI-compiled only.
+
 ## QR code view
 Right-click a text copy (not a password, not a picture) › "Show as QR code…" -> `PopupWindow::m_qrView` (injectable `QrView`,
 `defaultQrView()` in Prompts.cpp: modal dialog, Esc closes). `ui::qrImage(text, minSide, &error)` (QrImage.cpp) renders

@@ -51,6 +51,8 @@ public:
         PinnedRole,
         ThumbnailRole, // QPixmap for a picture copy, null otherwise
         SecretRole, // a password copy: shown hidden (●●●●) unless revealed
+        ColorRole, // QColor when the copy's text is one colour (#rrggbb, rgb(...)); invalid otherwise
+        FilesRole, // QStringList of paths when the copy's text is a list of files; empty otherwise
     };
 
     // What a hidden password shows instead of its text.

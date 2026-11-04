@@ -4,10 +4,13 @@
 #include "ImageCodec.h"
 #include "SourceApp.h"
 
+#include <QDir>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QMimeData>
+#include <QUrl>
 
+#include <algorithm>
 #include <utility>
 
 Q_LOGGING_CATEGORY(lcQtClipboard, "clipitto.capture.qt")
@@ -82,6 +85,15 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
     if (!data) {
         return;
     }
+    // Files copied in a file manager: their paths, unless the copy offers plain text of its own.
+    const auto offersPlainText = [](const QStringList& formats) {
+        return std::any_of(formats.begin(), formats.end(), [](const QString& f) {
+            return f.startsWith(QLatin1String("text/plain"), Qt::CaseInsensitive) || f == QLatin1String("UTF8_STRING");
+        });
+    };
+    if (mode == QClipboard::Clipboard && !offersPlainText(data->formats()) && emitFiles(data, data->formats())) {
+        return;
+    }
     if (data->hasText()) {
         const QStringList formats = data->formats();
         if (ClipFilter::isSensitive(formats) && (!readMarkedText() || mode != QClipboard::Clipboard)) {
@@ -94,6 +106,27 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
     } else if (mode == QClipboard::Clipboard && data->hasImage()) {
         readImage(data->formats()); // text wins when a copy offers both
     }
+}
+
+// Files copied in a file manager carry no text (Windows Explorer, Finder): their local paths, one per line, are
+// recorded as the copy, so the list shows the files and pasting gives the paths.
+bool QtClipboardBackend::emitFiles(const QMimeData* data, const QStringList& formats)
+{
+    // Checked on what is read now as well: the clipboard may have changed since a native read.
+    if (!data || !data->hasUrls() || ClipFilter::isSensitive(formats) || ClipFilter::isSensitive(data->formats())) {
+        return false;
+    }
+    QStringList paths;
+    for (const QUrl& url : data->urls()) {
+        if (url.isLocalFile()) {
+            paths << QDir::toNativeSeparators(url.toLocalFile());
+        }
+    }
+    if (paths.isEmpty()) {
+        return false;
+    }
+    emitText(paths.join(QLatin1Char('\n')), formats);
+    return true;
 }
 
 void QtClipboardBackend::readImage(const QStringList& formats)
@@ -191,6 +224,7 @@ void QtClipboardBackend::readNative()
         emitText(result.text, result.formats, htmlOf(m_clipboard->mimeData(QClipboard::Clipboard), result.text));
         return;
     case NativeClipboardRead::Status::NoText:
+        emitFiles(m_clipboard->mimeData(QClipboard::Clipboard), result.formats); // files copied in Explorer have no text
         return;
     case NativeClipboardRead::Status::Busy:
         if (m_retries < kMaxRetries) {
