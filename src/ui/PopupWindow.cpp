@@ -1453,41 +1453,55 @@ static void styleTransformMenu(QMenu* menu, const QPalette& around)
                             .arg(orange, onOrange));
 }
 
-// The "Number" item for a copy that is one number: the numbers of its set bits (0-based, as in 0x123 = 8 5 1 0).
-// A single reading with up to 4 bits set is one line in the menu; a number that can be read in both bases, or
-// has more bits set, gets a "Number" submenu with every reading. The lines are information, not choices.
+// The "Number" item for a copy that is one number: a submenu with the number in the other base and as bits
+// (pasted when chosen), then the numbers of its set bits (0-based, as in 0x123 = 8 5 1 0) as information lines.
+// A number that can only be one base shows only the other base; one that can be both shows both (hex first).
 void PopupWindow::addNumberBits(QMenu* target, const QString& text)
 {
     const std::optional<numbertext::Number> number = numbertext::parse(text);
     if (!number) {
         return;
     }
-    QStringList lines;
-    bool manyBits = false;
-    const auto add = [&](const QString& name, std::uint64_t value) {
-        const QList<int> bits = numbertext::setBits(value);
-        if (bits.isEmpty()) {
-            return;
-        }
-        manyBits = manyBits || bits.size() > 4;
-        lines << tr("%1 bits: %2").arg(name, numbertext::bitsText(value));
+    const bool both = number->canBeHex && number->canBeDec;
+    QMenu* sub = target->addMenu(tr("&Number"));
+    const auto paste = [&](const QString& label, const QString& out) {
+        sub->addAction(label, this, [this, out] {
+            emit textActivated(out);
+            hidePopup();
+        });
     };
     if (number->canBeHex) {
-        add(tr("Hex"), number->hexValue);
+        const QString out = numbertext::decText(number->hexValue);
+        paste(both ? tr("Hex to decimal: %1").arg(out) : tr("To decimal: %1").arg(out), out);
     }
     if (number->canBeDec) {
-        add(tr("Dec"), number->decValue);
+        const QString out = numbertext::hexText(number->decValue);
+        paste(both ? tr("Decimal to hex: %1").arg(out) : tr("To hex: %1").arg(out), out);
     }
-    if (lines.isEmpty()) {
-        return;
+    if (number->canBeHex) {
+        const QString out = numbertext::binaryText(number->hexValue);
+        paste(both ? tr("Hex as bits: %1").arg(out) : tr("As bits: %1").arg(out), out);
     }
-    if (lines.size() == 1 && !manyBits) {
-        target->addAction(lines.first())->setEnabled(false);
-        return;
+    if (number->canBeDec) {
+        const QString out = numbertext::binaryText(number->decValue);
+        paste(both ? tr("Decimal as bits: %1").arg(out) : tr("As bits: %1").arg(out), out);
     }
-    QMenu* sub = target->addMenu(tr("&Number"));
-    for (const QString& line : lines) {
-        sub->addAction(line)->setEnabled(false);
+    bool separated = false;
+    const auto info = [&](const QString& name, std::uint64_t value) {
+        if (numbertext::setBits(value).isEmpty()) {
+            return;
+        }
+        if (!separated) {
+            sub->addSeparator();
+            separated = true;
+        }
+        sub->addAction(tr("%1 bits: %2").arg(name, numbertext::bitsText(value)))->setEnabled(false);
+    };
+    if (number->canBeHex) {
+        info(tr("Hex"), number->hexValue);
+    }
+    if (number->canBeDec) {
+        info(tr("Dec"), number->decValue);
     }
 }
 

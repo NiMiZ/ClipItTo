@@ -30,5 +30,11 @@ QList<int> setBits(std::uint64_t value);
 // Those numbers separated by spaces ("8 5 1 0").
 QString bitsText(std::uint64_t value);
 
+// `value` as lowercase hex without a prefix ("2c"), as decimal ("44"), and as binary padded to whole bytes
+// ("00101100"; 0 is "00000000").
+QString hexText(std::uint64_t value);
+QString decText(std::uint64_t value);
+QString binaryText(std::uint64_t value);
+
 } // namespace numbertext
 } // namespace clipitto
