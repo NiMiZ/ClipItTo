@@ -31,10 +31,11 @@ private slots:
         }
         const QList<Item> text = textItems();
         QCOMPARE(text.first().id, QStringLiteral("upper"));
-        QCOMPARE(text.at(text.size() - 3).id, QStringLiteral("layout"));
-        QCOMPARE(text.at(text.size() - 2).id, QStringLiteral("translate"));
-        QCOMPARE(text.last().id, QStringLiteral("rich")); // offered only for a copy that has a formatted version
-        QCOMPARE(text.size(), 15);
+        QCOMPARE(text.at(text.size() - 4).id, QStringLiteral("layout"));
+        QCOMPARE(text.at(text.size() - 3).id, QStringLiteral("translate"));
+        QCOMPARE(text.at(text.size() - 2).id, QStringLiteral("rich")); // offered only for a copy that has a formatted version
+        QCOMPARE(text.last().id, QStringLiteral("number")); // offered only for a copy that is a number
+        QCOMPARE(text.size(), 16);
         QCOMPARE(pictureItems().size(), 4);
     }
 
