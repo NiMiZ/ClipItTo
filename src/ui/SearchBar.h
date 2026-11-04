@@ -28,6 +28,9 @@ signals:
     // Delete with nothing after the text cursor: delete the copy selected in the list.
     void deleteCurrentRequested();
     void renameRequested(); // F2: rename the group, or edit the note of the copy, selected in the list
+    void editGroupRequested(); // Ctrl+G: the group of the selected copy (on a group: rename it)
+    void toggleFavoriteRequested(); // Ctrl+S: star / unstar the selected copy
+    void togglePinRequested(); // Ctrl+P: pin / unpin it
     void editNoteRequested(); // Ctrl+E: add or edit the note of the copy selected in the list
     // A password search's text changed; also when entering it (empty) and leaving (`active`
     // false). Normal searches go through textChanged as before, which the owner ignores while

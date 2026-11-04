@@ -166,9 +166,24 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
             return; // no cut/copy/undo of the masked text either
         }
     }
-    if (event->key() == Qt::Key_E && (event->modifiers() & ~Qt::KeypadModifier) == Qt::ControlModifier) {
-        emit editNoteRequested();
-        return;
+    if ((event->modifiers() & ~Qt::KeypadModifier) == Qt::ControlModifier) {
+        // The list's shortcuts, for the copy selected below, while the search box has the focus.
+        switch (event->key()) {
+        case Qt::Key_E:
+            emit editNoteRequested();
+            return;
+        case Qt::Key_G:
+            emit editGroupRequested();
+            return;
+        case Qt::Key_S:
+            emit toggleFavoriteRequested();
+            return;
+        case Qt::Key_P:
+            emit togglePinRequested();
+            return;
+        default:
+            break;
+        }
     }
     if (event->key() == Qt::Key_F2 && (event->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier) {
         emit renameRequested();

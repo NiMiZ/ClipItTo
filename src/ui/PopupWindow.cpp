@@ -349,6 +349,34 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
             editNote(e->id);
         }
     });
+    // Ctrl+G, Ctrl+S and Ctrl+P work from the search box as they do in the list.
+    connect(m_search, &SearchBar::editGroupRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        const QModelIndex index = m_view->currentIndex();
+        if (const Entry* e = entryFor(index)) {
+            editGroup(e->id);
+        } else if (m_model->kindAt(index) == Kind::Group) {
+            renameGroup(m_model->pathAt(index));
+        }
+    });
+    connect(m_search, &SearchBar::toggleFavoriteRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        if (const Entry* e = entryFor(m_view->currentIndex())) {
+            toggleFavorite(e->id);
+        }
+    });
+    connect(m_search, &SearchBar::togglePinRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        if (const Entry* e = entryFor(m_view->currentIndex())) {
+            togglePin(e->id);
+        }
+    });
     connect(m_search, &SearchBar::activateRequested, this, [this] {
         if (m_controller->isPending()) {
             m_controller->refresh(); // Enter right after typing: use the up-to-date results
