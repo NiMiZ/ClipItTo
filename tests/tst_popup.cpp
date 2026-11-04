@@ -2184,7 +2184,10 @@ private slots:
             }
             return false;
         };
+        QSignalSpy markedSpy(f.popup.get(), &PopupWindow::passwordMarked);
         QVERIFY(moveTo(alpha, QStringLiteral("Passwords")));
+        QCOMPARE(markedSpy.size(), 1); // the owner can ask for a name
+        QCOMPARE(markedSpy.at(0).at(0).toLongLong(), alpha);
         const auto moved = f.t.repo->get(alpha);
         QVERIFY(moved);
         QVERIFY(moved->secret); // moved and marked in one step
@@ -2238,8 +2241,10 @@ private slots:
         std::unique_ptr<QMenu> menu(f.popup->createContextMenu(*f.t.repo->get(alpha), f.popup.get()));
         QAction* mark = actionNamed(menu.get(), QStringLiteral("Mark as password"));
         QVERIFY(mark && mark->isEnabled());
+        QSignalSpy markedSpy(f.popup.get(), &PopupWindow::passwordMarked);
         mark->trigger();
         QVERIFY(f.t.repo->get(alpha)->secret);
+        QCOMPARE(markedSpy.size(), 1);
 
         menu.reset(f.popup->createContextMenu(*f.t.repo->get(alpha), f.popup.get()));
         QVERIFY(!actionNamed(menu.get(), QStringLiteral("Mark as password")));

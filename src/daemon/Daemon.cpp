@@ -266,6 +266,12 @@ Daemon::StartResult Daemon::start(QString* error)
             m_popup->askPasswordNote(id, source);
         }
     });
+    // The same name box after a copy was turned into a password by hand (it has no source app to suggest).
+    connect(m_popup.get(), &ui::PopupWindow::passwordMarked, this, [this](qint64 id) {
+        if (m_config.passwordAskNote && m_popup) {
+            m_popup->askPasswordNote(id, QString());
+        }
+    });
     applyPasswordSettings();
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
