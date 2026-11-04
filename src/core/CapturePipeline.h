@@ -33,6 +33,8 @@ public:
     bool keepsPasswords() const;
     // Copies that look like a secret (secretscan) are kept as password copies when passwords are kept.
     void setDetectSecrets(bool on) { m_detectSecrets = on; }
+    // Same for a copy that looks like a generated password (secretscan::looksLikeGeneratedPassword); off by default.
+    void setDetectPasswords(bool on) { m_detectPasswords = on; }
     // Keep the HTML of a copy that has formatting next to its text (keep_formatting).
     void setKeepFormatting(bool on);
 
@@ -80,6 +82,7 @@ private:
     const PasswordVault* m_vault = nullptr;
     bool m_keepPasswords = false;
     bool m_detectSecrets = false;
+    bool m_detectPasswords = false;
     bool m_keepFormatting = true;
     QString m_passwordGroup;
 };

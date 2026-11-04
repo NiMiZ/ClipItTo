@@ -123,6 +123,13 @@ password separately when its note differs* (Passwords, `passwords_per_note`, on 
 same password under another note (say, copied from another app) is its own copy, and only the same
 password with the same note is merged.
 
+**Generated passwords:** a copy from a browser's "new password" field has no marker, so it is plain
+text. *Keep copies that look like generated passwords as password copies* (Passwords,
+`detect_passwords`, off by default; needs a master password or *Use without one…*) keeps a
+single-line copy of 8 to 64 characters without spaces that mixes three of lower case, upper case,
+digits and symbols as a password copy. It is a guess by shape and will take some ordinary copies
+(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md).
+
 **Backup** (Settings › Backup): *Export…* writes your copies (with notes, stars, pins, groups and
 pictures) and/or your settings to one JSON file; *Import…* adds a file's contents to what is here
 (copies already in the history are left alone). Tick *Copies* and/or *Settings* when exporting;

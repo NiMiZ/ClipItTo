@@ -256,6 +256,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("keep_passwords", config.keepPasswords);
     r.boolean("passwords_in_group", config.passwordsInGroup);
     r.boolean("detect_secrets", config.detectSecrets);
+    r.boolean("detect_passwords", config.detectPasswords);
     r.boolean("passwords_per_note", config.passwordsPerNote);
     r.boolean("password_ask_note", config.passwordAskNote);
     r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
@@ -348,6 +349,7 @@ std::vector<Line> lines(const Config& c)
         {"keep_passwords", tomlBool(c.keepPasswords), "keep copies marked by a password manager, encrypted"},
         {"passwords_in_group", tomlBool(c.passwordsInGroup), "put new password copies in the Passwords group"},
         {"detect_secrets", tomlBool(c.detectSecrets), "copies that look like API keys, tokens or card numbers are kept as password copies"},
+        {"detect_passwords", tomlBool(c.detectPasswords), "copies that look like generated passwords are kept as password copies (guesses; may take ordinary text)"},
         {"passwords_per_note", tomlBool(c.passwordsPerNote), "the same password under a different note is a separate copy"},
         {"password_ask_note", tomlBool(c.passwordAskNote), "after copying a new password, open ClipItTo to name it"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},

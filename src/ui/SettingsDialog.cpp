@@ -141,6 +141,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
     , m_ignoreCase(new QCheckBox(tr("Ignore letter case (ABC = abc)"), this))
     , m_detectSecrets(new QCheckBox(tr("Keep copies that look like secrets as password copies"), this))
+    , m_detectPasswords(new QCheckBox(tr("Keep copies that look like generated passwords as password copies"), this))
     , m_passwordsPerNote(new QCheckBox(tr("Keep the same password separately when its note differs"), this))
     , m_tabs(new QTabWidget(this))
     , m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this))
@@ -496,6 +497,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                             "the shape of the text, so now and then it takes an ordinary copy "
                                             "(use \"Not a password\" in the right-click menu to undo that).")));
     passwordsForm->addRow(QString(), m_detectSecrets);
+    m_detectPasswords->setChecked(config.detectPasswords);
+    m_detectPasswords->setToolTip(QStringLiteral("<p>%1</p>")
+                                      .arg(tr("A single-line copy of 8 to 64 characters without spaces that mixes at "
+                                              "least three of lower case, upper case, digits and symbols (like a "
+                                              "password a browser or a generator made) is kept encrypted, like a "
+                                              "password a password manager copied. It is only a guess from the "
+                                              "shape: some ordinary copies, such as an identifier or a code, will be "
+                                              "taken too and shown as ●●●● until you use \"Not a password\" in the "
+                                              "right-click menu. Off by default.")));
+    passwordsForm->addRow(QString(), m_detectPasswords);
     m_passwordsPerNote->setChecked(config.passwordsPerNote);
     m_passwordsPerNote->setToolTip(QStringLiteral("<p>%1</p>")
                                        .arg(tr("Off: copying a password you already have only moves it to the top, "
@@ -761,6 +772,7 @@ Config SettingsDialog::config() const
     c.latestAfterPaste = m_latest->isChecked();
     c.ignoreCase = m_ignoreCase->isChecked();
     c.detectSecrets = m_detectSecrets->isChecked();
+    c.detectPasswords = m_detectPasswords->isChecked();
     c.passwordsPerNote = m_passwordsPerNote->isChecked();
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
@@ -984,6 +996,7 @@ void SettingsDialog::updatePasswordPage()
     m_openWarning->setVisible(open);
     m_askNote->setEnabled(setUp);
     m_detectSecrets->setEnabled(setUp);
+    m_detectPasswords->setEnabled(setUp);
     m_passwordsPerNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
                        static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),

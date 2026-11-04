@@ -173,6 +173,36 @@ private slots:
         QCOMPARE(t.repo->count(), 4);
     }
 
+    void copiesThatLookLikeGeneratedPasswordsAreKeptOnlyWhenAskedAndPossible()
+    {
+        const QString pw = QStringLiteral("k9#Vf2!qLm8@Zp");
+        {   // No master password: an ordinary copy even when the setting is on.
+            TestDb t;
+            CapturePipeline p(*t.repo, 100, 1024);
+            p.setDetectPasswords(true);
+            p.process(pw, {QStringLiteral("text/plain")});
+            QCOMPARE(t.repo->count(), 1);
+            QCOMPARE(t.repo->countSecrets(), 0);
+        }
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("master", {64, 1}));
+        vault.setMatchKey(QByteArray(32, 'm'));
+        p.setPasswords(&vault, true, QString());
+        p.setDetectSecrets(true);
+        // Off by default, even with detect_secrets on.
+        p.process(pw, {QStringLiteral("text/plain")});
+        QCOMPARE(t.repo->countSecrets(), 0);
+        p.setDetectPasswords(true);
+        p.process(QStringLiteral("Tr0ub4dor&3x"), {QStringLiteral("text/plain")});
+        p.process(QStringLiteral("correct-horse-battery"), {QStringLiteral("text/plain")});
+        QCOMPARE(t.repo->countSecrets(), 1);
+        QCOMPARE(t.repo->count(), 3);
+        QCOMPARE(t.repo->search(QStringLiteral("Looks like a password")).size(), size_t(1)); // the note says why
+        QVERIFY(t.repo->search(QStringLiteral("Tr0ub4dor")).empty()); // never in the index
+    }
+
     void markedCopiesBecomeSealedPasswords()
     {
         TestDb t;

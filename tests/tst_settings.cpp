@@ -589,6 +589,10 @@ private slots:
         QVERIFY(d.config().detectSecrets);
         d.detectSecretsBox()->setChecked(false);
         QVERIFY(!d.config().detectSecrets);
+        QVERIFY(d.detectPasswordsBox()->isEnabled());
+        QVERIFY(!d.config().detectPasswords); // off by default
+        d.detectPasswordsBox()->setChecked(true);
+        QVERIFY(d.config().detectPasswords);
         QVERIFY(d.passwordsPerNoteBox()->isEnabled());
         QVERIFY(d.config().passwordsPerNote);
         d.passwordsPerNoteBox()->setChecked(false);
