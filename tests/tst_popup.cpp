@@ -1162,6 +1162,38 @@ private slots:
         QVERIFY(custom.first().contains(QLatin1String("No items selected")));
     }
 
+    void pasteAsOffersFormattingOnlyForACopyThatHasIt()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        Entry text = *f.model()->entryAt(f.model()->index(4, 0));
+        text.content = QStringLiteral("Hello");
+        const auto withFormatting = [&](const Entry& entry) -> QAction* {
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(entry, f.popup.get()));
+            for (QAction* a : menu->actions()) {
+                if (a->menu() && a->text().remove(QLatin1Char('&')) == QLatin1String("Paste as")) {
+                    for (QAction* item : a->menu()->actions()) {
+                        if (item->text().remove(QLatin1Char('&')) == QLatin1String("With formatting")) {
+                            menu.release(); // the action lives in the menu; the test ends right after
+                            return item;
+                        }
+                    }
+                }
+            }
+            return nullptr;
+        };
+        text.rich = false;
+        QVERIFY(!withFormatting(text));
+
+        text.rich = true;
+        QSignalSpy rich(f.popup.get(), &PopupWindow::richActivated);
+        QAction* item = withFormatting(text);
+        QVERIFY(item);
+        item->trigger();
+        QCOMPARE(rich.size(), 1);
+        QCOMPARE(rich.at(0).at(0).value<Entry>().id, text.id);
+    }
+
     void pasteAsEndsWithOthersAndStartsOnTheFirstItem()
     {
         Fixture f;

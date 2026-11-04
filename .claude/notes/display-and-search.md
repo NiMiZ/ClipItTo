@@ -40,6 +40,19 @@ word. `Daemon::indexNextPicture` reads one unread picture at a time on `m_helloP
 and when the setting changes); an engine error sets `m_indexFailed` until the settings change; "" = read, nothing found.
 `index_pictures` off -> `clearPictureText`. Never log the text. Only Windows tests ran the OCR path; Tesseract not tried here.
 
+## Copy with formatting
+Migration 008 `clip_rich(clip_id, html)`, cascade-deleted, not in FTS; `Entry::rich` is an EXISTS in `CLIP_COLUMNS`.
+Capture: `CaptureBackend::captured(text, mimeTypes, html)` (3rd arg new): `QtClipboardBackend::htmlOf` (only when the
+clipboard's text equals the native read's text), `WlPasteBackend::fetchHtml` (second wl-paste call), GNOME extension ->
+D-Bus `IngestRich` (older daemon: extension falls back to `Ingest`). `CapturePipeline::process` keeps it only when
+`richtext::hasFormatting` (tags b/i/a/lists/tables/headings/img or a style with weight/style/decoration/background; a
+colour or font family alone is not formatting), under `max_item_bytes`, with `keep_formatting`. Never for marked or
+secret-scanned copies. The newest copy of the same text decides (plain re-copy clears it); editing the text or
+Mark as password drops it; turning the setting off deletes all (`clearAllRich`). Paste: Paste as › `rich`
+(`pasteas::kRich`, last in the default list, only offered when `entry.rich`) -> `richActivated` -> `Daemon::onRichActivated`
+-> `ClipboardWriter::setRich` (Qt clipboard with text + html, even with the GNOME integration, which takes one format per
+write). Not in backups. Windows/macOS read path compiled by CI only.
+
 ## Popup placement on Wayland
 Wayland clients can't place windows; the GNOME extension does it: the daemon calls `ActivateWindowAt(position)`
 (falls back to `ActivateWindow` = "center" for an older extension, which stays loaded until re-login), the

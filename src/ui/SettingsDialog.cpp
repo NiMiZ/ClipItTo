@@ -129,6 +129,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_images(new QSpinBox(this))
     , m_ocrLanguages(new QLineEdit(this))
     , m_indexPictures(new QCheckBox(tr("Search inside pictures"), this))
+    , m_keepFormatting(new QCheckBox(tr("Keep formatting of copied text"), this))
     , m_lines(new QSpinBox(this))
     , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
@@ -240,6 +241,15 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                             "shows it. Turning this off deletes the text that was read; the pictures "
                                             "stay. It is stored in the history file, so it is encrypted with it.")));
     form->addRow(QString(), m_indexPictures);
+    m_keepFormatting->setChecked(config.keepFormatting);
+    m_keepFormatting->setToolTip(QStringLiteral("<p>%1</p>")
+                                     .arg(tr("When a copy has formatting (bold, links, lists, tables…), also keep its "
+                                             "formatted version, so Shift+Enter › <b>With formatting</b> pastes it "
+                                             "as it was. Plain text stays the default. Turning this off deletes the "
+                                             "formatted versions kept so far; the text stays. They are stored in the "
+                                             "history file, so they are encrypted with it. Copies marked by a "
+                                             "password manager never keep any.")));
+    form->addRow(QString(), m_keepFormatting);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
@@ -726,6 +736,7 @@ Config SettingsDialog::config() const
     c.maxImages = m_images->value();
     c.ocrLanguages = m_ocrLanguages->text().trimmed();
     c.indexPictures = m_indexPictures->isChecked();
+    c.keepFormatting = m_keepFormatting->isChecked();
     {
         QStringList ids;
         for (const QCheckBox* box : m_layoutBoxes) {

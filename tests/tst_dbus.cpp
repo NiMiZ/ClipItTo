@@ -120,6 +120,26 @@ private slots:
         QCOMPARE(m_daemon->repository()->recent(1, false).front().content, QStringLiteral("from dbus"));
     }
 
+    void ingestRichKeepsTheFormattedVersion()
+    {
+        const auto reply = call(QStringLiteral("IngestRich"),
+                                {QStringLiteral("rich over dbus"), QStringLiteral("<b>rich</b> over dbus"),
+                                 QStringList{QStringLiteral("text/plain"), QStringLiteral("text/html")}});
+        QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+        const auto newest = m_daemon->repository()->recent(1, false).front();
+        QCOMPARE(newest.content, QStringLiteral("rich over dbus"));
+        QVERIFY(newest.rich);
+        QCOMPARE(m_daemon->repository()->richText(newest.id), QStringLiteral("<b>rich</b> over dbus"));
+
+        // A marked copy never carries one (and is not taken from this caller at all).
+        const qint64 before = m_daemon->repository()->count();
+        const auto refused = call(QStringLiteral("IngestRich"),
+                                  {QStringLiteral("hunter2"), QStringLiteral("<b>hunter2</b>"),
+                                   QStringList{QStringLiteral("x-kde-passwordManagerHint")}});
+        QCOMPARE(refused.type(), QDBusMessage::ErrorMessage);
+        QCOMPARE(m_daemon->repository()->count(), before);
+    }
+
     void ingestRespectsSensitiveHint()
     {
         const qint64 before = m_daemon->repository()->count();

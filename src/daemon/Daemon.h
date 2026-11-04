@@ -116,6 +116,7 @@ private:
     void indexNextPicture(); // search inside pictures: reads the next picture that was not read yet, one at a time
     void setUpOcr(); // whether text can be read from pictures here, and the popup's menu entry
     void onTextActivated(const QString& text);
+    void onRichActivated(const Entry& entry);
     void onTextEdited(qint64 id, const QString& text);
     void pasteIfWanted();
     void helloUnlock(std::function<void(bool)> done);

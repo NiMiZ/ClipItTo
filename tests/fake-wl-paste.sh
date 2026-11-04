@@ -2,6 +2,7 @@
 # Stand-in for wl-paste in the WlPasteBackend tests. State lives in $FAKE_WLPASTE_DIR:
 #   unsupported  if present, --watch fails as on a compositor without data-control
 #   types, text  what --list-types and --no-newline --type text print
+#   html         what --type text/html prints
 #   image        what --type image/... prints (a picture's bytes)
 #   event        created by a test to signal a clipboard change (consumed here)
 #   die          created by a test to make the watcher exit
@@ -22,7 +23,10 @@ case "$1" in
     done
     ;;
 --list-types) cat "$d/types" ;;
---no-newline) echo "$3" >> "$d/reads"; cat "$d/text" ;;
+--no-newline)
+    echo "$3" >> "$d/reads"
+    if [ "$3" = text/html ]; then cat "$d/html"; else cat "$d/text"; fi
+    ;;
 --type) echo "$2" >> "$d/reads"; cat "$d/image" ;;
 *) exit 2 ;;
 esac

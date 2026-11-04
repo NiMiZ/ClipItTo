@@ -88,7 +88,8 @@ void QtClipboardBackend::read(QClipboard::Mode mode)
             // Never fetched: only the markers (a marked primary selection isn't a password copy).
             emit captured(QString(), formats);
         } else {
-            emitText(data->text(), formats);
+            const QString text = data->text(); // once: each read can be a round trip to the owner
+            emitText(text, formats, mode == QClipboard::Clipboard ? htmlOf(data, text) : QString());
         }
     } else if (mode == QClipboard::Clipboard && data->hasImage()) {
         readImage(data->formats()); // text wins when a copy offers both
@@ -143,10 +144,22 @@ void QtClipboardBackend::encode(PendingImage pending)
     }
 }
 
-void QtClipboardBackend::emitText(const QString& text, QStringList formats)
+// The copy's HTML, if it is the same copy as `text`: the clipboard may have changed since the native read, and
+// an app's HTML for another text must never be stored under this one.
+QString QtClipboardBackend::htmlOf(const QMimeData* data, const QString& text) const
+{
+    // Never a marked copy's: its HTML is not read at all, only (when kept) its text.
+    if (!readRichText() || !data || ClipFilter::isSensitive(data->formats()) || !data->hasHtml()) {
+        return {};
+    }
+    const auto lines = [](QString t) { return t.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).trimmed(); };
+    return lines(data->text()) == lines(text) ? data->html() : QString();
+}
+
+void QtClipboardBackend::emitText(const QString& text, QStringList formats, const QString& html)
 {
     if (!ClipFilter::isSensitive(formats)) {
-        emit captured(text, formats);
+        emit captured(text, formats, html);
     } else if (!readMarkedText()) {
         emit captured(QString(), formats); // only the markers: the pipeline drops it
     } else {
@@ -175,7 +188,7 @@ void QtClipboardBackend::readNative()
             }
             return;
         }
-        emitText(result.text, result.formats);
+        emitText(result.text, result.formats, htmlOf(m_clipboard->mimeData(QClipboard::Clipboard), result.text));
         return;
     case NativeClipboardRead::Status::NoText:
         return;

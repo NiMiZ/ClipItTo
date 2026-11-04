@@ -101,7 +101,8 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
 12. **Undo delete / Clear** for a few seconds (a toast with "Undo") instead of only asking first.
 13. **Sync without a server:** export/import to a folder the user already syncs (Syncthing, Nextcloud),
     encrypted with the master password, keeping the "no network from ClipItTo" promise.
-14. **Copy with formatting:** today only plain text is kept, so a copy from Word, a web page or a mail loses
+14. **DONE: Copy with formatting** (Shift+Enter › *With formatting*; `keep_formatting`). Left open: RTF (Word's own flavour, not
+    HTML) and backups carrying the formatted version. Original plan: today only plain text was kept, so a copy from Word, a web page or a mail loses
     its bold, links, colours and tables. Wanted: also keep the rich version (HTML / RTF) of a text copy, and
     offer it in the **Paste as** menu as "with formatting" (plain text stays the default). It needs a
     database change (the rich flavour stored next to the text, with a size cap), capture in each backend

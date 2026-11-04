@@ -142,6 +142,42 @@ private slots:
         QVERIFY(captured.at(0).at(1).toStringList().contains(QStringLiteral("x-kde-passwordManagerHint")));
     }
 
+    void reportsTheFormattedVersionOfACopy()
+    {
+        clipboard("bold word", "text/plain;charset=utf-8\ntext/html\n");
+        write(QStringLiteral("html"), "<b>bold</b> word");
+        WlPasteBackend backend(m_program);
+        QSignalSpy captured(&backend, &WlPasteBackend::captured);
+        backend.start();
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(lastText(captured), QStringLiteral("bold word"));
+        QCOMPARE(captured.at(0).at(2).toString(), QStringLiteral("<b>bold</b> word"));
+
+        // Turned off (keep_formatting): the HTML is not even requested.
+        QFile::remove(m_dir.filePath(QStringLiteral("reads")));
+        backend.setReadRichText(false);
+        write(QStringLiteral("text"), "second");
+        write(QStringLiteral("event"));
+        QTRY_COMPARE(captured.size(), 2);
+        QVERIFY(captured.at(1).at(2).toString().isEmpty());
+        QFile reads(m_dir.filePath(QStringLiteral("reads")));
+        QVERIFY(reads.open(QIODevice::ReadOnly));
+        QVERIFY(!reads.readAll().contains("text/html"));
+    }
+
+    void neverReadsTheFormattedVersionOfAPassword()
+    {
+        clipboard("hunter2", "text/plain\ntext/html\nx-kde-passwordManagerHint\n");
+        write(QStringLiteral("html"), "<b>hunter2</b>");
+        WlPasteBackend backend(m_program);
+        backend.setReadMarkedText(true);
+        QSignalSpy captured(&backend, &WlPasteBackend::captured);
+        backend.start();
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(lastText(captured), QStringLiteral("hunter2"));
+        QVERIFY(captured.at(0).at(2).toString().isEmpty());
+    }
+
     void skipsNonText()
     {
         clipboard("\x89PNG", "image/png\n");

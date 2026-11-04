@@ -27,7 +27,7 @@ namespace {
 
 #define CLIP_COLUMNS                                                                                   \
     "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position, " \
-    "c.kind, c.content_hash, c.secret"
+    "c.kind, c.content_hash, c.secret, EXISTS (SELECT 1 FROM clip_rich r WHERE r.clip_id = c.id)"
 
 Entry readEntry(const Stmt& s)
 {
@@ -43,6 +43,7 @@ Entry readEntry(const Stmt& s)
     e.image = s.colText(8) == QLatin1String("image");
     e.contentHash = s.colText(9);
     e.secret = s.colInt(10) != 0;
+    e.rich = s.colInt(11) != 0;
     return e;
 }
 
@@ -349,6 +350,7 @@ qint64 Repository::convertToSecret(qint64 id, const QByteArray& sealed, const QS
                         : match;
             update.bindInt(1, id).bindText(2, secretLabel()).bindText(3, hash);
             update.run();
+            clearRich(id); // the plain text is gone; so is its formatted copy
             Stmt store(m_db, "INSERT OR REPLACE INTO clip_secrets(clip_id, sealed) VALUES (?1, ?2)");
             store.bindInt(1, id).bindBlob(2, sealed);
             store.run();
@@ -467,6 +469,41 @@ void Repository::scrub()
     if (!checkpoint()) {
         qWarning() << "the write-ahead log is still in use; it is folded in later";
     }
+}
+
+void Repository::setRich(qint64 id, const QString& html)
+{
+    Stmt s(m_db, "INSERT OR REPLACE INTO clip_rich(clip_id, html) SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM clips WHERE id = ?1)");
+    s.bindInt(1, id).bindText(2, html);
+    s.run();
+}
+
+void Repository::clearRich(qint64 id)
+{
+    Stmt s(m_db, "DELETE FROM clip_rich WHERE clip_id = ?1");
+    s.bindInt(1, id);
+    s.run();
+}
+
+void Repository::clearAllRich()
+{
+    {
+        Stmt any(m_db, "SELECT 1 FROM clip_rich LIMIT 1");
+        if (!any.step()) {
+            return; // nothing kept: no write, no checkpoint
+        }
+    }
+    Transaction tx(m_db);
+    m_db.exec("DELETE FROM clip_rich");
+    tx.commit();
+    checkpoint(); // freed pages were zeroed (secure_delete); the log may still hold the text
+}
+
+QString Repository::richText(qint64 id)
+{
+    Stmt s(m_db, "SELECT html FROM clip_rich WHERE clip_id = ?1");
+    s.bindInt(1, id);
+    return s.step() ? s.colText(0) : QString();
 }
 
 QByteArray Repository::imageData(qint64 id)
@@ -1098,6 +1135,7 @@ Repository::ContentChange Repository::setContent(qint64 id, const QString& text,
     Stmt update(m_db, "UPDATE clips SET content = ?2, content_hash = ?3 WHERE id = ?1");
     update.bindInt(1, id).bindText(2, text).bindText(3, hash);
     update.run();
+    clearRich(id); // the formatted copy belongs to the old text
     tx.commit();
     return ContentChange::Done;
 }

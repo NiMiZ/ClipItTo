@@ -92,6 +92,12 @@ public:
 
     // The full picture (PNG) of an image entry; empty for text or a missing id.
     QByteArray imageData(qint64 id);
+    // The HTML flavour of a text copy with formatting (RichText.h), kept next to its plain text.
+    // setRich replaces any earlier one; the copy must exist. richText is empty when there is none.
+    void setRich(qint64 id, const QString& html);
+    void clearRich(qint64 id);
+    void clearAllRich();
+    QString richText(qint64 id);
 
     // Search inside pictures: the text read from a picture (see clip_text). nextPictureToIndex is the newest
     // picture not read yet (0 = none); an empty text records "nothing found". clearPictureText forgets all of it.

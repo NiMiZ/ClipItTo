@@ -4,6 +4,7 @@
 #include "NativeClipboard.h"
 
 #include <QClipboard>
+#include <QMimeData>
 #include <QTimer>
 
 #include <QDateTime>
@@ -50,7 +51,8 @@ private:
     void poll(); // a changed counter means a new copy
     // Reports a text copy; a marked one with its source app, or without its text when
     // password copies aren't kept.
-    void emitText(const QString& text, QStringList formats);
+    void emitText(const QString& text, QStringList formats, const QString& html = QString());
+    QString htmlOf(const QMimeData* data, const QString& text) const;
     void readImage(const QStringList& formats); // the clipboard's picture through Qt, if any
 
     // A picture waiting to be encoded: decoded already (Qt path) or as bytes (native path).

@@ -24,6 +24,7 @@ QList<Item> textItems()
     }
     items.append({QString::fromLatin1(kKeyboardLayout), t("As other &keyboard layout")});
     items.append({QString::fromLatin1(kTranslate), t("Tran&slate")});
+    items.append({QString::fromLatin1(kRich), t("With &formatting")});
     return items;
 }
 

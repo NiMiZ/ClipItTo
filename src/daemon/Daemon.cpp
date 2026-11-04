@@ -159,10 +159,17 @@ Daemon::StartResult Daemon::start(QString* error)
     m_passwords->reload();
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
+    m_pipeline->setKeepFormatting(m_config.keepFormatting);
+    if (!m_config.keepFormatting) {
+        m_repo->clearAllRich(); // turned off while the daemon was down or converting: nothing stays behind
+    }
     m_control->setPasswordsWantedProvider([this] { return m_pipeline && m_pipeline->keepsPasswords(); });
     connect(m_passwords.get(), &PasswordKeeper::vaultChanged, this, &Daemon::applyPasswordSettings);
     connect(m_control, &ControlChannel::lockPasswordsRequested, m_passwords.get(), &PasswordKeeper::lock);
-    connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(), &CapturePipeline::process);
+    connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(),
+            [this](const QString& text, const QStringList& mimeTypes, const QString& html) {
+                m_pipeline->process(text, mimeTypes, html);
+            });
     // A picture from a capture helper (the GNOME extension), decoded off the GUI thread.
     connect(m_control, &ControlChannel::ingestImageRequested, this,
             [this](const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes) {
@@ -212,6 +219,7 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
     connect(m_popup.get(), &ui::PopupWindow::textActivated, this, &Daemon::onTextActivated);
+    connect(m_popup.get(), &ui::PopupWindow::richActivated, this, &Daemon::onRichActivated);
     connect(m_popup.get(), &ui::PopupWindow::textEdited, this, &Daemon::onTextEdited);
     m_popup->setMaxItemBytes(m_config.maxItemBytes);
     connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
@@ -295,6 +303,7 @@ void Daemon::startCapture()
             &CapturePipeline::processImage);
     m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
     m_capture.backend->setReadMarkedText(m_pipeline->keepsPasswords());
+    m_capture.backend->setReadRichText(m_config.keepFormatting);
     m_capture.backend->start();
 
     if (m_capture.degraded) {
@@ -416,6 +425,31 @@ void Daemon::announceKeyring(const QString& purpose)
     if (!shown && m_popup) {
         m_popup->flash(body);
     }
+}
+
+void Daemon::onRichActivated(const Entry& entry)
+{
+    // Runs before the popup hides, like onEntryActivated. A copy whose formatted version is gone (or was never
+    // kept) is pasted as plain text.
+    QString html;
+    try {
+        html = m_repo->richText(entry.id);
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "failed to read the formatted copy:" << e.what();
+    }
+    if (html.isEmpty()) {
+        onEntryActivated(entry);
+        return;
+    }
+    m_writer->setRich(entry.content, html);
+    if (m_config.latestAfterPaste && !entry.isSaved()) {
+        try {
+            m_repo->touch(entry.id);
+        } catch (const db::DbError& e) {
+            qCWarning(lcDaemon) << "failed to update last_used:" << e.what();
+        }
+    }
+    pasteIfWanted();
 }
 
 void Daemon::onTextActivated(const QString& text)
@@ -616,6 +650,9 @@ void Daemon::finishConversion(bool encrypted, const QString& error)
         m_worker.join();
     }
     m_converting = false;
+    if (!m_config.keepFormatting && m_repo) {
+        m_repo->clearAllRich(); // turned off during the conversion
+    }
     if (error.isEmpty()) {
         m_encrypted = encrypted;
         if (!encrypted) {
@@ -1022,8 +1059,10 @@ void Daemon::reload(bool forceShortcut)
         m_popup->setMaxItemBytes(m_config.maxItemBytes);
     }
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
+    m_pipeline->setKeepFormatting(m_config.keepFormatting);
     if (m_capture.backend) {
         m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
+        m_capture.backend->setReadRichText(m_config.keepFormatting);
     }
     m_repo->setLimits(repositoryLimits(m_config));
     try {
@@ -1050,6 +1089,9 @@ void Daemon::reload(bool forceShortcut)
         } else {
             indexNextPicture();
         }
+    }
+    if (!m_config.keepFormatting && previous.keepFormatting && !m_converting) {
+        m_repo->clearAllRich(); // turned off: the formatted versions kept so far are deleted
     }
     if (m_config.maxImages < previous.maxImages && !m_converting) {
         m_repo->pruneImages(m_config.maxImages); // 0: "don't record pictures" removes the unsaved ones

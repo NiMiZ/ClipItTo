@@ -201,7 +201,14 @@ void WlPasteBackend::fetchText(const QStringList& mimeTypes)
     connect(text, &QProcess::finished, this, [this, text, mimeTypes](int exitCode, QProcess::ExitStatus status) {
         text->deleteLater();
         if (m_running && status == QProcess::NormalExit && exitCode == 0) {
-            emit captured(QString::fromUtf8(text->readAllStandardOutput()), mimeTypes);
+            const QString plain = QString::fromUtf8(text->readAllStandardOutput());
+            // The formatted version too, for an ordinary copy; never for one marked as a password.
+            if (readRichText() && !m_changedWhileFetching && !ClipFilter::isSensitive(mimeTypes)
+                && mimeTypes.contains(QStringLiteral("text/html"), Qt::CaseInsensitive)) {
+                fetchHtml(plain, mimeTypes);
+                return;
+            }
+            emit captured(plain, mimeTypes);
         }
         fetchDone();
     });
@@ -212,6 +219,33 @@ void WlPasteBackend::fetchText(const QStringList& mimeTypes)
         }
     });
     text->start(m_program, {QStringLiteral("--no-newline"), QStringLiteral("--type"), textType(mimeTypes)});
+}
+
+void WlPasteBackend::fetchHtml(const QString& plain, const QStringList& mimeTypes)
+{
+    auto* html = new QProcess(this);
+    // A source that offers HTML but never serves it must not stop capture: the text is reported without it.
+    auto* timeout = new QTimer(html);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, html, [html] { html->kill(); });
+    timeout->start(5000);
+    connect(html, &QProcess::finished, this, [this, html, plain, mimeTypes](int exitCode, QProcess::ExitStatus status) {
+        html->deleteLater();
+        if (m_running) {
+            const bool ok = status == QProcess::NormalExit && exitCode == 0 && !m_changedWhileFetching;
+            QByteArray bytes = html->readAllStandardOutput();
+            emit captured(plain, mimeTypes, ok && bytes.size() <= 4 * 1024 * 1024 ? QString::fromUtf8(bytes) : QString());
+        }
+        fetchDone();
+    });
+    connect(html, &QProcess::errorOccurred, this, [this, html, plain, mimeTypes](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            html->deleteLater();
+            emit captured(plain, mimeTypes); // the text is still a copy
+            fetchDone();
+        }
+    });
+    html->start(m_program, {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text/html")});
 }
 
 void WlPasteBackend::fetchImage(const QStringList& mimeTypes)
