@@ -46,7 +46,7 @@ if ($text.Contains($static)) {
 }
 $ct2 = Join-Path $work 'ct2-build'
 cmake -S "$work\ctranslate2" -B $ct2 -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_CLI=OFF `
-    -DWITH_MKL=OFF -DWITH_DNNL=OFF -DWITH_RUY=ON -DOPENMP_RUNTIME=NONE -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    -DWITH_MKL=OFF -DWITH_DNNL=OFF -DWITH_RUY=ON -DOPENMP_RUNTIME=NONE "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 if ($LASTEXITCODE -ne 0) { throw 'CTranslate2 configure failed' }
 cmake --build $ct2
 if ($LASTEXITCODE -ne 0) { throw 'CTranslate2 build failed' }
@@ -59,7 +59,7 @@ Copy-Item -Recurse -Force "$work\ctranslate2\include\*" "$Prefix\include\"
 # SentencePiece
 $sp = Join-Path $work 'sp-build'
 cmake -S "$work\sentencepiece" -B $sp -G Ninja -DCMAKE_BUILD_TYPE=Release -DSPM_ENABLE_SHARED=OFF -DSPM_BUILD_TEST=OFF `
-    "-DCMAKE_INSTALL_PREFIX=$work\sp-install" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    "-DCMAKE_INSTALL_PREFIX=$work\sp-install" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 if ($LASTEXITCODE -ne 0) { throw 'SentencePiece configure failed' }
 cmake --build $sp
 if ($LASTEXITCODE -ne 0) { throw 'SentencePiece build failed' }

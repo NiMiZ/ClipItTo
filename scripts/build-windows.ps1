@@ -1,6 +1,7 @@
 # Builds (and tests) ClipItTo for Windows on this machine, the way CI does.
 # Needs: Visual Studio or Build Tools with "Desktop development with C++" (MSVC, CMake,
-# Ninja), Qt 6.5+ for MSVC, and vcpkg.
+# Ninja), Qt 6.5+ for MSVC, and vcpkg. The translation libraries are built on first use
+# (CLIPITTO_TRANSLATE_PREFIX, default %LOCALAPPDATA%\clipitto-build\translate-prefix).
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 [-NoTests] [-Stage]
 #     -QtDir   Qt's MSVC folder (default: $env:QT_ROOT_DIR, else D:\Qt or C:\Qt\6.5.3\msvc2019_64)
@@ -37,6 +38,16 @@ $env:QT_ROOT_DIR = $QtDir
 $env:VCPKG_ROOT = $Vcpkg
 $env:PATH = "$QtDir\bin;$env:PATH" # Qt's DLLs, for running the tests
 Write-Host "MSVC: $vs"
+
+# Offline translation: its libraries are built once into a prefix (a few minutes) and kept between builds.
+if (-not $env:CLIPITTO_TRANSLATE_PREFIX) {
+    $env:CLIPITTO_TRANSLATE_PREFIX = Join-Path $env:LOCALAPPDATA 'clipitto-build\translate-prefix'
+}
+if (-not (Test-Path (Join-Path $env:CLIPITTO_TRANSLATE_PREFIX 'lib\ctranslate2_all.lib'))) {
+    Write-Host "Building the translation libraries into $env:CLIPITTO_TRANSLATE_PREFIX (once)"
+    & (Join-Path $PSScriptRoot 'build-translation-libs.ps1') $env:CLIPITTO_TRANSLATE_PREFIX
+    if ($LASTEXITCODE) { throw 'translation libraries failed' }
+}
 Write-Host "Qt:   $QtDir"
 Write-Host "vcpkg: $Vcpkg"
 
