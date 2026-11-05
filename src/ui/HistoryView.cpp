@@ -63,8 +63,11 @@ void HistoryView::selectFirstEntry(StartFocus focus)
 
 void HistoryView::keepTopVisible()
 {
-    if (currentIndex() == firstSelectable() || currentIndex().row() <= 2) {
-        scrollToTop(); // keep the Groups row and a leading section header visible
+    // Start from the top so Pinned, Groups and the section headers above the selected copy stay
+    // visible, then scroll down only as far as needed to show the selection.
+    scrollToTop();
+    if (currentIndex().isValid()) {
+        scrollTo(currentIndex(), QAbstractItemView::EnsureVisible);
     }
 }
 

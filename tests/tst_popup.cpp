@@ -26,6 +26,7 @@
 #include <QToolButton>
 #include <QScreen>
 #include <QSignalSpy>
+#include <QScrollBar>
 #include <QTest>
 #include <QTimer>
 #include <functional>
@@ -129,6 +130,31 @@ private slots:
         // Rows: #Pinned, ssh, #Recent, gamma ray, beta, alpha
         QCOMPARE(f.model()->rowCount(), 6);
         QCOMPARE(f.currentRow(), 1);
+    }
+
+    void showingStartsAtTheTopEvenWhenTheFirstRecentCopyIsFurtherDown()
+    {
+        // Pinned copies push the first Recent copy below row 2; the list still opens from its top,
+        // so Pinned and the Groups row are not scrolled out of sight.
+        TestDb t;
+        for (int i = 0; i < 30; ++i) {
+            t.repo->ingest(QStringLiteral("copy %1").arg(i));
+        }
+        for (const Entry& e : t.repo->recentUnpinned(4)) {
+            t.repo->setPinned(e.id, true);
+        }
+        Config cfg;
+        cfg.hideOnFocusLoss = false;
+        cfg.startFocus = clipitto::StartFocus::Unsaved;
+        PopupWindow popup(*t.repo, cfg);
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        auto* view = popup.view();
+        QVERIFY(view->currentIndex().row() > 2);
+        QVERIFY(view->verticalScrollBar()->maximum() > 0);
+        view->verticalScrollBar()->setValue(view->verticalScrollBar()->maximum());
+        view->keepTopVisible();
+        QCOMPARE(view->verticalScrollBar()->value(), 0);
     }
 
     void arrowsFromSearchStepFromTheLatestCopy()
