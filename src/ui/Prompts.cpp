@@ -16,6 +16,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace clipitto::ui {
@@ -223,6 +224,17 @@ NamePrompt defaultNamePrompt()
         QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         dialog.setMinimumWidth(380);
+        // This box opens on its own after a copy, often while the user is in another (maybe
+        // full-screen) app. It must be on top and take the keyboard, or it sits there unreachable
+        // while it blocks the popup; and it must not hold the app hostage if nobody answers.
+        dialog.setWindowFlag(Qt::WindowStaysOnTopHint, true);
+        QTimer giveUp;
+        giveUp.setSingleShot(true);
+        QObject::connect(&giveUp, &QTimer::timeout, &dialog, &QDialog::reject);
+        giveUp.start(60 * 1000); // the copy keeps its default note
+        dialog.show();
+        dialog.raise();
+        dialog.activateWindow();
         edit->setFocus();
         if (dialog.exec() != QDialog::Accepted) {
             return std::nullopt;
