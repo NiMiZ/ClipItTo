@@ -22,7 +22,7 @@ public:
     void selectIndex(const QModelIndex& index); // current + selected, scrolled into view
     // The first copy of the `focus` kind, else the first copy (what Enter in the search box copies).
     void selectFirstEntry(StartFocus focus = StartFocus::Pinned);
-    // Scrolls to the top when the current row is near it (Groups row and headers stay visible).
+    // Scrolls to the top, then just far enough to show the current row (Pinned/Groups/headers above stay visible).
     void keepTopVisible();
     void selectFirstRow(); // the first selectable row (the Groups row when there are groups)
     QModelIndex firstSelectable() const;
