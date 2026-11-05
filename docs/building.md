@@ -32,7 +32,7 @@ into `~/.local` without root (needs `~/.local/bin` on `PATH`):
 
 ```bash
 cmake --preset deb && cmake --build --preset deb
-(cd build/deb && cpack) && sudo apt install ./build/deb/clipitto_0.14.0_amd64.deb
+(cd build/deb && cpack) && sudo apt install ./build/deb/clipitto_0.14.1_amd64.deb
 
 cmake --preset release -DCMAKE_INSTALL_PREFIX=$HOME/.local
 cmake --build --preset release && cmake --install build/release && clipitto-setup
