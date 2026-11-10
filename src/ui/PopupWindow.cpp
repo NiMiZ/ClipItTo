@@ -1465,6 +1465,9 @@ static void styleTransformMenu(QMenu* menu, const QPalette& around)
 // The "Number" item for a copy that is one number: a submenu with the number in the other base and as bits
 // (pasted when chosen), then the numbers of its set bits (0-based, as in 0x123 = 8 5 1 0) as information lines.
 // A number that can only be one base shows only the other base; one that can be both shows both (hex first).
+// The Number submenu, grouped by how the text is read: everything about it as a hex number together, then everything about it
+// as a decimal one (a text such as 123 can be both). Each group: the number in the other base, as bits, and which bits are set
+// (an information line, nothing to paste).
 void PopupWindow::addNumberBits(QMenu* target, const QString& text)
 {
     const std::optional<numbertext::Number> number = numbertext::parse(text);
@@ -1479,38 +1482,29 @@ void PopupWindow::addNumberBits(QMenu* target, const QString& text)
             hidePopup();
         });
     };
-    if (number->canBeHex) {
-        const QString out = numbertext::decText(number->hexValue);
-        paste(both ? tr("Hex to decimal: %1").arg(out) : tr("To decimal: %1").arg(out), out);
-    }
-    if (number->canBeDec) {
-        const QString out = numbertext::hexText(number->decValue);
-        paste(both ? tr("Decimal to hex: %1").arg(out) : tr("To hex: %1").arg(out), out);
-    }
-    if (number->canBeHex) {
-        const QString out = numbertext::binaryText(number->hexValue);
-        paste(both ? tr("Hex as bits: %1").arg(out) : tr("As bits: %1").arg(out), out);
-    }
-    if (number->canBeDec) {
-        const QString out = numbertext::binaryText(number->decValue);
-        paste(both ? tr("Decimal as bits: %1").arg(out) : tr("As bits: %1").arg(out), out);
-    }
-    bool separated = false;
-    const auto info = [&](const QString& name, std::uint64_t value) {
-        if (numbertext::setBits(value).isEmpty()) {
-            return;
+    bool first = true;
+    // `readAsHex`: the text is read as a hex number (then offered as decimal), else as a decimal one (offered as hex).
+    const auto group = [&](bool readAsHex, std::uint64_t value) {
+        if (both) { // one reading needs no heading
+            if (!first) {
+                sub->addSeparator();
+            }
+            sub->addAction(readAsHex ? tr("Read as hex") : tr("Read as decimal"))->setEnabled(false);
         }
-        if (!separated) {
-            sub->addSeparator();
-            separated = true;
+        first = false;
+        const QString converted = readAsHex ? numbertext::decText(value) : numbertext::hexText(value);
+        paste(readAsHex ? tr("To decimal: %1").arg(converted) : tr("To hex: %1").arg(converted), converted);
+        const QString bits = numbertext::binaryText(value);
+        paste(tr("As bits: %1").arg(bits), bits);
+        if (!numbertext::setBits(value).isEmpty()) {
+            sub->addAction(tr("Bits set: %1").arg(numbertext::bitsText(value)))->setEnabled(false);
         }
-        sub->addAction(tr("%1 bits: %2").arg(name, numbertext::bitsText(value)))->setEnabled(false);
     };
     if (number->canBeHex) {
-        info(tr("Hex"), number->hexValue);
+        group(true, number->hexValue);
     }
     if (number->canBeDec) {
-        info(tr("Dec"), number->decValue);
+        group(false, number->decValue);
     }
 }
 

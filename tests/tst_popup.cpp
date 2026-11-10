@@ -1261,6 +1261,43 @@ private slots:
         QVERIFY(!qrAction(picture, menu));
     }
 
+    void numberMenuGroupsEverythingByBase()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        const auto numberMenu = [&](const QString& content) -> QStringList {
+            const Entry entry = *f.t.repo->get(f.t.repo->ingest(content).id);
+            std::unique_ptr<QMenu> menu(f.popup->createContextMenu(entry, f.popup.get()));
+            for (QAction* a : menu->actions()) {
+                if (!a->menu() || a->text().remove(QLatin1Char('&')) != QLatin1String("Paste as")) {
+                    continue;
+                }
+                for (QAction* item : a->menu()->actions()) {
+                    if (item->menu() && item->text().remove(QLatin1Char('&')) == QLatin1String("Number")) {
+                        QStringList lines;
+                        for (QAction* line : item->menu()->actions()) {
+                            lines << (line->isSeparator() ? QStringLiteral("---") : line->text());
+                        }
+                        return lines;
+                    }
+                }
+            }
+            return {};
+        };
+        // Digits only: both readings, each with its own heading, its conversion, its bits and the bits set.
+        QCOMPARE(numberMenu(QStringLiteral("123")),
+                 (QStringList{QStringLiteral("Read as hex"), QStringLiteral("To decimal: 291"),
+                              QStringLiteral("As bits: 0000000100100011"), QStringLiteral("Bits set: 8 5 1 0"),
+                              QStringLiteral("---"), QStringLiteral("Read as decimal"), QStringLiteral("To hex: 7b"),
+                              QStringLiteral("As bits: 01111011"), QStringLiteral("Bits set: 6 5 4 3 1 0")}));
+        // One reading (hex letters): no headings.
+        const QStringList hex = numberMenu(QStringLiteral("0x2c"));
+        QVERIFY(!hex.isEmpty());
+        QVERIFY(!hex.contains(QStringLiteral("Read as hex")));
+        QCOMPARE(hex.first(), QStringLiteral("To decimal: 44"));
+        QVERIFY(hex.contains(QStringLiteral("As bits: 00101100")));
+    }
+
     void pasteAsOffersFormattingOnlyForACopyThatHasIt()
     {
         Fixture f;
