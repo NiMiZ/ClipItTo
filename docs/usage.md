@@ -33,6 +33,12 @@ means the language of your system). With one language the menu offers the opposi
 (English ⇄ that language); with several it shows a submenu of them, each with a preview of the result. Russian
 and Greek keep capital letters. It works key for key, with no dictionary and no network.
 
+**Numbers (Paste as… › Number).** For a copy that is one number the menu has a *Number* submenu, grouped by how the text is read.
+A `0x` prefix or hex letters (`2c`) mean hex only; digits only (`123`) can be both, so you get a **Read as hex** group and a
+**Read as decimal** group, each with the number in the other base, *As bits* (padded to whole bytes: `2c` becomes `00101100`) and a
+grey *Bits set* line (0-based, highest first: `0x123` gives `8 5 1 0`). Click a line to paste it; the grey lines are information.
+Numbers above 64 bits are ignored.
+
 **Choosing the Paste as… items.** Settings › *Paste as* lists the menu's items, one list for text and one for
 pictures: tick an item to show it, untick to hide it, move it with *Move up* / *Move down* (or drag it), and
 *Reset to default* restores the built-in list and order. The menu ends with *Others*, a submenu with the unticked items (turn it off with *Show the other items in the menu*; `paste_as_others` in the config). Shift+Enter opens the menu with the first item selected, so Enter picks it. The right-click *Paste as* submenu follows the same
