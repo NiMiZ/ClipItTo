@@ -597,6 +597,48 @@ private slots:
         QVERIFY(!d.config().detectPasswords); // off by default
         d.detectPasswordsBox()->setChecked(true);
         QVERIFY(d.config().detectPasswords);
+        // Own rules: add, edit, try, validate, remove (the panel follows the same enabling as detect_passwords).
+        QVERIFY(d.rulesPanel()->isEnabled());
+        QCOMPARE(d.ruleRowCount(), 0);
+        QVERIFY(d.config().passwordRules.isEmpty());
+        d.addRuleButton()->click();
+        QCOMPARE(d.ruleRowCount(), 1);
+        {
+            const auto spins = d.ruleSpinBoxes(0); // min, max, lower, upper, digits, symbols
+            spins.at(0)->setValue(6);
+            spins.at(1)->setValue(12);
+            spins.at(4)->setValue(2);
+            d.ruleEndBox(0)->setChecked(true);
+            const auto rules = d.config().passwordRules;
+            QCOMPARE(rules.size(), 1);
+            QCOMPARE(rules.at(0).digits, 2);
+            QVERIFY(rules.at(0).digitsAtEnd);
+            d.ruleTryEdit()->setText(QStringLiteral("abcd12"));
+            QVERIFY(d.ruleTryResult()->text().contains(QLatin1String("rule 1")));
+            QVERIFY(!d.ruleTryResult()->isHidden());
+            d.ruleTryEdit()->setText(QStringLiteral("abcd1x"));
+            QVERIFY(d.ruleTryResult()->text().contains(QLatin1String("Not kept")));
+            d.ruleTryEdit()->clear();
+            // Invalid: the shortest above the longest. Not saved, OK disabled, message shown.
+            spins.at(0)->setValue(20);
+            QVERIFY(!d.ruleErrorLabel()->isHidden());
+            QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+            QVERIFY(d.config().passwordRules.isEmpty());
+            spins.at(0)->setValue(6);
+            QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        }
+        for (int i = 1; i < 5; ++i) {
+            d.addRuleButton()->click();
+        }
+        QCOMPARE(d.ruleRowCount(), 5);
+        QVERIFY(!d.addRuleButton()->isEnabled()); // up to five
+        d.ruleRemoveButton(4)->click();
+        QCOMPARE(d.ruleRowCount(), 4);
+        QVERIFY(d.addRuleButton()->isEnabled());
+        while (d.ruleRowCount() > 0) {
+            d.ruleRemoveButton(0)->click();
+        }
+        QVERIFY(d.config().passwordRules.isEmpty());
         QVERIFY(d.passwordsPerNoteBox()->isEnabled());
         QVERIFY(d.config().passwordsPerNote);
         d.passwordsPerNoteBox()->setChecked(false);

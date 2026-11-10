@@ -120,11 +120,16 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes,
     // A key or token is never given a formatted version, whether it is kept as a password copy or not.
     const bool looksSecret = verdict == ClipFilter::Verdict::Accept
         && ((m_detectSecrets && !secretscan::kindOf(text).isEmpty())
-            || (m_detectPasswords && secretscan::looksLikeGeneratedPassword(text)));
+            || (m_detectPasswords && secretscan::looksLikeGeneratedPassword(text))
+            || passwordrules::matchesAny(m_passwordRules, text));
     QString detected; // what an unmarked copy looks like, when it is kept as a password anyway
-    if (verdict == ClipFilter::Verdict::Accept && (m_detectSecrets || m_detectPasswords) && keepsPasswords()) {
+    if (verdict == ClipFilter::Verdict::Accept && (m_detectSecrets || m_detectPasswords || !m_passwordRules.isEmpty())
+        && keepsPasswords()) {
         if (m_detectSecrets) {
             detected = secretscan::kindOf(text);
+        }
+        if (detected.isEmpty() && passwordrules::matchesAny(m_passwordRules, text)) {
+            detected = QStringLiteral("Matches your password rule");
         }
         if (detected.isEmpty() && m_detectPasswords && secretscan::looksLikeGeneratedPassword(text)) {
             detected = QStringLiteral("Looks like a password"); // stored as is, like the kinds from secretscan::kindOf

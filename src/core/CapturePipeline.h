@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ClipFilter.h"
+#include "PasswordRules.h"
 
 #include <QObject>
 
@@ -35,6 +36,8 @@ public:
     void setDetectSecrets(bool on) { m_detectSecrets = on; }
     // Same for a copy that looks like a generated password (secretscan::looksLikeGeneratedPassword); off by default.
     void setDetectPasswords(bool on) { m_detectPasswords = on; }
+    // The user's own rules (password_rules): a copy that fits one is kept as a password copy, like detect_passwords.
+    void setPasswordRules(const QList<PasswordRule>& rules) { m_passwordRules = rules; }
     // Keep the HTML of a copy that has formatting next to its text (keep_formatting).
     void setKeepFormatting(bool on);
 
@@ -83,6 +86,7 @@ private:
     bool m_keepPasswords = false;
     bool m_detectSecrets = false;
     bool m_detectPasswords = false;
+    QList<PasswordRule> m_passwordRules;
     bool m_keepFormatting = true;
     QString m_passwordGroup;
 };

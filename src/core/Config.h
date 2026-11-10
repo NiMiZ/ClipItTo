@@ -1,5 +1,8 @@
 #pragma once
 
+#include "PasswordRules.h"
+
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
@@ -65,6 +68,7 @@ struct Config {
     bool passwordsInGroup = true; // new ones go to the "Passwords" group
     bool detectSecrets = true; // copies that look like keys/tokens/card numbers are kept as password copies
     bool detectPasswords = false; // copies that look like generated passwords are kept as password copies (guesses; off)
+    QList<PasswordRule> passwordRules; // user rules (up to 5) for what else is kept as a password copy
     bool passwordsPerNote = true; // the same password under another note is another copy
     bool passwordAskNote = true; // after copying a new password, open ClipItTo to name it
     int passwordUnlockMinutes = 5; // an unlock lasts this long

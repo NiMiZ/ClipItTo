@@ -203,6 +203,32 @@ private slots:
         QVERIFY(t.repo->search(QStringLiteral("Tr0ub4dor")).empty()); // never in the index
     }
 
+    void userPasswordRulesKeepMatchingCopiesAsPasswords()
+    {
+        TestDb t;
+        CapturePipeline p(*t.repo, 100, 1024);
+        clipitto::PasswordVault vault;
+        vault.load(clipitto::PasswordVault::create("master", {64, 1}));
+        vault.setMatchKey(QByteArray(32, 'm'));
+        p.setPasswords(&vault, true, QString());
+        clipitto::PasswordRule rule;
+        rule.minLength = 6;
+        rule.maxLength = 10;
+        rule.lower = 3;
+        rule.digits = 2;
+        rule.digitsAtEnd = true;
+        p.setPasswordRules({rule});
+        p.process(QStringLiteral("abcd12"), {QStringLiteral("text/plain")}); // fits
+        p.process(QStringLiteral("abcd1x"), {QStringLiteral("text/plain")}); // one digit, not at the end
+        p.process(QStringLiteral("abcdefghijk12"), {QStringLiteral("text/plain")}); // too long
+        QCOMPARE(t.repo->countSecrets(), 1);
+        QCOMPARE(t.repo->count(), 3);
+        QVERIFY(t.repo->search(QStringLiteral("abcd12")).empty()); // never in the index
+        p.setPasswordRules({});
+        p.process(QStringLiteral("zxcv34"), {QStringLiteral("text/plain")});
+        QCOMPARE(t.repo->countSecrets(), 1);
+    }
+
     void markedCopiesBecomeSealedPasswords()
     {
         TestDb t;

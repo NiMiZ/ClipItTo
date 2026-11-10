@@ -10,7 +10,9 @@
 
 #include <functional>
 #include <optional>
+#include <vector>
 
+class QVBoxLayout;
 class QCheckBox;
 class QComboBox;
 class QDialogButtonBox;
@@ -154,6 +156,17 @@ public:
     QCheckBox* passwordsPerNoteBox() const { return m_passwordsPerNote; }
     QCheckBox* detectSecretsBox() const { return m_detectSecrets; }
     QCheckBox* detectPasswordsBox() const { return m_detectPasswords; }
+    // Own password rules (Passwords tab): rows can be added/removed; `Try it` tests a sample against them.
+    QWidget* rulesPanel() const { return m_rulesPanel; }
+    QPushButton* addRuleButton() const { return m_addRule; }
+    QLabel* ruleErrorLabel() const { return m_ruleError; }
+    QLineEdit* ruleTryEdit() const { return m_ruleTry; }
+    QLabel* ruleTryResult() const { return m_ruleTryResult; }
+    int ruleRowCount() const { return int(m_ruleRows.size()); }
+    // Spin boxes of a rule row, in order: min length, max length, lower, upper, digits, symbols.
+    QList<QSpinBox*> ruleSpinBoxes(int row) const;
+    QCheckBox* ruleEndBox(int row) const { return m_ruleRows.at(size_t(row)).end; }
+    QPushButton* ruleRemoveButton(int row) const { return m_ruleRows.at(size_t(row)).remove; }
     QDialogButtonBox* buttons() const { return m_buttons; }
     QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
@@ -191,6 +204,10 @@ private:
     void onShortcutEdited();
     void reloadGroups(const QString& select = {});
     void createGroup(const QString& parentPath);
+    void addRuleRow(const PasswordRule& rule);
+    void removeRuleRow(QWidget* row);
+    QList<PasswordRule> ruleValues() const; // what the rows say (valid or not)
+    void refreshRules(); // validation message, OK button, Add button, "Try it" result
     void updatePasswordPage(); // master password state, buttons
     void updatePasswordDependents(); // "also show in Recent" follows "put in the Passwords group"
     void onHelloToggled(bool on);
@@ -233,6 +250,25 @@ private:
     QCheckBox* m_ignoreCase;
     QCheckBox* m_detectSecrets;
     QCheckBox* m_detectPasswords;
+    struct RuleRow {
+        QWidget* row = nullptr;
+        QSpinBox* minLength = nullptr;
+        QSpinBox* maxLength = nullptr;
+        QSpinBox* lower = nullptr;
+        QSpinBox* upper = nullptr;
+        QSpinBox* digits = nullptr;
+        QSpinBox* symbols = nullptr;
+        QCheckBox* end = nullptr;
+        QPushButton* remove = nullptr;
+        QLabel* title = nullptr;
+    };
+    QWidget* m_rulesPanel = nullptr;
+    QVBoxLayout* m_rulesLayout = nullptr;
+    std::vector<RuleRow> m_ruleRows;
+    QPushButton* m_addRule = nullptr;
+    QLabel* m_ruleError = nullptr;
+    QLineEdit* m_ruleTry = nullptr;
+    QLabel* m_ruleTryResult = nullptr;
     QCheckBox* m_passwordsPerNote;
     QTabWidget* m_tabs;
     QDialogButtonBox* m_buttons;
