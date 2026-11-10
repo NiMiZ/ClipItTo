@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs ClipItTo on Ubuntu 24.04+ (amd64) from the GitHub release: downloads the .deb,
+# Installs ClipItTo on Ubuntu 24.04 or 26.04 (amd64) from the GitHub release: downloads the .deb,
 # checks its SHA-256 against the release, and installs it with apt (which pulls in the
 # Qt libraries it needs). Needs sudo.
 #
@@ -50,7 +50,13 @@ else
     *) die "no published release found at $base" ;;
     esac
 fi
-name=clipitto_${tag#v}_amd64.deb
+# One .deb per Ubuntu release (library names and sonames differ): 26.04 has its own, 24.04 the default.
+variant=
+if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    variant=$(. /etc/os-release; [ "${ID:-}" = ubuntu ] && [ "${VERSION_ID%%.*}" = 26 ] && echo _ubuntu26.04) || variant=
+fi
+name=clipitto_${tag#v}${variant}_amd64.deb
 url=$base/download/$tag/$name
 
 # The checksum: from the release's SHA256SUMS, else (older releases) from the API.

@@ -80,10 +80,32 @@ jobs:
         if: always()
         run: sudo chown -R "$USER" ~/apt-cache
 
+  # One .deb per Ubuntu release: the Depends names (Qt's t64 packages, liblept5 vs libleptonica6) and the
+  # sonames the binary links differ between 24.04 and 26.04. Each is installed with apt and run on its own release.
   package:
-    name: Debian package (Ubuntu 24.04)
+    name: Debian package (Ubuntu ${{ matrix.release }})
     runs-on: ubuntu-24.04
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: '24.04'
+            container: ''
+            distro: ''
+            artifact: clipitto-deb
+          - release: '26.04'
+            container: 'ubuntu:26.04'
+            distro: ubuntu26.04
+            artifact: clipitto-deb-ubuntu2604
     steps:
+      # The container image is bare; the runner image has all of this.
+      - name: Container prerequisites
+        if: matrix.container != ''
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends sudo ca-certificates git curl build-essential cmake pkg-config \
+            dbus dbus-user-session xz-utils python3 file patch unzip
       - uses: actions/checkout@v4
       # Ubuntu's mirror for the runners is sometimes very slow (tens of kB/s): keep the
       # downloaded packages between runs, and retry failed downloads.
@@ -91,8 +113,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/apt-cache
-          key: apt-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml', 'cmake/Packaging.cmake') }}
-          restore-keys: apt-${{ github.job }}-
+          key: apt-${{ github.job }}-${{ matrix.release }}-${{ hashFiles('.github/workflows/ci.yml', 'cmake/Packaging.cmake') }}
+          restore-keys: apt-${{ github.job }}-${{ matrix.release }}-
       - name: Point apt at the cache
         run: |
           mkdir -p ~/apt-cache/partial
@@ -120,7 +142,7 @@ jobs:
       - name: Configure
         run: |
           for attempt in 1 2 3; do
-            cmake --preset deb -DFETCHCONTENT_BASE_DIR="$HOME/fetchcontent" && exit 0
+            cmake --preset deb -DCLIPITTO_DEB_DISTRO="${{ matrix.distro }}" -DFETCHCONTENT_BASE_DIR="$HOME/fetchcontent" && exit 0
             echo "::warning::configure failed (attempt $attempt): a download may have failed; trying again"
             sleep 30
           done
@@ -135,6 +157,16 @@ jobs:
           dpkg-deb -I build/deb/clipitto_*.deb
           dpkg-deb -c build/deb/clipitto_*.deb
           desktop-file-validate data/io.github.nimiz.ClipItTo.desktop
+
+      # Every package in the Depends must exist on this Ubuntu release, not only on a neighbouring one.
+      - name: Check the Depends
+        run: |
+          deps=$(dpkg-deb -f build/deb/clipitto_*.deb Depends)
+          echo "$deps"
+          for pkg in $(echo "$deps" | tr ',' '\n' | sed 's/^ *//; s/[ (|].*//' | sort -u); do
+            apt-cache show "$pkg" >/dev/null 2>&1 ||
+              { echo "::error title=Depends::$pkg does not exist on Ubuntu ${{ matrix.release }}"; exit 1; }
+          done
 
       # What a user who downloads the .deb gets: install it with apt (which pulls the
       # runtime libraries from its Depends) and run the installed binaries.
@@ -165,7 +197,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          name: clipitto-deb
+          name: ${{ matrix.artifact }}
           path: build/deb/clipitto_*.deb
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
@@ -175,7 +207,7 @@ jobs:
       # apt wrote the cache as root; the cache action saves it as the runner user.
       - name: Let the package cache be saved
         if: always()
-        run: sudo chown -R "$USER" ~/apt-cache
+        run: sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
 
   windows:
     name: Windows (MSVC)
@@ -643,7 +675,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: clipitto-{deb,windows-installer,appimage,snap,macos}
+          pattern: clipitto-{deb,deb-ubuntu2604,windows-installer,appimage,snap,macos}
           merge-multiple: true
       - name: Add the install scripts and SHA256SUMS
         working-directory: dist
