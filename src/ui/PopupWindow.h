@@ -193,6 +193,7 @@ signals:
     // A text copy became a password copy by hand ("Mark as password", or moved into the Passwords group): the owner
     // may ask for a name for it (askPasswordNote), as it does for a password captured with a marker.
     void passwordMarked(qint64 id);
+    void passwordNameEnded(const QString& outcome); // "named", "left empty", "cancelled" or "timed out"
     void settingsRequested();
 
 protected:

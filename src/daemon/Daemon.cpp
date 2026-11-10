@@ -30,6 +30,7 @@
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QThreadPool>
+#include <QTime>
 #include <QTimer>
 #include <QtConcurrent>
 
@@ -262,15 +263,26 @@ Daemon::StartResult Daemon::start(QString* error)
     });
     // "Ask for a name after copying a password": open the popup with a name box on the new copy.
     connect(m_pipeline.get(), &CapturePipeline::passwordStored, this, [this](qint64 id, const QString& source) {
-        if (m_config.passwordAskNote && m_popup) {
+        if (!m_config.passwordAskNote) {
+            qCInfo(lcDaemon) << "name box not asked: password_ask_note is off";
+        } else if (!m_popup) {
+            qCInfo(lcDaemon) << "name box not asked: no popup";
+        } else {
             m_popup->askPasswordNote(id, source);
         }
     });
     // The same name box after a copy was turned into a password by hand (it has no source app to suggest).
     connect(m_popup.get(), &ui::PopupWindow::passwordMarked, this, [this](qint64 id) {
-        if (m_config.passwordAskNote && m_popup) {
+        if (!m_config.passwordAskNote) {
+            qCInfo(lcDaemon) << "name box not asked: password_ask_note is off";
+        } else if (!m_popup) {
+            qCInfo(lcDaemon) << "name box not asked: no popup";
+        } else {
             m_popup->askPasswordNote(id, QString());
         }
+    });
+    connect(m_popup.get(), &ui::PopupWindow::passwordNameEnded, this, [this](const QString& outcome) {
+        m_lastNameBox = outcome + QStringLiteral(" at ") + QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
     });
     applyPasswordSettings();
 
@@ -1171,6 +1183,12 @@ QVariantMap Daemon::status() const
             passwords += QStringLiteral("; whole-password search while locked is off (%1)").arg(m_passwords->matchProblem());
         }
         s[QStringLiteral("passwords")] = passwords;
+        const auto onOff = [](bool on) { return on ? QStringLiteral("on") : QStringLiteral("off"); };
+        s[QStringLiteral("password_feature")] = QStringLiteral("ask_note %1, detect_secrets %2, detect_passwords %3, match key %4, last name box: %5")
+                                                    .arg(onOff(m_config.passwordAskNote), onOff(m_config.detectSecrets),
+                                                         onOff(m_config.detectPasswords),
+                                                         m_passwords->canMatch() ? QStringLiteral("available") : QStringLiteral("not available"),
+                                                         m_lastNameBox.isEmpty() ? QStringLiteral("none yet") : m_lastNameBox);
     }
     if (m_repo && !m_converting) { // during a conversion the database belongs to the worker
         try {

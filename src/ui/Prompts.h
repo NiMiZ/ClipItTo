@@ -46,6 +46,8 @@ PasswordPrompt defaultPasswordPrompt();
 // nullopt = cancelled.
 using NamePrompt = std::function<std::optional<QString>(QWidget* parent, const QString& suggestion)>;
 NamePrompt defaultNamePrompt();
+// True when the last default name box closed because nobody answered within 60 seconds.
+bool lastNamePromptTimedOut();
 
 // Setting or changing the master password: masked fields only, the new one typed twice.
 struct MasterPasswordAnswer {

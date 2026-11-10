@@ -150,6 +150,7 @@ private:
     QString m_encryptionError;
     QString m_startupWarning; // shown once, the first time the popup opens
     bool m_removeKeyAfterStart = false;
+    QString m_lastNameBox; // outcome and time of the last password name box, for --status
     bool m_passwordNoticeShown = false; // "set a master password", once per session
     QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile

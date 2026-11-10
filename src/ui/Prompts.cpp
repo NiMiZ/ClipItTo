@@ -3,6 +3,7 @@
 #include "PasswordPolicy.h"
 #include "QrImage.h"
 
+#include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
@@ -16,8 +17,11 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QLoggingCategory>
 #include <QTimer>
 #include <QVBoxLayout>
+
+#include <utility>
 
 namespace clipitto::ui {
 
@@ -200,6 +204,15 @@ PasswordPrompt defaultPasswordPrompt()
     };
 }
 
+Q_LOGGING_CATEGORY(lcPrompts, "clipitto.popup")
+
+static bool g_lastNameTimedOut = false;
+
+bool lastNamePromptTimedOut()
+{
+    return std::exchange(g_lastNameTimedOut, false); // read once per prompt, so a custom prompt never sees a stale value
+}
+
 NamePrompt defaultNamePrompt()
 {
     return [](QWidget* parent, const QString& suggestion) -> std::optional<QString> {
@@ -230,12 +243,24 @@ NamePrompt defaultNamePrompt()
         dialog.setWindowFlag(Qt::WindowStaysOnTopHint, true);
         QTimer giveUp;
         giveUp.setSingleShot(true);
-        QObject::connect(&giveUp, &QTimer::timeout, &dialog, &QDialog::reject);
+        g_lastNameTimedOut = false;
+        QObject::connect(&giveUp, &QTimer::timeout, &dialog, [&dialog] {
+            g_lastNameTimedOut = true;
+            dialog.reject();
+        });
         giveUp.start(60 * 1000); // the copy keeps its default note
         dialog.show();
         dialog.raise();
         dialog.activateWindow();
         edit->setFocus();
+        // Some window managers (Wayland/GNOME focus-stealing prevention, Windows foreground lock) refuse
+        // to bring it forward: then ask for attention (taskbar flash) and say so in the log.
+        QTimer::singleShot(700, &dialog, [&dialog] {
+            if (!dialog.isActiveWindow()) {
+                qCInfo(lcPrompts) << "name box: could not be brought to the front, asking for attention";
+                QApplication::alert(&dialog, 0);
+            }
+        });
         if (dialog.exec() != QDialog::Accepted) {
             return std::nullopt;
         }
