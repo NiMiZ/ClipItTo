@@ -149,6 +149,9 @@ QString fileSummary(const QStringList& paths)
     if (paths.isEmpty()) {
         return {};
     }
+    if (paths.size() == 1) {
+        return paths.first(); // a lone path may be just text from a chat or terminal: show all of it
+    }
     QStringList names;
     for (int i = 0; i < paths.size() && i < 2; ++i) {
         names << fileName(paths.at(i));

@@ -314,7 +314,8 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         content.setLeft(content.left() + fm.height() + kGap / 2);
     }
 
-    // One colour: a swatch of it before the text. A list of files: a file icon, and the names instead of the paths.
+    // One colour: a swatch of it before the text. A list of files: a file icon, and for several files the names
+    // instead of the paths (one file shows its full path).
     const QColor swatch = index.data(HistoryModel::ColorRole).value<QColor>();
     if (swatch.isValid()) {
         QColor frame = text;
@@ -332,13 +333,15 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
     const bool hasNote = index.data(HistoryModel::HasNoteRole).toBool();
     const QString title = !files.isEmpty() && !hasNote ? preview::fileSummary(files)
                                                          : index.data(HistoryModel::TitleRole).toString();
+    const bool singleFile = files.size() == 1 && !hasNote;
     const QString preview = index.data(HistoryModel::PreviewRole).toString();
     const QRect titleRect(content.left(), content.top(), right - content.left(), fm.height());
     const QFont titleFont = hasNote ? bold(option.font) : option.font;
     painter->setFont(titleFont);
     painter->setPen(text);
     painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
-                      QFontMetrics(titleFont).elidedText(title, Qt::ElideRight, titleRect.width()));
+                      QFontMetrics(titleFont).elidedText(title, singleFile ? Qt::ElideMiddle : Qt::ElideRight,
+                                                                  titleRect.width()));
     painter->setFont(option.font);
     painter->setPen(dim);
     int y = content.top() + fm.height() + 2;
