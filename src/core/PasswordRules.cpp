@@ -32,8 +32,8 @@ Counts countOf(const QString& text)
 
 QString validate(const PasswordRule& r)
 {
-    if (r.minLength < 1 || r.maxLength > kLengthLimit) {
-        return QStringLiteral("length must be between 1 and %1").arg(kLengthLimit);
+    if (r.minLength < kMinLength || r.maxLength > kLengthLimit) {
+        return QStringLiteral("length must be between %1 and %2").arg(kMinLength).arg(kLengthLimit);
     }
     if (r.minLength > r.maxLength) {
         return QStringLiteral("the shortest length is above the longest");

@@ -137,7 +137,7 @@ private slots:
         QVERIFY(Config::fromToml(withRules.mergeInto("password_rules = []   # mine\nrecent_count = 7\n")) == withRules);
         QVERIFY(Config::fromToml(withRules.mergeInto("password_rules = [ \"1-2 digits=1\",\n")).passwordRules.size() <= 2);
         QStringList ruleWarnings;
-        const Config sixRules = Config::fromToml("password_rules = [\"8-9\", \"x\", \"9-8\", \"1-5\", \"1-5\", \"1-5\", \"1-5\", \"1-5\"]",
+        const Config sixRules = Config::fromToml("password_rules = [\"8-9\", \"x\", \"9-8\", \"6-9\", \"6-9\", \"6-9\", \"6-9\", \"6-9\"]",
                                                  &ruleWarnings);
         QCOMPARE(sixRules.passwordRules.size(), 5);
         QCOMPARE(ruleWarnings.size(), 3); // two malformed, one over the limit of five

@@ -11,6 +11,8 @@
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
+#include <algorithm>
+
 #include <QCheckBox>
 #include <QDir>
 #include <QDate>
@@ -1045,8 +1047,8 @@ void SettingsDialog::addRuleRow(const PasswordRule& rule)
         return s;
     };
     const int limit = passwordrules::kLengthLimit;
-    r.minLength = spin(1, limit, rule.minLength);
-    r.maxLength = spin(1, limit, rule.maxLength);
+    r.minLength = spin(passwordrules::kMinLength, limit, std::max(rule.minLength, passwordrules::kMinLength));
+    r.maxLength = spin(passwordrules::kMinLength, limit, std::max(rule.maxLength, passwordrules::kMinLength));
     r.lower = spin(0, limit, rule.lower);
     r.upper = spin(0, limit, rule.upper);
     r.digits = spin(0, limit, rule.digits);

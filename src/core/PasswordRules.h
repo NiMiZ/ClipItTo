@@ -25,8 +25,10 @@ namespace passwordrules {
 
 constexpr int kMaxRules = 5;
 constexpr int kLengthLimit = 256;
+// A rule must ask for at least this many characters, so a rule can never catch every short word.
+constexpr int kMinLength = 6;
 
-// Why a rule cannot be used, empty when it is fine. Checks: 1 <= min <= max <= kLengthLimit, counts
+// Why a rule cannot be used, empty when it is fine. Checks: kMinLength <= min <= max <= kLengthLimit, counts
 // 0..kLengthLimit, and the counts together fit in the maximum length.
 QString validate(const PasswordRule& rule);
 

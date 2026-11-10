@@ -12,15 +12,13 @@ private slots:
     void countsAreMinimums()
     {
         PasswordRule r;
-        r.minLength = 2;
+        r.minLength = 6;
         r.maxLength = 12;
         r.digits = 2;
-        QVERIFY(matches(r, QStringLiteral("12")));
-        QVERIFY(matches(r, QStringLiteral("ab123")));
-        QVERIFY(!matches(r, QStringLiteral("ab1")));
-        r.minLength = 3; // "at least 2 digits, not only 2 digits"
-        QVERIFY(!matches(r, QStringLiteral("12")));
-        QVERIFY(matches(r, QStringLiteral("a12")));
+        QVERIFY(matches(r, QStringLiteral("abcd12")));   // "at least 2 digits, not only 2 digits"
+        QVERIFY(matches(r, QStringLiteral("ab12345")));  // more digits than the minimum is fine
+        QVERIFY(!matches(r, QStringLiteral("abcde1")));  // one digit is too few
+        QVERIFY(!matches(r, QStringLiteral("12")));      // shorter than the minimum length
     }
 
     void classesAndEnd()
@@ -45,15 +43,15 @@ private slots:
     void anyRule()
     {
         PasswordRule a;
-        a.digits = 4;
-        a.minLength = 4;
-        a.maxLength = 4;
+        a.digits = 6;
+        a.minLength = 6;
+        a.maxLength = 6;
         PasswordRule b;
         b.upper = 3;
-        QVERIFY(matchesAny({a, b}, QStringLiteral("1234")));
+        QVERIFY(matchesAny({a, b}, QStringLiteral("123456")));
         QVERIFY(matchesAny({a, b}, QStringLiteral("ABCdefgh")));
         QVERIFY(!matchesAny({a, b}, QStringLiteral("abcdefgh")));
-        QVERIFY(!matchesAny({}, QStringLiteral("1234")));
+        QVERIFY(!matchesAny({}, QStringLiteral("123456")));
     }
 
     void validates()
@@ -62,6 +60,11 @@ private slots:
         QVERIFY(validate(r).isEmpty());
         r.minLength = 0;
         QVERIFY(!validate(r).isEmpty());
+        r.minLength = kMinLength - 1; // below 6 characters would catch ordinary words
+        r.maxLength = 12;
+        QVERIFY(!validate(r).isEmpty());
+        r.minLength = kMinLength;
+        QVERIFY(validate(r).isEmpty());
         r = PasswordRule();
         r.minLength = 20;
         r.maxLength = 10;
@@ -94,7 +97,7 @@ private slots:
         QCOMPARE(back, r);
         QVERIFY(parse(QStringLiteral("  6-9   digits=2 "), back));
         QCOMPARE(back.digits, 2);
-        for (const char* bad : {"", "abc", "8", "8-", "9-8", "8-20 foo=1", "8-20 lower=x", "8-20 lower", "0-5", "8-20 lower=-1"}) {
+        for (const char* bad : {"", "abc", "8", "8-", "9-8", "8-20 foo=1", "8-20 lower=x", "8-20 lower", "0-5", "5-20", "8-20 lower=-1"}) {
             PasswordRule keep = r;
             QVERIFY2(!parse(QString::fromLatin1(bad), keep), bad);
             QCOMPARE(keep, r);
