@@ -66,6 +66,7 @@ private slots:
         QVERIFY2(text.contains(QLatin1String("this length 199")), "the newest line is in the current file");
         QVERIFY(QFile::exists(path + QLatin1String(".1"))); // one older part, no more
         QVERIFY(!QFile::exists(path + QLatin1String(".2")));
+        current.close(); // Windows cannot delete a file that is open
         clipitto::debuglog::remove(path);
         QVERIFY(!QFile::exists(path) && !QFile::exists(path + QLatin1String(".1")));
     }

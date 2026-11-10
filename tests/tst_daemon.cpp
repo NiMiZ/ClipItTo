@@ -127,6 +127,7 @@ private slots:
             QFile file(o.debugLogPath);
             QVERIFY(file.open(QIODevice::ReadOnly));
             QVERIFY(QString::fromUtf8(file.readAll()).contains(QLatin1String("a marker line for the test")));
+            file.close(); // Windows cannot delete a file that is open
 
             // Turned off: the log stops and the file is deleted.
             writeConfig("debug_log = false\n");
