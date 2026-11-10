@@ -21,7 +21,7 @@ std::optional<Rgba> colorOf(const QString& text);
 // else, or there are too many. Looks at the text only, never at the disk. A lone `/help` is not a path.
 QStringList filePaths(const QString& text);
 
-// "a.txt", or "a.txt, b.txt, +2 more" for the row's title.
+// The row's title: the whole path for one file, "a.txt, b.txt, +2 more" (names only) for several.
 QString fileSummary(const QStringList& paths);
 
 } // namespace clipitto::preview

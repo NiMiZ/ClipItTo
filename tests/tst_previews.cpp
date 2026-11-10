@@ -77,7 +77,8 @@ private slots:
 
     void summaryNamesTheFirstFiles()
     {
-        QCOMPARE(fileSummary({"/a/b.txt"}), QStringLiteral("b.txt"));
+        QCOMPARE(fileSummary({"/a/b.txt"}), QStringLiteral("/a/b.txt")); // one path: all of it
+        QCOMPARE(fileSummary({"/mnt/i/projects/ClipItTo"}), QStringLiteral("/mnt/i/projects/ClipItTo"));
         QCOMPARE(fileSummary({"/a/b.txt", "C:\\x\\c.txt"}), QStringLiteral("b.txt, c.txt"));
         QCOMPARE(fileSummary({"/a/b.txt", "/a/c.txt", "/a/d.txt", "/a/e.txt"}), QStringLiteral("b.txt, c.txt, +2 more"));
         QVERIFY(fileSummary({}).isEmpty());
