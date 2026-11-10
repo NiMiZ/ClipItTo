@@ -4,8 +4,9 @@ Back to the [README](../README.md).
 
 # Linux
 
-**Ubuntu 24.04+ (`.deb`).** One command downloads the latest `.deb`, checks its SHA-256
-against the release and installs it with apt, which pulls in the Qt libraries it needs:
+**Ubuntu 24.04 and 26.04 (`.deb`).** One command downloads the latest `.deb` for your Ubuntu
+release, checks its SHA-256 against the release and installs it with apt, which pulls in the Qt
+libraries it needs:
 
 ```bash
 curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh | sh
@@ -13,7 +14,10 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and run
-`sudo apt install ./clipitto_0.14.1_amd64.deb`. [install.sh](../install.sh) also takes
+`sudo apt install ./clipitto_0.14.1_amd64.deb` (Ubuntu 24.04) or
+`sudo apt install ./clipitto_0.14.1_ubuntu26.04_amd64.deb` (Ubuntu 26.04). The two differ in the
+library packages they depend on (Qt's `t64` names, `liblept5` vs `libleptonica6`), so pick the one for
+your release. Other Debian-based systems: use the AppImage below. [install.sh](../install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
 
 Then, once per user, **log out and back in** (so GNOME Shell sees the extension) and run

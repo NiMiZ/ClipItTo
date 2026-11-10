@@ -26,6 +26,10 @@ sp_commit=17d7580d6407802f85855d2cc9190634e2c95624
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 os=$(uname -s)
 
+# SentencePiece's header uses uint32_t without including <cstdint>, which GCC 15 (Ubuntu 26.04) no longer lets through. The
+# flag is harmless for older compilers and for the libraries that already include it; CMake picks CXXFLAGS up on its first run.
+export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-include cstdint"
+
 fetch() { # name url tag commit
     if [ ! -d "$work/$1/.git" ]; then
         n=0

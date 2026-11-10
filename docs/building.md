@@ -9,7 +9,7 @@ and builds the Debian package, AppImage and snap.
 
 ## Linux
 
-Needs Ubuntu 24.04+ or equivalent: Qt 6.4+, SQLite 3.35+, toml++ 3.
+Needs Ubuntu 24.04+ (24.04 and 26.04 are packaged) or equivalent: Qt 6.4+, SQLite 3.35+, toml++ 3.
 
 ```bash
 # 1. Dependencies

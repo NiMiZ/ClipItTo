@@ -63,7 +63,16 @@ set(CPACK_PACKAGE_DESCRIPTION
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/NiMiZ/ClipItTo")
 set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}") # paths in the unit files must match
 set(CPACK_STRIP_FILES ON)
-set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+# The library names in the Depends line (dpkg-shlibdeps) and the sonames the binary links (liblept.so.5 on
+# Ubuntu 24.04, libleptonica.so.6 on 26.04) belong to the release it was built on, so each Ubuntu release
+# needs its own build. CLIPITTO_DEB_DISTRO (e.g. ubuntu26.04) puts that release in the file name; empty
+# keeps the default name (the Ubuntu 24.04 build).
+set(CLIPITTO_DEB_DISTRO "" CACHE STRING "Release the .deb is built for, added to its file name (e.g. ubuntu26.04)")
+if(CLIPITTO_DEB_DISTRO)
+    set(CPACK_DEBIAN_FILE_NAME "clipitto_${PROJECT_VERSION}_${CLIPITTO_DEB_DISTRO}_amd64.deb")
+else()
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+endif()
 set(CPACK_DEBIAN_PACKAGE_SECTION utils)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ${CLIPITTO_DEB_SHLIBDEPS})
 # qt6-wayland and the gjs-run extension are loaded at runtime, invisible to dpkg-shlibdeps.
