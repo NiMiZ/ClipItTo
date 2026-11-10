@@ -177,6 +177,34 @@ public:
         }
     }
 
+    // Up to passwordrules::kMaxRules strings in PasswordRules.h's text form; bad ones are skipped with a warning.
+    void passwordRules(const char* key, QList<PasswordRule>& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const toml::array* array = node->as_array();
+        if (!array) {
+            warn(QStringLiteral("%1: expected a list of rule strings").arg(QLatin1String(key)));
+            return;
+        }
+        QList<PasswordRule> rules;
+        for (const toml::node& item : *array) {
+            const auto value = item.value_exact<std::string>();
+            PasswordRule rule;
+            if (!value || !passwordrules::parse(QString::fromStdString(*value), rule)) {
+                warn(QStringLiteral("%1: a rule is not like \"8-20 lower=1 upper=1 digits=2 symbols=0 end\"; skipped")
+                         .arg(QLatin1String(key)));
+            } else if (rules.size() >= passwordrules::kMaxRules) {
+                warn(QStringLiteral("%1: only %2 rules are used").arg(QLatin1String(key)).arg(passwordrules::kMaxRules));
+            } else {
+                rules << rule;
+            }
+        }
+        out = rules;
+    }
+
     void warnUnknownKeys()
     {
         for (const auto& [key, node] : m_table) {
@@ -259,6 +287,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("passwords_in_group", config.passwordsInGroup);
     r.boolean("detect_secrets", config.detectSecrets);
     r.boolean("detect_passwords", config.detectPasswords);
+    r.passwordRules("password_rules", config.passwordRules);
     r.boolean("passwords_per_note", config.passwordsPerNote);
     r.boolean("password_ask_note", config.passwordAskNote);
     r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
@@ -311,6 +340,15 @@ std::string tomlBool(bool v)
     return v ? "true" : "false";
 }
 
+std::string tomlRules(const QList<PasswordRule>& rules)
+{
+    std::string out = "[";
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        out += (i ? ", " : "") + tomlString(passwordrules::format(rules.at(i)).toStdString());
+    }
+    return out + "]";
+}
+
 std::vector<Line> lines(const Config& c)
 {
     return {
@@ -354,6 +392,7 @@ std::vector<Line> lines(const Config& c)
         {"passwords_in_group", tomlBool(c.passwordsInGroup), "put new password copies in the Passwords group"},
         {"detect_secrets", tomlBool(c.detectSecrets), "copies that look like API keys, tokens or card numbers are kept as password copies"},
         {"detect_passwords", tomlBool(c.detectPasswords), "copies that look like generated passwords are kept as password copies (guesses; may take ordinary text)"},
+        {"password_rules", tomlRules(c.passwordRules), "your own rules for what is kept as a password copy (up to 5)"},
         {"passwords_per_note", tomlBool(c.passwordsPerNote), "the same password under a different note is a separate copy"},
         {"password_ask_note", tomlBool(c.passwordAskNote), "after copying a new password, open ClipItTo to name it"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},
@@ -390,8 +429,19 @@ std::size_t valueEnd(const std::string& line, std::size_t from)
         }
         return line.size();
     }
+    if (from < line.size() && line[from] == '[') { // a list: up to its closing bracket, quotes respected
+        bool quoted = false;
+        for (std::size_t j = from + 1; j < line.size(); ++j) {
+            if (line[j] == '"') {
+                quoted = !quoted;
+            } else if (line[j] == ']' && !quoted) {
+                return j + 1;
+            }
+        }
+        return line.size();
+    }
     std::size_t i = from;
-    while (i < line.size() && line[i] != '#' && line[i] != ' ' && line[i] != '\t' && line[i] != '\r') {
+    while (i < line.size() && line[i] != '#'&& line[i] != ' ' && line[i] != '\t' && line[i] != '\r') {
         ++i;
     }
     return i;

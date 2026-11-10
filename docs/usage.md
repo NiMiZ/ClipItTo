@@ -137,6 +137,12 @@ single-line copy of 8 to 64 characters without spaces that mixes three of lower 
 digits and symbols as a password copy. It is a guess by shape and will take some ordinary copies
 (*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md).
 
+**Your own password rules:** Settings › Passwords › *Password rules* (`password_rules`, up to 5)
+keeps a copy as a password copy when it fits a rule you define: a length range, minimum counts of
+lower case, upper case, digits and symbols ("at least 2 digits", not "only 2 digits"), and
+optionally *digits at the end*. Rules add to the detection above. The *Try it* box tests a sample
+(not saved or logged). Needs a master password or *Use without one…*, like the checkbox above.
+
 **Backup** (Settings › Backup): *Export…* writes your copies (with notes, stars, pins, groups and
 pictures) and/or your settings to one JSON file; *Import…* adds a file's contents to what is here
 (copies already in the history are left alone). Tick *Copies* and/or *Settings* when exporting;

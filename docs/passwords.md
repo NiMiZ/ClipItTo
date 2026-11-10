@@ -104,6 +104,16 @@ ordinary copies** (an unusual identifier, a code, a token of an unknown service)
 until you use *Not a password* in the right-click menu. That is why it is off. Like the option above, it
 needs a master password (or *Use without one…*); otherwise the box is disabled.
 
+**Your own rules.** When the guess is too loose or too strict, define what counts as a password yourself
+(Settings › Passwords › *Password rules*, config key `password_rules`, up to 5). A rule is a length range
+(1 to 256), minimum counts of lower case letters, upper case letters, digits and symbols, and *digits at the
+end*. Counts are minimums: "2 digits" means at least 2, and with a length of 3 or more it is not satisfied
+by two digits alone. A single-line copy without spaces that fits any rule is kept as a password copy with
+the note "Matches your password rule". Rules extend the built-in detection; they never turn it off. Type a
+sample in the *Try it* box to see which rule keeps it (the sample is only checked on screen, never saved or
+logged). Impossible rules (shortest above longest, counts above the longest length) are refused and OK stays
+disabled. Like the options above, rules need a master password or *Use without one…*.
+
 **Choosing a master password.** The dialog lists the rules and ticks them as you type: at least 8
 characters with an uppercase letter, a lowercase letter and a digit; no form of "password", "admin" or
 "root" (so `P@ssw0rd123` and `ADM1N` are refused), not your user name, and no three digits in a row

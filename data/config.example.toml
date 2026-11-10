@@ -55,7 +55,12 @@ detect_secrets = true       # a copy that looks like an API key, token, private 
 detect_passwords = false    # a single-line copy that looks like a generated password (8-64 characters,
                             # no spaces, three of lower/upper/digits/symbols) is kept as a password
                             # copy too. A guess: it can take ordinary text, so it is off by default
-passwords_per_note = true   # the same password under a different note is kept as a separate copy
+password_rules = []         # your own rules for what is kept as a password copy, up to 5, added to
+                            # the detection above. Each is "min-max" length plus minimum counts, e.g.
+                            # ["8-20 lower=1 upper=1 digits=2 symbols=0 end"]: 8 to 20 characters, at
+                            # least 1 lower case, 1 upper case, 2 digits, and ending with a digit
+                            # (omit "end" for no such condition; counts default to 0)
+passwords_per_note = true  # the same password under a different note is kept as a separate copy
 password_ask_note = true    # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
 debug_log = false          # true = write a diagnostic log file for troubleshooting (what ClipItTo does, never what you

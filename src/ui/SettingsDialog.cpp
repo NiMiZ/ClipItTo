@@ -5,6 +5,7 @@
 #include "GroupPath.h"
 #include "Hotkey.h"
 #include "PasswordKeeper.h"
+#include "PasswordRules.h"
 #include "PlatformKeys.h"
 #include "TextTransform.h"
 #include "db/Repository.h"
@@ -521,6 +522,51 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                               "taken too and shown as ●●●● until you use \"Not a password\" in the "
                                               "right-click menu. Off by default.")));
     passwordsForm->addRow(QString(), m_detectPasswords);
+
+    // Own rules: extend the detection above (a copy that fits any rule is kept as a password copy too).
+    m_rulesPanel = new QWidget(this);
+    auto* rulesOuter = new QVBoxLayout(m_rulesPanel);
+    rulesOuter->setContentsMargins(0, 0, 0, 0);
+    auto* rulesIntro = new QLabel(tr("Your own rules: a single-line copy without spaces that fits any rule is also "
+                                     "kept as a password copy. Counts are minimums (\"2 digits\" means at least 2)."),
+                                  m_rulesPanel);
+    rulesIntro->setWordWrap(true);
+    rulesOuter->addWidget(rulesIntro);
+    m_rulesLayout = new QVBoxLayout;
+    rulesOuter->addLayout(m_rulesLayout);
+    m_addRule = new QPushButton(tr("Add a rule"), m_rulesPanel);
+    m_addRule->setToolTip(tr("Up to %1 rules").arg(passwordrules::kMaxRules));
+    connect(m_addRule, &QPushButton::clicked, this, [this] {
+        addRuleRow(PasswordRule());
+        refreshRules();
+    });
+    auto* addRow = new QHBoxLayout;
+    addRow->addWidget(m_addRule);
+    addRow->addStretch(1);
+    rulesOuter->addLayout(addRow);
+    m_ruleError = new QLabel(m_rulesPanel);
+    m_ruleError->setWordWrap(true);
+    m_ruleError->setStyleSheet(QStringLiteral("color: #c0392b;"));
+    m_ruleError->hide();
+    rulesOuter->addWidget(m_ruleError);
+    auto* tryRow = new QHBoxLayout;
+    m_ruleTry = new QLineEdit(m_rulesPanel);
+    m_ruleTry->setPlaceholderText(tr("Try it: type a sample to test against the rules"));
+    m_ruleTry->setInputMethodHints(Qt::ImhSensitiveData | Qt::ImhNoPredictiveText);
+    connect(this, &QDialog::finished, m_ruleTry, &QLineEdit::clear);
+    m_ruleTry->setMaxLength(passwordrules::kLengthLimit + 64);
+    m_ruleTry->setToolTip(tr("Only tested here against the rules above; it is not saved or logged."));
+    tryRow->addWidget(m_ruleTry);
+    rulesOuter->addLayout(tryRow);
+    m_ruleTryResult = new QLabel(m_rulesPanel);
+    m_ruleTryResult->setWordWrap(true);
+    rulesOuter->addWidget(m_ruleTryResult);
+    connect(m_ruleTry, &QLineEdit::textChanged, this, &SettingsDialog::refreshRules);
+    for (const PasswordRule& rule : config.passwordRules) {
+        addRuleRow(rule);
+    }
+    refreshRules();
+    passwordsForm->addRow(tr("Password rules:"), m_rulesPanel);
     m_passwordsPerNote->setChecked(config.passwordsPerNote);
     m_passwordsPerNote->setToolTip(QStringLiteral("<p>%1</p>")
                                        .arg(tr("Off: copying a password you already have only moves it to the top, "
@@ -788,6 +834,12 @@ Config SettingsDialog::config() const
     c.ignoreCase = m_ignoreCase->isChecked();
     c.detectSecrets = m_detectSecrets->isChecked();
     c.detectPasswords = m_detectPasswords->isChecked();
+    c.passwordRules.clear();
+    for (const PasswordRule& rule : ruleValues()) {
+        if (passwordrules::validate(rule).isEmpty()) {
+            c.passwordRules << rule;
+        }
+    }
     c.passwordsPerNote = m_passwordsPerNote->isChecked();
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
@@ -970,6 +1022,143 @@ void SettingsDialog::accept()
     QDialog::accept();
 }
 
+QList<QSpinBox*> SettingsDialog::ruleSpinBoxes(int row) const
+{
+    const RuleRow& r = m_ruleRows.at(size_t(row));
+    return {r.minLength, r.maxLength, r.lower, r.upper, r.digits, r.symbols};
+}
+
+void SettingsDialog::addRuleRow(const PasswordRule& rule)
+{
+    if (int(m_ruleRows.size()) >= passwordrules::kMaxRules) {
+        return;
+    }
+    RuleRow r;
+    r.row = new QWidget(m_rulesPanel);
+    auto* v = new QVBoxLayout(r.row);
+    v->setContentsMargins(0, 2, 0, 2);
+    const auto spin = [&](int min, int max, int value) {
+        auto* s = new QSpinBox(r.row);
+        s->setRange(min, max);
+        s->setValue(value);
+        connect(s, &QSpinBox::valueChanged, this, &SettingsDialog::refreshRules);
+        return s;
+    };
+    const int limit = passwordrules::kLengthLimit;
+    r.minLength = spin(1, limit, rule.minLength);
+    r.maxLength = spin(1, limit, rule.maxLength);
+    r.lower = spin(0, limit, rule.lower);
+    r.upper = spin(0, limit, rule.upper);
+    r.digits = spin(0, limit, rule.digits);
+    r.symbols = spin(0, limit, rule.symbols);
+    r.end = new QCheckBox(tr("digits at the end"), r.row);
+    r.end->setChecked(rule.digitsAtEnd);
+    r.end->setToolTip(tr("The copy must end with a digit"));
+    connect(r.end, &QCheckBox::toggled, this, &SettingsDialog::refreshRules);
+    r.remove = new QPushButton(tr("Remove"), r.row);
+    QWidget* rowWidget = r.row;
+    connect(r.remove, &QPushButton::clicked, this, [this, rowWidget] { removeRuleRow(rowWidget); });
+    r.title = new QLabel(r.row);
+
+    auto* top = new QHBoxLayout;
+    top->addWidget(r.title);
+    top->addWidget(r.minLength);
+    top->addWidget(new QLabel(tr("to"), r.row));
+    top->addWidget(r.maxLength);
+    top->addWidget(new QLabel(tr("characters"), r.row));
+    top->addStretch(1);
+    top->addWidget(r.remove);
+    auto* bottom = new QHBoxLayout;
+    bottom->addWidget(new QLabel(tr("at least:"), r.row));
+    for (const auto& [label, box] : {std::pair{tr("lower case"), r.lower}, std::pair{tr("upper case"), r.upper},
+                                     std::pair{tr("digits"), r.digits}, std::pair{tr("symbols"), r.symbols}}) {
+        bottom->addWidget(new QLabel(label, r.row));
+        bottom->addWidget(box);
+    }
+    bottom->addWidget(r.end);
+    bottom->addStretch(1);
+    v->addLayout(top);
+    v->addLayout(bottom);
+    m_rulesLayout->addWidget(r.row);
+    m_ruleRows.push_back(r);
+}
+
+void SettingsDialog::removeRuleRow(QWidget* row)
+{
+    for (auto it = m_ruleRows.begin(); it != m_ruleRows.end(); ++it) {
+        if (it->row == row) {
+            m_ruleRows.erase(it);
+            m_rulesLayout->removeWidget(row);
+            row->hide();
+            row->deleteLater();
+            break;
+        }
+    }
+    refreshRules();
+}
+
+QList<PasswordRule> SettingsDialog::ruleValues() const
+{
+    QList<PasswordRule> rules;
+    for (const RuleRow& r : m_ruleRows) {
+        PasswordRule rule;
+        rule.minLength = r.minLength->value();
+        rule.maxLength = r.maxLength->value();
+        rule.lower = r.lower->value();
+        rule.upper = r.upper->value();
+        rule.digits = r.digits->value();
+        rule.symbols = r.symbols->value();
+        rule.digitsAtEnd = r.end->isChecked();
+        rules << rule;
+    }
+    return rules;
+}
+
+void SettingsDialog::refreshRules()
+{
+    if (!m_rulesPanel || !m_ruleError) {
+        return;
+    }
+    const QList<PasswordRule> rules = ruleValues();
+    QStringList errors;
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        m_ruleRows[size_t(i)].title->setText(tr("Rule %1: length").arg(i + 1));
+        const QString why = passwordrules::validate(rules.at(i));
+        if (!why.isEmpty()) {
+            errors << tr("Rule %1: %2.").arg(i + 1).arg(why);
+        }
+    }
+    setNote(m_ruleError, errors.join(QLatin1Char(' ')));
+    m_ruleError->setEnabled(true);
+    m_addRule->setEnabled(rules.size() < passwordrules::kMaxRules);
+    if (QPushButton* ok = m_buttons->button(QDialogButtonBox::Ok)) {
+        ok->setEnabled(errors.isEmpty());
+    }
+    // "Try it": which rule keeps the sample. Only the verdict is shown, never the text.
+    const QString sample = m_ruleTry->text();
+    if (sample.isEmpty()) {
+        setNote(m_ruleTryResult, QString());
+    } else if (rules.isEmpty()) {
+        setNote(m_ruleTryResult, tr("No rules yet."));
+    } else {
+        QString result;
+        QStringList reasons;
+        for (qsizetype i = 0; i < rules.size(); ++i) {
+            if (!passwordrules::validate(rules.at(i)).isEmpty()) {
+                continue;
+            }
+            const QString why = passwordrules::whyNot(rules.at(i), sample);
+            if (why.isEmpty()) {
+                result = tr("Kept as a password copy by rule %1.").arg(i + 1);
+                break;
+            }
+            reasons << tr("rule %1: %2").arg(i + 1).arg(why);
+        }
+        setNote(m_ruleTryResult, result.isEmpty() ? tr("Not kept by your rules (%1).").arg(reasons.join(QStringLiteral("; ")))
+                                                  : result);
+    }
+}
+
 void SettingsDialog::updatePasswordDependents()
 {
     // Only a password copy that is in the Passwords group can be kept out of Recent.
@@ -1012,6 +1201,7 @@ void SettingsDialog::updatePasswordPage()
     m_askNote->setEnabled(setUp);
     m_detectSecrets->setEnabled(setUp);
     m_detectPasswords->setEnabled(setUp);
+    m_rulesPanel->setEnabled(setUp);
     m_passwordsPerNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
                        static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),

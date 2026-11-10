@@ -124,6 +124,27 @@ private slots:
         QCOMPARE(c.passwordSearchKeyword, QStringLiteral("pw:"));
         QVERIFY(Config::fromToml(c.toToml()) == c);
 
+        // Rules: written as a list of strings, survive a merge into an existing file, bad ones are skipped.
+        QVERIFY(defaults.passwordRules.isEmpty());
+        Config withRules;
+        clipitto::PasswordRule rule;
+        rule.minLength = 8;
+        rule.maxLength = 20;
+        rule.digits = 2;
+        rule.digitsAtEnd = true;
+        withRules.passwordRules = {rule, clipitto::PasswordRule()};
+        QVERIFY(Config::fromToml(withRules.toToml()) == withRules);
+        QVERIFY(Config::fromToml(withRules.mergeInto("password_rules = []   # mine\nrecent_count = 7\n")) == withRules);
+        QVERIFY(Config::fromToml(withRules.mergeInto("password_rules = [ \"1-2 digits=1\",\n")).passwordRules.size() <= 2);
+        QStringList ruleWarnings;
+        const Config sixRules = Config::fromToml("password_rules = [\"8-9\", \"x\", \"9-8\", \"1-5\", \"1-5\", \"1-5\", \"1-5\", \"1-5\"]",
+                                                 &ruleWarnings);
+        QCOMPARE(sixRules.passwordRules.size(), 5);
+        QCOMPARE(ruleWarnings.size(), 3); // two malformed, one over the limit of five
+        QStringList notList;
+        QVERIFY(Config::fromToml("password_rules = 5", &notList).passwordRules.isEmpty());
+        QCOMPARE(notList.size(), 1);
+
         QStringList warnings;
         const Config bad = Config::fromToml("password_search_keyword = \"p w\"\npassword_unlock_minutes = 0\n",
                                             &warnings);
