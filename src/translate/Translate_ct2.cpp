@@ -10,9 +10,13 @@
 #include <QElapsedTimer>
 #include <QDateTime>
 #include <algorithm>
-#include <QMutex>
-#include <QMutexLocker>
 #include <QThread>
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 #include <ctranslate2/translator.h>
 #include <sentencepiece_processor.h>
@@ -61,7 +65,7 @@ struct Loaded {
     std::unique_ptr<ctranslate2::Translator> translator;
 };
 
-QMutex g_mutex; // one translation at a time; the loaded pack is kept for the next one
+std::atomic<bool> g_busy{false}; // one translation at a time; the loaded pack is kept for the next one
 Loaded g_loaded;
 
 bool load(const Pack& pack, QString* error)
@@ -133,19 +137,10 @@ bool builtIn()
     return true;
 }
 
-std::optional<QString> translate(const Pack& pack, const QString& text, QString* error)
+namespace {
+
+std::optional<QString> translateNow(const Pack& pack, const QString& text, QString* error)
 {
-    // A translation still running (or stuck) must not make the next one wait for ever.
-    if (!g_mutex.tryLock(5000)) {
-        logLine(QStringLiteral("busy: another translation is still running"));
-        if (error) {
-            *error = tr("Another translation is still running. Try again in a moment.");
-        }
-        return std::nullopt;
-    }
-    struct Unlock {
-        ~Unlock() { g_mutex.unlock(); }
-    } unlock; // held by tryLock above; let go on every way out
     QElapsedTimer timer;
     timer.start();
     if (!load(pack, error)) {
@@ -242,6 +237,69 @@ std::optional<QString> translate(const Pack& pack, const QString& text, QString*
         }
         return std::nullopt;
     }
+}
+
+// What the worker thread hands back to the thread that waits for it.
+struct Shared {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool finished = false;
+    std::optional<QString> result;
+    QString error;
+};
+
+} // namespace
+
+std::optional<QString> translate(const Pack& pack, const QString& text, QString* error, int timeoutSeconds)
+{
+    const auto limit = std::chrono::seconds(std::clamp(timeoutSeconds, 1, 10));
+    // A translation still running (or stuck) must not make the next one wait for ever.
+    const auto until = std::chrono::steady_clock::now() + limit;
+    bool expected = false;
+    while (!g_busy.compare_exchange_strong(expected, true)) {
+        expected = false;
+        if (std::chrono::steady_clock::now() >= until) {
+            logLine(QStringLiteral("busy: another translation is still running"));
+            if (error) {
+                *error = tr("Another translation is still running. Try again in a moment.");
+            }
+            return std::nullopt;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    // The work runs on its own thread so a model that never finishes cannot hold the caller: the CPU work of a stuck
+    // run can't be cancelled, but the caller gets an answer, and g_busy is released only when the worker really ends.
+    auto shared = std::make_shared<Shared>();
+    try {
+        std::thread([shared, pack, text] {
+            QString err;
+            std::optional<QString> out = translateNow(pack, text, &err);
+            g_busy = false;
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->result = std::move(out);
+            shared->error = err;
+            shared->finished = true;
+            shared->cv.notify_all();
+        }).detach();
+    } catch (const std::system_error&) {
+        g_busy = false;
+        if (error) {
+            *error = tr("Translation could not be started.");
+        }
+        return std::nullopt;
+    }
+    std::unique_lock<std::mutex> lock(shared->mutex);
+    if (!shared->cv.wait_for(lock, limit, [&shared] { return shared->finished; })) {
+        logLine(QStringLiteral("gave up after %1 s").arg(static_cast<int>(limit.count())));
+        if (error) {
+            *error = tr("The translation took longer than %1 seconds and was cancelled.").arg(static_cast<int>(limit.count()));
+        }
+        return std::nullopt;
+    }
+    if (!shared->result && error) {
+        *error = shared->error;
+    }
+    return shared->result;
 }
 
 } // namespace clipitto::translate

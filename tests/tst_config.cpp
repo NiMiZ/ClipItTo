@@ -64,6 +64,13 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void translateTimeout()
+    {
+        QCOMPARE(Config().translateTimeout, 5);
+        QCOMPARE(Config::fromToml("translate_timeout = 8\n").translateTimeout, 8);
+        QCOMPARE(Config::fromToml(Config::fromToml("translate_timeout = 3\n").toToml()).translateTimeout, 3);
+    }
+
     void pasteAsItems()
     {
         QVERIFY(Config().pasteAsText.isEmpty() && Config().pasteAsPicture.isEmpty());

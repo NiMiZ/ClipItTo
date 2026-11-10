@@ -858,9 +858,9 @@ ui::TranslationSupport Daemon::translationSupport()
         }
         runOn<std::pair<QString, QString>>(
             &m_translatePool, this,
-            [pack = *chosen, text] {
+            [pack = *chosen, text, seconds = m_config.translateTimeout] {
                 QString error;
-                const std::optional<QString> out = translate::translate(pack, text, &error);
+                const std::optional<QString> out = translate::translate(pack, text, &error, seconds);
                 if (!out) {
                     return std::pair<QString, QString>(QString(), error.isEmpty() ? QStringLiteral("Translation failed.") : error);
                 }
