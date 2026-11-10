@@ -3,6 +3,7 @@ add_library(clipitto_core STATIC
     ClipFilter.cpp ClipFilter.h
     Backup.cpp Backup.h
     Config.cpp Config.h
+    DebugLog.cpp DebugLog.h
     ControlChannel.h
     DesktopIntegration.h
     Entry.h

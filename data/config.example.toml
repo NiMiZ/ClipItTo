@@ -58,6 +58,8 @@ detect_passwords = false    # a single-line copy that looks like a generated pas
 passwords_per_note = true   # the same password under a different note is kept as a separate copy
 password_ask_note = true    # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
+debug_log = false          # true = write a diagnostic log file for troubleshooting (what ClipItTo does, never what you
+                            # copied); false deletes it. The daemon's --verbose does the same for one run
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
 password_clear_seconds = 30 # a password pasted from ClipItTo leaves the clipboard after this
                             # (unless something else was copied meanwhile); 0 = it stays

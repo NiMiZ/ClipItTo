@@ -574,6 +574,10 @@ private slots:
         QVERIFY(d.keepFormattingBox()->isChecked() && d.config().keepFormatting); // on by default
         d.keepFormattingBox()->setChecked(false);
         QVERIFY(!d.config().keepFormatting);
+        QVERIFY(!d.debugLogBox()->isChecked() && !d.config().debugLog); // off by default
+        QVERIFY(d.debugLogBox()->toolTip().contains(QLatin1String("debug.log")));
+        d.debugLogBox()->setChecked(true);
+        QVERIFY(d.config().debugLog);
         d.ocrLanguagesEdit()->setText(QStringLiteral(" en, he "));
         QCOMPARE(d.config().ocrLanguages, QStringLiteral("en, he"));
         // Keyboard layouts for Paste as…: unchanged keeps the setting; ticking writes the list.

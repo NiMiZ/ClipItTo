@@ -234,6 +234,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.languages("ocr_languages", config.ocrLanguages);
     r.boolean("index_pictures", config.indexPictures);
     r.boolean("keep_formatting", config.keepFormatting);
+    r.boolean("debug_log", config.debugLog);
     r.languages("keyboard_layouts", config.keyboardLayouts);
     r.idList("paste_as_text", config.pasteAsText);
     r.idList("paste_as_picture", config.pasteAsPicture);
@@ -323,6 +324,7 @@ std::vector<Line> lines(const Config& c)
         {"max_images", std::to_string(c.maxImages), "unsaved pictures kept; 0 = don't record pictures"},
         {"ocr_languages", tomlString(c.ocrLanguages.toStdString()), "languages read in pictures, e.g. \"en, he\"; empty = automatic"},
         {"index_pictures", tomlBool(c.indexPictures), "read the text in copied pictures so a search finds them by it"},
+        {"debug_log", tomlBool(c.debugLog), "write a diagnostic log file for troubleshooting (what ClipItTo does, never what you copied); off deletes it"},
         {"keep_formatting", tomlBool(c.keepFormatting), "also keep the formatted (HTML) version of a copy, for Paste with formatting"},
         {"keyboard_layouts", tomlString(c.keyboardLayouts.toStdString()),
          "layouts offered by Paste as… for text typed with the wrong keyboard: \"he, ru, el\"; empty = the system language's; \"none\""},

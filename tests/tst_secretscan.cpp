@@ -8,6 +8,13 @@ class TestSecretScan : public QObject {
     Q_OBJECT
 
 private slots:
+    void explainsWhyNotAGeneratedPassword()
+    {
+        QVERIFY(whyNotGeneratedPassword(QStringLiteral("abcdefg12")).contains(QStringLiteral("character classes")));
+        QVERIFY(whyNotGeneratedPassword(QStringLiteral("https://example.com/a1")).contains(QStringLiteral("URL")));
+        QVERIFY(whyNotGeneratedPassword(QStringLiteral("aB3$xY9!qW")).isEmpty());
+    }
+
     void findsKnownKinds_data()
     {
         QTest::addColumn<QString>("text");

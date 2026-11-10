@@ -20,6 +20,8 @@ inline bool looksSecret(const QString& text) { return !kindOf(text).isEmpty(); }
 // date, call or a name made of plain words and numbers. A guess: it will take some ordinary copies,
 // so callers keep it behind an off-by-default setting. Never logs the text.
 bool looksLikeGeneratedPassword(const QString& text);
+// Why looksLikeGeneratedPassword() says no: a short reason class (never any part of the text), empty when it says yes.
+QString whyNotGeneratedPassword(const QString& text);
 
 // Luhn check over the digits of `digits` (13-19 of them).
 bool luhnValid(const QString& digits);

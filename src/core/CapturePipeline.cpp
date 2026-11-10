@@ -129,6 +129,12 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes,
         if (detected.isEmpty() && m_detectPasswords && secretscan::looksLikeGeneratedPassword(text)) {
             detected = QStringLiteral("Looks like a password"); // stored as is, like the kinds from secretscan::kindOf
         }
+        if (detected.isEmpty() && m_detectPasswords && text.size() >= 8 && text.size() <= 64
+            && !text.contains(QLatin1Char('\n')) && !text.contains(QLatin1Char('\r'))) {
+            // Say why a short single-line copy was not taken (the class of reason only, never the text). Debug level: it is
+            // written for every such copy, so with the daemon's --verbose off nothing about when copies were made is kept.
+            qCDebug(lcCapture).noquote() << "detect_passwords: not taken:" << secretscan::whyNotGeneratedPassword(text);
+        }
         if (!detected.isEmpty()) {
             verdict = ClipFilter::Verdict::Sensitive; // an unmarked key, token or password: kept like a password copy
         }

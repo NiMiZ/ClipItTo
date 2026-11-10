@@ -189,3 +189,28 @@ finds them by note, group or "image".
   their own sections.
 
 Saving keeps your own comments and layout in `config.toml`.
+
+## When something does not work: the diagnostic log
+
+`clipitto --status` shows the daemon's state in a few lines (the password feature has its own `password_feature` line:
+which settings are on, whether the key that recognises copied passwords is available, and what the last "name this
+password" box did).
+
+For the reason behind a missing box or a copy that was not kept, turn the diagnostic log on. Normally ClipItTo writes almost
+nothing to a log; with the log on it writes what it does (its debug lines), each with the time, to a file you can send.
+
+- **In Settings:** tick *Write a diagnostic log (for troubleshooting)* (`debug_log = true` in `config.toml`), repeat what went
+  wrong, and send the file. Unticking it stops the log and **deletes** the file. No restart is needed.
+- **From a command line**, for one run, including the start-up: `clipitto-daemon --verbose` (on Windows quit ClipItTo first, then in
+  PowerShell `& "C:\Program Files\ClipItTo\bin\clipitto-daemon.exe" --verbose`, with the path of your installation; on macOS
+  `/Applications/ClipItTo.app/Contents/MacOS/clipitto-daemon --verbose`). The lines also appear in the terminal on Linux and macOS.
+
+The file is `debug.log` in the same folder as the history: `%LOCALAPPDATA%\clipitto\` on Windows,
+`~/.local/share/clipitto/` on Linux, `~/Library/Application Support/clipitto/` on macOS.
+
+The file is created readable by you only (Linux and macOS; on Windows your user folder's permissions apply, as for the history), a
+symbolic link at its path is refused, and it is emptied each time the log is switched on. At 2 MB it becomes `debug.log.1` and a new
+`debug.log` starts, so the newest lines are always there (at most 4 MB in all). It does **not** contain what you copied (text,
+pictures, notes, group names). It **does** contain file paths (with your user name), error messages and the times things happened,
+for example when a copy that looked like a password was not taken, so look at it before sending it to anyone. Unticking the
+setting deletes both files; quitting ClipItTo leaves them, and `--verbose` never deletes them.

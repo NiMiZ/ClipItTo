@@ -767,7 +767,9 @@ void PopupWindow::revealPassword(qint64 id)
 void PopupWindow::askPasswordNote(qint64 id, const QString& suggestion)
 {
     if (m_namingPassword || isBusy()) {
-        return; // another box is open (the copy keeps its default note), or the history is busy
+        // another box is open (the copy keeps its default note), or the history is busy
+        qCInfo(lcPopup) << "name box skipped:" << (m_namingPassword ? "another name box is open" : "history is busy");
+        return;
     }
     m_namingPassword = true;
     // From the event loop, not from inside the capture signal that announced the copy.
@@ -775,12 +777,19 @@ void PopupWindow::askPasswordNote(qint64 id, const QString& suggestion)
         const bool wasVisible = isVisible();
         showPopup();
         refreshSelecting(Selection{Kind::Entry, id, {}});
+        qCInfo(lcPopup) << "name box shown, popup was" << (wasVisible ? "visible" : "hidden") << "active:" << isActiveWindow();
         std::optional<QString> name;
         {
             ModalGuard guard(m_modalDepth);
             name = m_namePrompt(this, suggestion);
         }
         m_namingPassword = false;
+        const char* outcome = name && !name->trimmed().isEmpty() ? "named"
+            : lastNamePromptTimedOut()                          ? "timed out"
+            : name                                              ? "left empty"
+                                                                : "cancelled";
+        qCInfo(lcPopup) << "name box ended:" << outcome;
+        emit passwordNameEnded(QString::fromLatin1(outcome));
         // OK, Enter or Cancel with nothing typed: the suggestion (the app it came from) is the
         // note. A typed name replaces it.
         const QString chosen = name && !name->trimmed().isEmpty() ? *name : suggestion;
@@ -808,6 +817,9 @@ void PopupWindow::markAsPassword(qint64 id)
     refreshSelecting(Selection{Kind::Entry, holder.value_or(id), {}});
     if (holder && *holder == id) { // not when the same password was already kept
         emit passwordMarked(id);
+    } else {
+        qCInfo(lcPopup) << "name box not asked:"
+                        << (holder ? "the same password was already kept" : "marking as password returned nothing");
     }
 }
 
@@ -885,6 +897,9 @@ void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
         try {
             const auto entry = m_repo.get(id);
             alsoMark = entry && !entry->secret && !entry->image;
+            if (!alsoMark) {
+                qCInfo(lcPopup) << "name box not asked: the copy is already a password copy, a picture or gone";
+            }
         } catch (const db::DbError& err) {
             qCWarning(lcPopup) << "reading the copy failed:" << err.what();
         }
@@ -905,8 +920,11 @@ void PopupWindow::assignGroup(qint64 id, const QString& group, Selection follow)
             const qint64 holder = m_passwords->markAsPassword(id).value_or(id);
             if (holder != id) {
                 m_repo.setGroup(holder, group);
+                qCInfo(lcPopup) << "name box not asked: the same password was already kept";
             } else if (m_repo.get(id) && m_repo.get(id)->secret) {
                 markedNow = id;
+            } else {
+                qCInfo(lcPopup) << "name box not asked: marking as password returned nothing (vault or database)";
             }
             if (follow.kind == Kind::Entry && follow.id == id) {
                 follow.id = holder;

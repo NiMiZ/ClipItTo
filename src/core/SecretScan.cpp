@@ -65,17 +65,18 @@ bool luhnValid(const QString& digits)
     return sum % 10 == 0;
 }
 
-bool looksLikeGeneratedPassword(const QString& text)
+QString whyNotGeneratedPassword(const QString& text)
 {
     if (text.size() < 8 || text.size() > 64) {
-        return false;
+        return QStringLiteral("length outside 8 to 64");
     }
     bool lower = false, upper = false, digit = false, symbol = false;
     int letters = 0;
     for (const QChar c : text) {
         const char16_t u = c.unicode();
         if (u <= 0x20 || u >= 0x7f) {
-            return false; // spaces, line breaks, control and non-ASCII characters: not a generated password
+            // spaces, line breaks, control and non-ASCII characters: not a generated password
+            return QStringLiteral("has spaces, line breaks or non-ASCII characters");
         }
         if (u >= 'a' && u <= 'z') {
             lower = true;
@@ -89,8 +90,11 @@ bool looksLikeGeneratedPassword(const QString& text)
             symbol = true;
         }
     }
-    if (int(lower) + int(upper) + int(digit) + int(symbol) < 3 || letters < 4) {
-        return false;
+    if (int(lower) + int(upper) + int(digit) + int(symbol) < 3) {
+        return QStringLiteral("too few character classes (needs 3 of lower, upper, digit, symbol)");
+    }
+    if (letters < 4) {
+        return QStringLiteral("fewer than 4 letters");
     }
     static const QRegularExpression notPassword(QStringLiteral(
         "^(?:[A-Za-z][A-Za-z0-9+.-]*://.*"                                                   // URL
@@ -105,7 +109,7 @@ bool looksLikeGeneratedPassword(const QString& text)
         "|\\d{4}-\\d{2}-\\d{2}.*"                                                            // date
         "|.*\\(\\).*)$"));                                                                   // call: foo()
     if (text.contains(notPassword)) {
-        return false;
+        return QStringLiteral("looks like a URL, path, email, colour, UUID, hash, date or call");
     }
     // Plain words and numbers joined by _ - . / \ : (camelCase names, snake_case, file names,
     // versions, "Password123") are text: a generated password has digits or symbols inside its words.
@@ -113,10 +117,15 @@ bool looksLikeGeneratedPassword(const QString& text)
     static const QRegularExpression joiners(QStringLiteral("[_./\\\\:-]"));
     for (const QString& part : text.split(joiners)) {
         if (!part.contains(wordLike)) {
-            return true;
+            return QString();
         }
     }
-    return false;
+    return QStringLiteral("looks like words and numbers joined together");
+}
+
+bool looksLikeGeneratedPassword(const QString& text)
+{
+    return whyNotGeneratedPassword(text).isEmpty();
 }
 
 QString kindOf(const QString& text)

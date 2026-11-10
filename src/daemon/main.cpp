@@ -81,11 +81,9 @@ int main(int argc, char* argv[])
     const QCommandLineOption verbose(QStringLiteral("verbose"), QStringLiteral("Enable debug logging."));
     parser.addOption(verbose);
     parser.process(app);
-    if (parser.isSet(verbose)) {
-        QLoggingCategory::setFilterRules(QStringLiteral("clipitto.*.debug=true"));
-    }
 
     clipitto::DaemonOptions options;
+    options.verbose = parser.isSet(verbose); // the daemon switches debug lines and the log file on (see applyDebugLog)
     options.configPath = clipitto::paths::configFile();
     options.databasePath = clipitto::paths::databaseFile();
     options.session = clipitto::SessionEnv::detect();

@@ -27,6 +27,12 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void debugLog()
+    {
+        QVERIFY(!Config().debugLog); // off by default
+        QVERIFY(Config::fromToml("debug_log = true\n").debugLog);
+    }
+
     void keepFormatting()
     {
         QVERIFY(Config().keepFormatting);

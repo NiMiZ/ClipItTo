@@ -12,11 +12,13 @@
 #include "db/Repository.h"
 
 #include <QBuffer>
+#include <QMenu>
 #include <QClipboard>
 #include <QImage>
 #include <QMimeData>
 #include <QPixmap>
 #include <QFile>
+#include <QLoggingCategory>
 #include <QApplication>
 #include <QGuiApplication>
 #include <QPalette>
@@ -110,6 +112,59 @@ private slots:
     {
         QFile::remove(options().configPath);
         QFile::remove(options().databasePath);
+    }
+
+    void theDiagnosticLogFollowsTheSetting()
+    {
+        DaemonOptions o = options();
+        o.debugLogPath = m_dir.filePath(QStringLiteral("logs/debug.log"));
+        {
+            writeConfig("debug_log = true\n");
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(QFile::exists(o.debugLogPath));
+            qWarning() << "a marker line for the test"; // reaches the file as any message does
+            QFile file(o.debugLogPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QVERIFY(QString::fromUtf8(file.readAll()).contains(QLatin1String("a marker line for the test")));
+            file.close(); // Windows cannot delete a file that is open
+
+            // Turned off: the log stops and the file is deleted.
+            writeConfig("debug_log = false\n");
+            d.reloadConfig();
+            QVERIFY(!QFile::exists(o.debugLogPath));
+
+            // And on again: a fresh file.
+            writeConfig("debug_log = true\n");
+            d.reloadConfig();
+            QVERIFY(QFile::exists(o.debugLogPath));
+        }
+        QVERIFY(QFile::exists(o.debugLogPath)); // quitting leaves it where it is
+
+        // --verbose keeps it on whatever the setting says, and never deletes it.
+        QFile::remove(o.debugLogPath);
+        o.verbose = true;
+        writeConfig("debug_log = false\n");
+        Daemon verbose(o, std::make_unique<FakeControl>());
+        QVERIFY(verbose.start() == Daemon::StartResult::Ok);
+        QVERIFY(QFile::exists(o.debugLogPath));
+        verbose.reloadConfig();
+        QVERIFY(QFile::exists(o.debugLogPath));
+    }
+
+    void aLogFileThatCannotBeOpenedLeavesDebugLinesOff()
+    {
+        QFile blocker(m_dir.filePath(QStringLiteral("blocker")));
+        QVERIFY(blocker.open(QIODevice::WriteOnly)); // a file where the log's folder should be
+        blocker.close();
+        DaemonOptions o = options();
+        o.debugLogPath = m_dir.filePath(QStringLiteral("blocker/debug.log"));
+        writeConfig("debug_log = true\n");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok); // not being able to write a log is not a reason not to start
+        QVERIFY(!QFile::exists(o.debugLogPath));
+        const QLoggingCategory category("clipitto.test");
+        QVERIFY(!category.isDebugEnabled()); // asked for, failed: the debug lines are off again
     }
 
     void startOpensDatabase()
@@ -243,6 +298,128 @@ private slots:
         copy("pw-two"); // the same password again is not new: not asked
         QTest::qWait(150);
         QCOMPARE(asked.size(), 1);
+    }
+
+    // Issue #121: marking a copy by hand (context menu, group box as Ctrl+G opens it) opens the name box.
+    void nameBoxAfterMarkingByHand()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        d.passwords()->setKdfCost({64, 1});
+        bool set = false;
+        d.passwords()->setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        Config c = d.config();
+        c.passwordAskNote = true;
+        c.passwordsPerNote = false;
+        QVERIFY(d.applySettings(c));
+
+        QStringList asked;
+        QString answer = QStringLiteral("My bank");
+        d.popup()->setNamePrompt([&](QWidget*, const QString& suggestion) {
+            asked << suggestion;
+            return std::optional<QString>(answer);
+        });
+        const auto ingest = [&](const QString& text) {
+            emit d.control()->ingestRequested(text, {});
+            return d.repository()->allEntries().back().id;
+        };
+        const auto menuFor = [&](qint64 id) {
+            return std::unique_ptr<QMenu>(d.popup()->createContextMenu(*d.repository()->get(id), d.popup()));
+        };
+        const auto action = [](QMenu* menu, const QString& text) {
+            for (QAction* a : menu->actions()) {
+                if (a->text() == text) {
+                    return a;
+                }
+                if (a->menu()) {
+                    for (QAction* inner : a->menu()->actions()) {
+                        if (inner->text() == text) {
+                            return inner;
+                        }
+                    }
+                }
+            }
+            return static_cast<QAction*>(nullptr);
+        };
+        const auto note = [&](qint64 id) { return d.repository()->get(id)->note; };
+
+        // The context menu action.
+        const qint64 one = ingest(QStringLiteral("plain one"));
+        auto menu = menuFor(one);
+        QVERIFY(action(menu.get(), QStringLiteral("Mark as password")));
+        action(menu.get(), QStringLiteral("Mark as password"))->trigger();
+        QTRY_COMPARE(asked.size(), 1);
+        QTRY_COMPARE(note(one), QStringLiteral("My bank"));
+        QTRY_VERIFY(!d.popup()->isVisible());
+        QVERIFY(d.control()->status().value(QStringLiteral("password_feature")).toString().contains(QStringLiteral("named")));
+
+        // The group box (Ctrl+G opens it): the Passwords group marks the copy and asks too.
+        d.popup()->setGroupPrompt([](QWidget*, const QString&, const QStringList&) {
+            return std::optional<QString>(QStringLiteral("Passwords"));
+        });
+        answer = QString(); // an empty answer keeps the default note
+        const qint64 two = ingest(QStringLiteral("plain two"));
+        menu = menuFor(two);
+        action(menu.get(), QStringLiteral("New group…"))->trigger();
+        QTRY_COMPARE(asked.size(), 2);
+        QVERIFY(d.repository()->get(two)->secret);
+        QTRY_VERIFY(!d.popup()->isVisible());
+        QVERIFY(note(two) != QStringLiteral("My bank"));
+
+        answer = QStringLiteral("Mail");
+        const qint64 three = ingest(QStringLiteral("plain three"));
+        menu = menuFor(three);
+        action(menu.get(), QStringLiteral("New group…"))->trigger();
+        QTRY_COMPARE(asked.size(), 3);
+        QTRY_COMPARE(note(three), QStringLiteral("Mail"));
+
+        // Off in the settings: not asked.
+        Config off = d.config();
+        off.passwordAskNote = false;
+        QVERIFY(d.applySettings(off));
+        const qint64 four = ingest(QStringLiteral("plain four"));
+        menu = menuFor(four);
+        action(menu.get(), QStringLiteral("Mark as password"))->trigger();
+        QTest::qWait(150);
+        QCOMPARE(asked.size(), 3);
+        QVERIFY(d.repository()->get(four)->secret);
+    }
+
+    void nameBoxIsNotAskedForAPasswordAlreadyKept()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        d.passwords()->setKdfCost({64, 1});
+        bool set = false;
+        d.passwords()->setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        Config c = d.config();
+        c.passwordAskNote = true;
+        c.passwordsPerNote = false;
+        QVERIFY(d.applySettings(c));
+        int asked = 0;
+        d.popup()->setNamePrompt([&](QWidget*, const QString&) {
+            ++asked;
+            return std::optional<QString>(QString());
+        });
+        emit d.control()->ingestRequested(QStringLiteral("same-secret"), {QStringLiteral("x-kde-passwordManagerHint"), QStringLiteral("x-clipitto-source:App")});
+        QTRY_COMPARE(asked, 1);
+        emit d.control()->ingestRequested(QStringLiteral("same-secret"), {});
+        const qint64 plain = d.repository()->allEntries().back().id;
+        QVERIFY(plain > 0);
+        std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(plain), d.popup()));
+        for (QAction* a : menu->actions()) {
+            if (a->text() == QLatin1String("Mark as password")) {
+                a->trigger();
+            }
+        }
+        QTest::qWait(150);
+        QCOMPARE(asked, 1);
     }
 
     void clipboardChangesAreCaptured()

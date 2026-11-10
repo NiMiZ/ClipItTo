@@ -1,5 +1,7 @@
 #include "Daemon.h"
 
+#include "DebugLog.h"
+
 #include "CapturePipeline.h"
 #include "GnomeShortcut.h"
 #include "Hotkey.h"
@@ -30,6 +32,7 @@
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QThreadPool>
+#include <QTime>
 #include <QTimer>
 #include <QtConcurrent>
 
@@ -100,6 +103,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
 
 Daemon::~Daemon()
 {
+    debuglog::stop(); // closes the log file (it stays on disk until the setting is turned off)
     hello::cancelPending(); // a Windows Hello prompt left open must not hold up quitting
     // Picture decodes still running use Qt's image plugins: let them finish while Qt is up.
     QThreadPool::globalInstance()->waitForDone();
@@ -125,6 +129,7 @@ void Daemon::loadConfig()
     for (const QString& w : warnings) {
         qCWarning(lcDaemon).noquote() << m_options.configPath + QStringLiteral(": ") + w;
     }
+    applyDebugLog();
 }
 
 Daemon::StartResult Daemon::start(QString* error)
@@ -262,15 +267,26 @@ Daemon::StartResult Daemon::start(QString* error)
     });
     // "Ask for a name after copying a password": open the popup with a name box on the new copy.
     connect(m_pipeline.get(), &CapturePipeline::passwordStored, this, [this](qint64 id, const QString& source) {
-        if (m_config.passwordAskNote && m_popup) {
+        if (!m_config.passwordAskNote) {
+            qCInfo(lcDaemon) << "name box not asked: password_ask_note is off";
+        } else if (!m_popup) {
+            qCInfo(lcDaemon) << "name box not asked: no popup";
+        } else {
             m_popup->askPasswordNote(id, source);
         }
     });
     // The same name box after a copy was turned into a password by hand (it has no source app to suggest).
     connect(m_popup.get(), &ui::PopupWindow::passwordMarked, this, [this](qint64 id) {
-        if (m_config.passwordAskNote && m_popup) {
+        if (!m_config.passwordAskNote) {
+            qCInfo(lcDaemon) << "name box not asked: password_ask_note is off";
+        } else if (!m_popup) {
+            qCInfo(lcDaemon) << "name box not asked: no popup";
+        } else {
             m_popup->askPasswordNote(id, QString());
         }
+    });
+    connect(m_popup.get(), &ui::PopupWindow::passwordNameEnded, this, [this](const QString& outcome) {
+        m_lastNameBox = outcome + QStringLiteral(" at ") + QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
     });
     applyPasswordSettings();
 
@@ -477,6 +493,34 @@ void Daemon::pasteIfWanted()
                                     "(needs the GNOME Shell extension on Wayland)";
             }
         });
+    }
+}
+
+// Debug lines are on by default in Qt, so the off state is set explicitly. The file is for people who cannot read a console (the
+// Windows daemon has none): written while --verbose is given or debug_log is on, and deleted when the setting is turned off.
+void Daemon::applyDebugLog()
+{
+    const bool want = m_options.verbose || m_config.debugLog;
+    if (int(want) == m_debugLogOn) {
+        return;
+    }
+    const QString path = m_options.debugLogPath.isEmpty() ? paths::debugLogFile() : m_options.debugLogPath;
+    const bool first = m_debugLogOn < 0;
+    m_debugLogOn = int(want);
+    if (want) {
+        QLoggingCategory::setFilterRules(QStringLiteral("clipitto.*.debug=true"));
+        paths::ensureParentDir(path);
+        if (debuglog::start(path)) {
+            qCInfo(lcDaemon).noquote() << "diagnostic log written to" << path;
+            return;
+        }
+        qCWarning(lcDaemon).noquote() << "could not open the diagnostic log file" << path;
+        m_debugLogOn = 0; // and the debug lines go off again below, as if it had not been asked for
+    }
+    QLoggingCategory::setFilterRules(QStringLiteral("clipitto.*.debug=false"));
+    debuglog::stop();
+    if (!first && !want) {
+        debuglog::remove(path); // turned off: nothing is kept
     }
 }
 
@@ -1171,6 +1215,12 @@ QVariantMap Daemon::status() const
             passwords += QStringLiteral("; whole-password search while locked is off (%1)").arg(m_passwords->matchProblem());
         }
         s[QStringLiteral("passwords")] = passwords;
+        const auto onOff = [](bool on) { return on ? QStringLiteral("on") : QStringLiteral("off"); };
+        s[QStringLiteral("password_feature")] = QStringLiteral("ask_note %1, detect_secrets %2, detect_passwords %3, match key %4, last name box: %5")
+                                                    .arg(onOff(m_config.passwordAskNote), onOff(m_config.detectSecrets),
+                                                         onOff(m_config.detectPasswords),
+                                                         m_passwords->canMatch() ? QStringLiteral("available") : QStringLiteral("not available"),
+                                                         m_lastNameBox.isEmpty() ? QStringLiteral("none yet") : m_lastNameBox);
     }
     if (m_repo && !m_converting) { // during a conversion the database belongs to the worker
         try {
