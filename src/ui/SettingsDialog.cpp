@@ -1,5 +1,7 @@
 #include "SettingsDialog.h"
 
+#include "Paths.h"
+
 #include "GroupPath.h"
 #include "Hotkey.h"
 #include "PasswordKeeper.h"
@@ -9,6 +11,7 @@
 #include "db/Sqlite.h"
 
 #include <QCheckBox>
+#include <QDir>
 #include <QDate>
 #include <QDialog>
 #include <QFileDialog>
@@ -130,6 +133,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_ocrLanguages(new QLineEdit(this))
     , m_indexPictures(new QCheckBox(tr("Search inside pictures"), this))
     , m_keepFormatting(new QCheckBox(tr("Keep formatting of copied text"), this))
+    , m_debugLog(new QCheckBox(tr("Write a diagnostic log (for troubleshooting)"), this))
     , m_lines(new QSpinBox(this))
     , m_favorites(new QSpinBox(this))
     , m_position(new QComboBox(this))
@@ -251,6 +255,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                              "history file, so they are encrypted with it. Copies marked by a "
                                              "password manager never keep any.")));
     form->addRow(QString(), m_keepFormatting);
+    m_debugLog->setChecked(config.debugLog);
+    m_debugLog->setToolTip(
+        QStringLiteral("<p>%1</p><p>%2</p>")
+            .arg(tr("When something does not work (a missing name box, a copy that was not kept), turn this on, repeat it, and "
+                    "send the file. ClipItTo writes what it does, with the time, to <b>%1</b> (and an older part next to it). "
+                    "Turning this off stops the log and deletes the files; quitting ClipItTo leaves them.")
+                     .arg(QDir::toNativeSeparators(paths::debugLogFile()).toHtmlEscaped()),
+                 tr("It does not contain what you copied (text, pictures, notes, group names). It does contain file paths "
+                    "(with your user name), error messages and the times things happened, so look at it before you send it.")));
+    form->addRow(QString(), m_debugLog);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
@@ -748,6 +762,7 @@ Config SettingsDialog::config() const
     c.ocrLanguages = m_ocrLanguages->text().trimmed();
     c.indexPictures = m_indexPictures->isChecked();
     c.keepFormatting = m_keepFormatting->isChecked();
+    c.debugLog = m_debugLog->isChecked();
     {
         QStringList ids;
         for (const QCheckBox* box : m_layoutBoxes) {

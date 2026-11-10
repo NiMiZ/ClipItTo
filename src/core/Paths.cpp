@@ -48,6 +48,11 @@ QString databaseFile()
     return QDir(dataDir()).filePath(QStringLiteral("history.db"));
 }
 
+QString debugLogFile()
+{
+    return QDir(dataDir()).filePath(QStringLiteral("debug.log"));
+}
+
 bool ensureParentDir(const QString& filePath)
 {
     return QDir().mkpath(QFileInfo(filePath).absolutePath());

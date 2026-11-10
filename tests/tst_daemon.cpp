@@ -18,6 +18,7 @@
 #include <QMimeData>
 #include <QPixmap>
 #include <QFile>
+#include <QLoggingCategory>
 #include <QApplication>
 #include <QGuiApplication>
 #include <QPalette>
@@ -111,6 +112,58 @@ private slots:
     {
         QFile::remove(options().configPath);
         QFile::remove(options().databasePath);
+    }
+
+    void theDiagnosticLogFollowsTheSetting()
+    {
+        DaemonOptions o = options();
+        o.debugLogPath = m_dir.filePath(QStringLiteral("logs/debug.log"));
+        {
+            writeConfig("debug_log = true\n");
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(QFile::exists(o.debugLogPath));
+            qWarning() << "a marker line for the test"; // reaches the file as any message does
+            QFile file(o.debugLogPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QVERIFY(QString::fromUtf8(file.readAll()).contains(QLatin1String("a marker line for the test")));
+
+            // Turned off: the log stops and the file is deleted.
+            writeConfig("debug_log = false\n");
+            d.reloadConfig();
+            QVERIFY(!QFile::exists(o.debugLogPath));
+
+            // And on again: a fresh file.
+            writeConfig("debug_log = true\n");
+            d.reloadConfig();
+            QVERIFY(QFile::exists(o.debugLogPath));
+        }
+        QVERIFY(QFile::exists(o.debugLogPath)); // quitting leaves it where it is
+
+        // --verbose keeps it on whatever the setting says, and never deletes it.
+        QFile::remove(o.debugLogPath);
+        o.verbose = true;
+        writeConfig("debug_log = false\n");
+        Daemon verbose(o, std::make_unique<FakeControl>());
+        QVERIFY(verbose.start() == Daemon::StartResult::Ok);
+        QVERIFY(QFile::exists(o.debugLogPath));
+        verbose.reloadConfig();
+        QVERIFY(QFile::exists(o.debugLogPath));
+    }
+
+    void aLogFileThatCannotBeOpenedLeavesDebugLinesOff()
+    {
+        QFile blocker(m_dir.filePath(QStringLiteral("blocker")));
+        QVERIFY(blocker.open(QIODevice::WriteOnly)); // a file where the log's folder should be
+        blocker.close();
+        DaemonOptions o = options();
+        o.debugLogPath = m_dir.filePath(QStringLiteral("blocker/debug.log"));
+        writeConfig("debug_log = true\n");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok); // not being able to write a log is not a reason not to start
+        QVERIFY(!QFile::exists(o.debugLogPath));
+        const QLoggingCategory category("clipitto.test");
+        QVERIFY(!category.isDebugEnabled()); // asked for, failed: the debug lines are off again
     }
 
     void startOpensDatabase()

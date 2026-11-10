@@ -1,5 +1,7 @@
 #include "Daemon.h"
 
+#include "DebugLog.h"
+
 #include "CapturePipeline.h"
 #include "GnomeShortcut.h"
 #include "Hotkey.h"
@@ -101,6 +103,7 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
 
 Daemon::~Daemon()
 {
+    debuglog::stop(); // closes the log file (it stays on disk until the setting is turned off)
     hello::cancelPending(); // a Windows Hello prompt left open must not hold up quitting
     // Picture decodes still running use Qt's image plugins: let them finish while Qt is up.
     QThreadPool::globalInstance()->waitForDone();
@@ -126,6 +129,7 @@ void Daemon::loadConfig()
     for (const QString& w : warnings) {
         qCWarning(lcDaemon).noquote() << m_options.configPath + QStringLiteral(": ") + w;
     }
+    applyDebugLog();
 }
 
 Daemon::StartResult Daemon::start(QString* error)
@@ -489,6 +493,34 @@ void Daemon::pasteIfWanted()
                                     "(needs the GNOME Shell extension on Wayland)";
             }
         });
+    }
+}
+
+// Debug lines are on by default in Qt, so the off state is set explicitly. The file is for people who cannot read a console (the
+// Windows daemon has none): written while --verbose is given or debug_log is on, and deleted when the setting is turned off.
+void Daemon::applyDebugLog()
+{
+    const bool want = m_options.verbose || m_config.debugLog;
+    if (int(want) == m_debugLogOn) {
+        return;
+    }
+    const QString path = m_options.debugLogPath.isEmpty() ? paths::debugLogFile() : m_options.debugLogPath;
+    const bool first = m_debugLogOn < 0;
+    m_debugLogOn = int(want);
+    if (want) {
+        QLoggingCategory::setFilterRules(QStringLiteral("clipitto.*.debug=true"));
+        paths::ensureParentDir(path);
+        if (debuglog::start(path)) {
+            qCInfo(lcDaemon).noquote() << "diagnostic log written to" << path;
+            return;
+        }
+        qCWarning(lcDaemon).noquote() << "could not open the diagnostic log file" << path;
+        m_debugLogOn = 0; // and the debug lines go off again below, as if it had not been asked for
+    }
+    QLoggingCategory::setFilterRules(QStringLiteral("clipitto.*.debug=false"));
+    debuglog::stop();
+    if (!first && !want) {
+        debuglog::remove(path); // turned off: nothing is kept
     }
 }
 

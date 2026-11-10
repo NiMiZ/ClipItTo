@@ -51,6 +51,8 @@ struct DaemonOptions {
     // Side notification (title, body); false = none could be shown, and the popup says it instead.
     // Null: the desktop's (D-Bus notifications on Linux, the tray's message elsewhere). Tests replace it.
     std::function<bool(const QString&, const QString&)> notify;
+    bool verbose = false; // --verbose: debug lines and the log file for the whole run, whatever the debug_log setting says
+    QString debugLogPath; // the diagnostic log file; empty: paths::debugLogFile() (tests set one)
 };
 
 // Owns everything that lives for the whole session: config, database, capture, the popup,
@@ -101,6 +103,7 @@ signals:
 private:
     void startCapture();
     void loadConfig();
+    void applyDebugLog(); // debug lines and the log file follow --verbose and the debug_log setting
     void reload(bool forceShortcut);
     void openHistory();
     QByteArray historyKey(bool create, QString* error) const;
@@ -142,6 +145,7 @@ private:
     std::optional<bool> m_wlDataControl; // probed lazily, once
     QVariantMap m_extraStatus;
     bool m_encrypted = false;
+    int m_debugLogOn = -1; // -1: not applied yet
     bool m_decodingImage = false; // an IngestImage picture is being decoded
     bool m_converting = false;
     QHash<QString, QDateTime> m_keyringAsked; // purpose -> when the keyring was last asked for it

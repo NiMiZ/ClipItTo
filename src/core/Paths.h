@@ -11,6 +11,7 @@ QString configDir();
 QString configFile(); // <configDir>/config.toml
 QString dataDir();
 QString databaseFile(); // <dataDir>/history.db
+QString debugLogFile(); // <dataDir>/debug.log: the diagnostic log (Settings, or the daemon's --verbose); see DebugLog.h
 
 // Creates the parent directory of a file path. Returns false on failure.
 bool ensureParentDir(const QString& filePath);
