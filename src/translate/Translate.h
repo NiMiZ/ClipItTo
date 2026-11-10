@@ -59,7 +59,8 @@ struct Piece {
 QList<Piece> splitSentences(const QString& text);
 
 // Translates `text` with `pack` (blocking, a second or two the first time while the model loads; keep it off
-// the GUI thread). nullopt with `error` when it can't.
-std::optional<QString> translate(const Pack& pack, const QString& text, QString* error = nullptr);
+// the GUI thread). nullopt with `error` when it can't, or when it takes longer than `timeoutSeconds` (1..10): the
+// answer then comes back at once and the stuck work is left to end by itself.
+std::optional<QString> translate(const Pack& pack, const QString& text, QString* error = nullptr, int timeoutSeconds = 5);
 
 } // namespace clipitto::translate

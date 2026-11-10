@@ -9,7 +9,7 @@ bool builtIn()
     return false;
 }
 
-std::optional<QString> translate(const Pack&, const QString&, QString* error)
+std::optional<QString> translate(const Pack&, const QString&, QString* error, int)
 {
     if (error) {
         *error = QCoreApplication::translate("clipitto::translate", "This build has no translation.");
