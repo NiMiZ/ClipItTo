@@ -1,3 +1,6 @@
+#include "CapturePipeline.h"
+#include "Previews.h"
+#include "TestDb.h"
 #include "WlPasteBackend.h"
 
 #include <QBuffer>
@@ -32,6 +35,30 @@ private:
     }
 
     QString lastText(const QSignalSpy& spy) const { return spy.isEmpty() ? QString() : spy.last().at(0).toString(); }
+
+    // A backend wired to a pipeline and an in-memory database, as the daemon wires them.
+    struct Rig {
+        TestDb db;
+        clipitto::CapturePipeline pipe;
+        WlPasteBackend backend;
+        QSignalSpy stored;
+        QSignalSpy rejected;
+
+        explicit Rig(const QString& program)
+            : pipe(*db.repo, 1000, 1024 * 1024)
+            , backend(program)
+            , stored(&pipe, &clipitto::CapturePipeline::stored)
+            , rejected(&pipe, &clipitto::CapturePipeline::rejected)
+        {
+            QObject::connect(&backend, &WlPasteBackend::captured, &pipe, &clipitto::CapturePipeline::process);
+            QObject::connect(&backend, &WlPasteBackend::capturedImage, &pipe, &clipitto::CapturePipeline::processImage);
+        }
+        clipitto::Entry newest() const { return db.repo->recent(1, false).front(); }
+        clipitto::ClipFilter::Verdict lastVerdict() const
+        {
+            return rejected.last().at(0).value<clipitto::ClipFilter::Verdict>();
+        }
+    };
 
 private slots:
     void init()
@@ -186,6 +213,148 @@ private slots:
         backend.start();
         QTest::qWait(300);
         QCOMPARE(captured.size(), 0);
+    }
+
+    // ---- Copies from many apps, through wl-paste and the pipeline ----
+
+    void firefoxAndLibreOfficeOnWaylandKeepTheirFormatting_data()
+    {
+        QTest::addColumn<QByteArray>("types");
+        QTest::addColumn<QByteArray>("html");
+        QTest::addColumn<QString>("text");
+        QTest::newRow("Firefox (html with meta charset, moz types)")
+            << QByteArray("text/html\ntext/_moz_htmlcontext\ntext/_moz_htmlinfo\ntext/plain;charset=utf-8\ntext/plain\n")
+            << QByteArray("<meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\"><b>Bold</b> and "
+                          "<a href=\"https://example.org\">linked</a>")
+            << QStringLiteral("Bold and linked");
+        QTest::newRow("LibreOffice (rtf and html offered)")
+            << QByteArray("text/rtf\napplication/rtf\ntext/html\ntext/plain;charset=utf-8\n")
+            << QByteArray("<!DOCTYPE HTML><html><head><meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\"/></head>"
+                          "<body><p style=\"font-style: italic\">Meeting notes: ship on Friday</p></body></html>")
+            << QStringLiteral("Meeting notes: ship on Friday");
+    }
+    void firefoxAndLibreOfficeOnWaylandKeepTheirFormatting()
+    {
+        QFETCH(QByteArray, types);
+        QFETCH(QByteArray, html);
+        QFETCH(QString, text);
+        clipboard(text.toUtf8(), types);
+        write(QStringLiteral("html"), html);
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.stored.size(), 1);
+        QCOMPARE(rig.newest().content, text);
+        QVERIFY(rig.newest().rich);
+        QCOMPARE(rig.db.repo->richText(rig.newest().id), QString::fromUtf8(html));
+        QFile reads(m_dir.filePath(QStringLiteral("reads")));
+        QVERIFY(reads.open(QIODevice::ReadOnly));
+        QVERIFY(!reads.readAll().contains("rtf")); // only plain text and html are fetched
+    }
+
+    void nautilusFileCopyIsStoredAsItsPaths()
+    {
+        // Nautilus offers x-special/gnome-copied-files and text/uri-list (CRLF separated), no plain text.
+        clipboard("file:///tmp/ClipItTo%20a%20b.txt\r\nfile:///tmp/c.txt\r\n", "x-special/gnome-copied-files\ntext/uri-list\n");
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.stored.size(), 1);
+        QCOMPARE(clipitto::preview::filePaths(rig.newest().content),
+                 (QStringList{QStringLiteral("/tmp/ClipItTo a b.txt"), QStringLiteral("/tmp/c.txt")}));
+    }
+
+    void aMarkedCopyThroughWlPasteIsNeverStoredOrRead()
+    {
+        clipboard("c0rrect-h0rse", "text/plain\ntext/html\nx-kde-passwordManagerHint\n");
+        write(QStringLiteral("html"), "<b>c0rrect-h0rse</b>");
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.rejected.size(), 1);
+        QCOMPARE(rig.lastVerdict(), clipitto::ClipFilter::Verdict::Sensitive);
+        QCOMPARE(rig.db.repo->count(), 0);
+        QVERIFY(!QFile::exists(m_dir.filePath(QStringLiteral("reads"))));
+    }
+
+    void aScreenshotWithOnlyAPngIsStored()
+    {
+        QImage picture(200, 100, QImage::Format_RGB32);
+        picture.fill(QColor(30, 90, 200));
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        picture.save(&buffer, "PNG");
+        write(QStringLiteral("image"), png);
+        write(QStringLiteral("types"), "image/png\n");
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.stored.size(), 1);
+        QVERIFY(rig.newest().image);
+        QCOMPARE(rig.newest().imageWidth, 200);
+        QCOMPARE(rig.db.repo->count(), 1);
+    }
+
+    void terminalTextWithHebrewAndEmojiIsStoredIntact()
+    {
+        const QString text = QString::fromUtf8("$ echo \"שלום \xF0\x9F\x98\x80\"\nשלום \xF0\x9F\x98\x80");
+        clipboard(text.toUtf8(), "text/plain;charset=utf-8\n");
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.stored.size(), 1);
+        QCOMPARE(rig.newest().content, text);
+        QVERIFY(!rig.newest().rich);
+    }
+
+    void theOneMegabyteCapAppliesToWlPasteText_data()
+    {
+        QTest::addColumn<int>("size");
+        QTest::addColumn<bool>("kept");
+        QTest::newRow("1 MiB") << 1024 * 1024 << true;
+        QTest::newRow("1 MiB and a byte") << 1024 * 1024 + 1 << false;
+    }
+    void theOneMegabyteCapAppliesToWlPasteText()
+    {
+        QFETCH(int, size);
+        QFETCH(bool, kept);
+        clipboard(QByteArray(size, 'a'));
+        Rig rig(m_program);
+        rig.backend.start();
+        if (kept) {
+            QTRY_COMPARE_WITH_TIMEOUT(rig.stored.size(), 1, 10000);
+        } else {
+            QTRY_COMPARE_WITH_TIMEOUT(rig.rejected.size(), 1, 10000);
+            QCOMPARE(rig.lastVerdict(), clipitto::ClipFilter::Verdict::TooLarge);
+            QCOMPARE(rig.db.repo->count(), 0);
+        }
+    }
+
+    void blankTextAndOurOwnEchoAreSkipped()
+    {
+        clipboard("  \n\t ");
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.rejected.size(), 1);
+        QCOMPARE(rig.lastVerdict(), clipitto::ClipFilter::Verdict::Empty);
+
+        rig.pipe.filter().noteOwnWrite(QStringLiteral("pasted from history"));
+        clipboard("pasted from history");
+        write(QStringLiteral("event"));
+        QTRY_COMPARE(rig.rejected.size(), 2);
+        QCOMPARE(rig.lastVerdict(), clipitto::ClipFilter::Verdict::OwnWrite);
+        QCOMPARE(rig.db.repo->count(), 0);
+    }
+
+    void aBurstOfCopiesEndsWithTheLastOne()
+    {
+        clipboard("copy 0");
+        Rig rig(m_program);
+        rig.backend.start();
+        QTRY_COMPARE(rig.stored.size(), 1);
+        for (int i = 1; i <= 8; ++i) {
+            clipboard(QByteArray("copy ") + QByteArray::number(i));
+            write(QStringLiteral("event"));
+            QTest::qWait(30);
+        }
+        QTRY_COMPARE(rig.newest().content, QStringLiteral("copy 8"));
+        QVERIFY(rig.db.repo->count() >= 2); // changes may coalesce, but the last copy always wins
     }
 
     void restartsWhenTheWatcherExits()
