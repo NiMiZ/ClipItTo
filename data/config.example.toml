@@ -63,6 +63,9 @@ password_rules = []         # your own rules for what is kept as a password copy
 passwords_per_note = true  # the same password under a different note is kept as a separate copy
 password_ask_note = true    # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
+auto_group = false         # true = a new copy that clearly matches one of your groups (learned from the copies you
+                            # put there) is filed in it, marked "auto"; never creates a group, never for passwords
+                            # or pictures. Settings > Groups can forget what was learned
 debug_log = false          # true = write a diagnostic log file for troubleshooting (what ClipItTo does, never what you
                             # copied); false deletes it. The daemon's --verbose does the same for one run
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)

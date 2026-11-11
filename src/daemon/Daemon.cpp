@@ -165,6 +165,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_pipeline = std::make_unique<CapturePipeline>(*m_repo, m_config.maxHistory, m_config.maxItemBytes);
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
     m_pipeline->setKeepFormatting(m_config.keepFormatting);
+    m_pipeline->setAutoGrouping(m_config.autoGroup);
     if (!m_config.keepFormatting) {
         m_repo->clearAllRich(); // turned off while the daemon was down or converting: nothing stays behind
     }
@@ -248,6 +249,7 @@ Daemon::StartResult Daemon::start(QString* error)
         }
     });
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
+    connect(m_pipeline.get(), &CapturePipeline::autoFiled, m_popup.get(), &ui::PopupWindow::historyChanged);
     connect(m_pipeline.get(), &CapturePipeline::passwordSkipped, this, [this] {
         if (m_passwordNoticeShown) {
             return;
@@ -1112,6 +1114,7 @@ void Daemon::reload(bool forceShortcut)
     }
     m_pipeline->setImageLimits(m_config.maxImages, m_config.maxImageBytes);
     m_pipeline->setKeepFormatting(m_config.keepFormatting);
+    m_pipeline->setAutoGrouping(m_config.autoGroup);
     if (m_capture.backend) {
         m_capture.backend->setMaxImageBytes(m_config.maxImageBytes);
         m_capture.backend->setReadRichText(m_config.keepFormatting);

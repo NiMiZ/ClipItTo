@@ -409,11 +409,12 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     // --- Groups ------------------------------------------------------------------------
     auto* groupsPage = new QWidget(this);
     auto* groupsLayout = new QVBoxLayout(groupsPage);
-    m_groups->setColumnCount(2);
-    m_groups->setHeaderLabels({tr("Group"), tr("Copies")});
+    m_groups->setColumnCount(3);
+    m_groups->setHeaderLabels({tr("Group"), tr("Copies"), tr("Examples")});
     m_groups->header()->setStretchLastSection(false);
     m_groups->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_groups->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_groups->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     groupsLayout->addWidget(m_groups, 1);
     auto* buttons = new QHBoxLayout;
     auto* newButton = new QPushButton(tr("New group…"), this);
@@ -435,6 +436,33 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                             this);
     hint->setWordWrap(true);
     groupsLayout->addWidget(hint);
+    m_autoGroup = new QCheckBox(tr("File new copies in a matching group automatically"), this);
+    m_autoGroup->setChecked(config.autoGroup);
+    m_autoGroup->setToolTip(QStringLiteral("<p>%1</p>")
+                                .arg(tr("ClipItTo learns from the copies you put in your groups (words, a link's site, a "
+                                        "path's folder, a command's first word) and files a new copy in the group it "
+                                        "matches best, marked <b>auto</b>. It never makes a group, and a copy with no "
+                                        "clear match stays in Recent. Moving an auto-filed copy elsewhere, or taking it "
+                                        "out of its group, teaches it the other way. Never for passwords or pictures. "
+                                        "Everything learned stays in the history file (encrypted with it). Turning this "
+                                        "off keeps the copies already filed.")));
+    m_forgetLearned = new QPushButton(tr("Forget what was learned"), this);
+    m_forgetLearned->setAutoDefault(false);
+    auto* autoRow = new QHBoxLayout;
+    autoRow->addWidget(m_autoGroup, 1);
+    autoRow->addWidget(m_forgetLearned);
+    groupsLayout->addLayout(autoRow);
+    connect(m_forgetLearned, &QPushButton::clicked, this, [this] {
+        if (!m_confirm(this, tr("Forget everything learned from your groups? Copies already filed stay where they are."))) {
+            return;
+        }
+        try {
+            m_repo.forgetAutoLearned();
+        } catch (const db::DbError& e) {
+            m_notify(this, QString::fromUtf8(e.what()));
+        }
+        reloadGroups(selectedGroup());
+    });
     connect(newButton, &QPushButton::clicked, this, &SettingsDialog::newGroup);
     connect(m_subGroupButton, &QPushButton::clicked, this, &SettingsDialog::newSubGroup);
     connect(m_renameButton, &QPushButton::clicked, this, &SettingsDialog::renameSelectedGroup);
@@ -810,6 +838,7 @@ Config SettingsDialog::config() const
     c.ocrLanguages = m_ocrLanguages->text().trimmed();
     c.indexPictures = m_indexPictures->isChecked();
     c.keepFormatting = m_keepFormatting->isChecked();
+    c.autoGroup = m_autoGroup->isChecked();
     c.debugLog = m_debugLog->isChecked();
     {
         QStringList ids;
@@ -1476,11 +1505,16 @@ void SettingsDialog::reloadGroups(const QString& select)
     m_groups->clear();
     QHash<QString, QTreeWidgetItem*> byPath;
     try {
+        QHash<QString, int> examples;
+        for (const auto& e : m_repo.autoExamples()) {
+            examples.insert(e.group, e.examples);
+        }
         for (const auto& g : m_repo.groupTree()) {
             QTreeWidgetItem* parent = byPath.value(groups::parent(g.path));
             auto* item = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(m_groups);
             item->setText(0, groups::leaf(g.path));
             item->setText(1, g.clipCount ? QString::number(g.clipCount) : QString());
+            item->setText(2, examples.value(g.path) ? QString::number(examples.value(g.path)) : QString());
             item->setData(0, Qt::UserRole, g.path);
             byPath.insert(g.path, item);
         }

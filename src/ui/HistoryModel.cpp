@@ -277,6 +277,8 @@ QVariant HistoryModel::data(const QModelIndex& index, int role) const
     }
     case FilesRole:
         return e.image || e.secret ? QStringList() : preview::filePaths(e.content);
+    case AutoFiledRole:
+        return e.autoFiled && !e.group.isEmpty();
     case FavoriteRole:
         return e.favorite;
     case HasNoteRole:
