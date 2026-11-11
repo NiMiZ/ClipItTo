@@ -53,6 +53,7 @@ public:
         SecretRole, // a password copy: shown hidden (●●●●) unless revealed
         ColorRole, // QColor when the copy's text is one colour (#rrggbb, rgb(...)); invalid otherwise
         FilesRole, // QStringList of paths when the copy's text is a list of files; empty otherwise
+        AutoFiledRole, // bool: put in its group automatically (auto grouping), shown as an "auto" tag
     };
 
     // What a hidden password shows instead of its text.

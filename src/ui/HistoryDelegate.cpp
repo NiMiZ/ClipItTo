@@ -275,7 +275,12 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         const QFontMetrics cfm(chipFont);
         const QString label = cfm.elidedText(QString(group).replace(QLatin1Char('/'), QStringLiteral(" › ")),
                                              Qt::ElideLeft, 140);
-        const int w = cfm.horizontalAdvance(label) + 12;
+        int w = cfm.horizontalAdvance(label) + 12;
+        // A copy ClipItTo filed by itself (auto grouping) wears a small "auto" tag, so it can be told from one you filed.
+        const bool autoFiled = index.data(HistoryModel::AutoFiledRole).toBool();
+        const QString autoLabel = QObject::tr("auto");
+        const int autoWidth = autoFiled ? cfm.horizontalAdvance(autoLabel) + 10 : 0;
+        w += autoWidth;
         const QRect chip(right - w, content.top() + (fm.height() - cfm.height() - 2) / 2, w, cfm.height() + 2);
         QColor chipBg = selected ? text : pal.color(QPalette::Highlight);
         chipBg.setAlphaF(0.18);
@@ -285,7 +290,15 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         painter->drawRoundedRect(chip, chip.height() / 2.0, chip.height() / 2.0);
         painter->setFont(chipFont);
         painter->setPen(text);
-        painter->drawText(chip, Qt::AlignCenter, label);
+        painter->drawText(chip.adjusted(0, 0, -autoWidth, 0), Qt::AlignCenter, label);
+        if (autoFiled) {
+            const QRect tag = QRect(chip.right() - autoWidth - 1, chip.top() + 1, autoWidth, chip.height() - 2);
+            QColor tagBg = text;
+            tagBg.setAlphaF(0.22);
+            painter->setBrush(tagBg);
+            painter->drawRoundedRect(tag, tag.height() / 2.0, tag.height() / 2.0);
+            painter->drawText(tag, Qt::AlignCenter, autoLabel);
+        }
         painter->setFont(option.font);
         right -= w + kGap;
     }

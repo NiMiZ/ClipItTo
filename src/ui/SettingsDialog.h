@@ -173,6 +173,8 @@ public:
     QLabel* shortcutStatus() const { return m_shortcutStatus; }
     QLabel* versionLabel() const { return m_version; }
     QTreeWidget* groupTree() const { return m_groups; }
+    QCheckBox* autoGroupBox() const { return m_autoGroup; }
+    QPushButton* forgetLearnedButton() const { return m_forgetLearned; }
     QCheckBox* keepPasswordsBox() const { return m_keepPasswords; }
     QCheckBox* passwordsInGroupBox() const { return m_passwordsInGroup; }
     QCheckBox* passwordsInRecentBox() const { return m_passwordsInRecent; }
@@ -227,6 +229,8 @@ private:
     db::Repository& m_repo;
     QString m_hotkey; // last valid shortcut, canonical spelling
     bool m_groupsChanged = false;
+    QCheckBox* m_autoGroup = nullptr;
+    QPushButton* m_forgetLearned = nullptr;
 
     QComboBox* m_theme;
     QSpinBox* m_copies;

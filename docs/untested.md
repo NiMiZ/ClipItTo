@@ -14,6 +14,7 @@ the real clipboard where it can. These need a person at the machine. Tick them o
 | Pictures | copy and paste back on GNOME Wayland (extension), KDE, wlroots; paste into Office and browsers on Windows | each desktop |
 | History encryption | the key kept in a real GNOME Keyring / KWallet / Credential Manager | Linux, Windows |
 | Backup across systems | export on one OS, import on another (JSON is plain, so it should work) | any two OSes |
+| Auto grouping | the **auto** tag on a group chip looks right in light and dark themes and at large font sizes; in a real session a copy from a browser lands in the group learned from earlier links | any desktop |
 | Wayland drag fix | dragging the popup by its name (issue #3) | Wayland |
 
 Known to work on real machines: paste and Hebrew input on Linux (issue #3), the Windows installer on a

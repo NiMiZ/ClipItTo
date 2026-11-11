@@ -112,20 +112,27 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
     files copied in Explorer or Finder are recorded as paths) **and QR code view** (right-click › *Show as QR code…*, to
     scan with a phone; MIT library by Project Nayuki). Still open: code highlighting, thumbnails of copied picture
     files, and files copied on GNOME (the extension reads text only).
-16. **Auto grouping:** ClipItTo learns from what you move into a group and, when it is turned on, files new copies in
-    the group they match best. Settings › *Groups* gets a checkbox, **off by default**. The groups are only ever the
+16. **DONE: Auto grouping** (Settings › *Groups*; `auto_group`, **off by default**). ClipItTo learns from what you move into a
+    group and, when it is turned on, files new copies in the group they match best. The groups are only ever the
     ones you made: it never creates a group, and a copy with no clear match stays where it is (in Recent, no group).
-    - **Learning.** Every time you put a copy in a group (Ctrl+G, the Group menu, Mark as password's group), that copy
-      becomes an example for the group; copies already in groups count as examples from the start. Matching is
-      local and simple (words and shapes of the text, such as a URL's host, a path's folder, a command's first word,
-      and the app it was copied from when known), so it needs no model download and no network.
-    - **Choosing.** The group with the most matches wins, and only above a threshold, so a weak guess is not made.
-      Settings shows how many examples each group has.
+    - **Learning.** Every time you put a copy in a group (Ctrl+G, the Group menu), that copy becomes an example for the
+      group; copies already in groups count as examples from the start (read once, when the setting is first used).
+      Matching is local and simple (the words of the text, and shapes: a URL's host, domain and first folder, a path's
+      folders, a command's first word), so it needs no model download and no network. Each token is kept as a 64-bit
+      hash, never as text. Nothing is learned while the setting is off.
+    - **Choosing.** Each token votes for the groups that had it, in proportion to how often; the group with the most
+      matches wins, and only above a threshold and clearly ahead of the runner-up, so a weak guess or a tie is not made.
+      Settings shows how many examples each group has (the *Examples* column).
     - **Staying in control.** An automatically filed copy is marked (a small "auto" tag on its group chip) so it can be
       told from one you filed; moving it to another group, or removing it from the group, teaches the model the other
-      way (a correction counts more than a first example). Turning the setting off keeps the filed copies, and a
-      *Forget what was learned* button clears the examples.
-    - **Limits.** Never for password copies or pictures. Nothing learned leaves the history file (it is encrypted with
-      it). It runs when a copy is stored, off the GUI thread, and has to be cheap enough not to slow capture.
-    - **To decide first:** whether copies already in Recent are filed too (a one-time "File what matches" button) or only
-      new ones, and whether a copy can match several groups (the first, with a menu to pick another).
+      way (a correction counts three examples; a filed-by-guess copy is never an example itself). Turning the setting off
+      keeps the filed copies, and a *Forget what was learned* button clears the examples (the copies in groups are not
+      read as examples again afterwards).
+    - **Limits.** Never for password copies (marked, detected, by a rule) or pictures, and they teach nothing when
+      filed by hand. Nothing learned leaves the history file (it is encrypted with it; a new migration, 009). It runs when
+      a copy is stored, on a worker thread against an in-memory snapshot, and the work per copy is bounded (first 4000
+      characters, at most 48 tokens). Only a copy that is still unsaved and unfiled when the worker is done is filed.
+    - **Decided:** only new copies are filed (no one-time "File what matches" button), and a copy matches one group, the
+      best one (no menu to pick another; move it yourself and it learns). Not done: the app a copy came from is not
+      used, because ClipItTo does not keep it with a copy (only for password notes), so it would match nothing; and
+      "Mark as password's group" teaches nothing, since password copies never do.

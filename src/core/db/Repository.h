@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QSet>
+#include "AutoGroup.h"
 #include "Entry.h"
 #include "ImageClip.h"
 #include "PasswordVault.h"
@@ -215,6 +216,25 @@ public:
     // The hash that identifies `text` as a copy, under the current choice.
     QString textHash(const QString& text) const;
 
+    // --- Auto grouping (AutoGroup.h). Learning happens in setGroup, only while `on` (auto_group).
+    struct AutoExamples {
+        QString group;
+        int examples = 0;
+    };
+    void setAutoGrouping(bool on);
+    bool autoGrouping() const { return m_autoGrouping; }
+    // Counts the times what was learned was forgotten or a group deleted: an answer computed before is stale.
+    quint64 autoForgets() const { return m_autoForgets; }
+    // What was learned, as an immutable snapshot (cached until something changes); the first call
+    // also reads the copies already in groups as examples. Safe to use from another thread.
+    std::shared_ptr<const autogroup::Model> autoModel();
+    // Files a copy in a group automatically (tagged "auto"). Only when the copy is a plain text one that is
+    // still unsaved (no group, star or pin) and the group exists; never creates a group. True when filed.
+    bool setAutoGroup(qint64 id, const QString& group);
+    std::vector<AutoExamples> autoExamples(); // groups with examples, by name
+    // "Forget what was learned": all examples gone; filed copies stay where they are.
+    void forgetAutoLearned();
+
     // With `perNote`, the same password under a different note is another copy; otherwise it
     // is the same copy whatever its note.
     void setSecretsPerNote(bool perNote) { m_secretsPerNote = perNote; }
@@ -236,12 +256,17 @@ private:
     Stmt& likeStatement(int tokenCount);
     int starsIn(const QString& group); // "" = Favorites (starred, no group)
     Change roomForStar(const QString& group);
+    void learn(const QString& group, const QString& text, int delta); // delta < 0 unlearns
+    void ensureAutoSeeded();
 
     Db& m_db;
     Clock m_clock;
     Limits m_limits;
     bool m_ignoreCase = false;
     bool m_secretsPerNote = false;
+    bool m_autoGrouping = false;
+    quint64 m_autoForgets = 0;
+    std::shared_ptr<const autogroup::Model> m_autoModel;
     QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;
     std::unique_ptr<Stmt> m_ingestImage;

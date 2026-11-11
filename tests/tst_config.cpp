@@ -33,6 +33,16 @@ private slots:
         QVERIFY(Config::fromToml("debug_log = true\n").debugLog);
     }
 
+    void autoGroup()
+    {
+        QVERIFY(!Config().autoGroup); // off by default
+        QVERIFY(Config::fromToml("auto_group = true\n").autoGroup);
+        Config c;
+        c.autoGroup = true;
+        QVERIFY(Config::fromToml(c.toToml()).autoGroup); // saved and read back
+        QVERIFY(c.toToml().find("auto_group = true") != std::string::npos);
+    }
+
     void keepFormatting()
     {
         QVERIFY(Config().keepFormatting);

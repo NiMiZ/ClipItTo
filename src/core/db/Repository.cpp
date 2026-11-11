@@ -1,6 +1,8 @@
 #include "db/Repository.h"
 
+#include "AutoGroup.h"
 #include "GroupPath.h"
+#include "SecretScan.h"
 #include "db/FtsQuery.h"
 #include "db/Sqlite.h"
 
@@ -27,7 +29,8 @@ namespace {
 
 #define CLIP_COLUMNS                                                                                   \
     "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position, " \
-    "c.kind, c.content_hash, c.secret, EXISTS (SELECT 1 FROM clip_rich r WHERE r.clip_id = c.id)"
+    "c.kind, c.content_hash, c.secret, EXISTS (SELECT 1 FROM clip_rich r WHERE r.clip_id = c.id), " \
+    "c.auto_filed"
 
 Entry readEntry(const Stmt& s)
 {
@@ -44,8 +47,41 @@ Entry readEntry(const Stmt& s)
     e.contentHash = s.colText(9);
     e.secret = s.colInt(10) != 0;
     e.rich = s.colInt(11) != 0;
+    e.autoFiled = s.colInt(12) != 0;
     return e;
 }
+
+bool looksSecret(const QString& text)
+{
+    return !secretscan::kindOf(text).isEmpty() || secretscan::looksLikeGeneratedPassword(text);
+}
+
+// A transaction that may run inside another one (a savepoint).
+class Nested {
+public:
+    explicit Nested(Db& db) : m_db(db) { m_db.exec("SAVEPOINT auto_group"); }
+    ~Nested()
+    {
+        if (!m_done) {
+            try {
+                m_db.exec("ROLLBACK TO auto_group");
+                m_db.exec("RELEASE auto_group");
+            } catch (const DbError&) {
+            }
+        }
+    }
+    Nested(const Nested&) = delete;
+    Nested& operator=(const Nested&) = delete;
+    void commit()
+    {
+        m_db.exec("RELEASE auto_group");
+        m_done = true;
+    }
+
+private:
+    Db& m_db;
+    bool m_done = false;
+};
 
 } // namespace
 
@@ -892,12 +928,31 @@ Repository::Change Repository::setGroup(qint64 id, const QString& group)
             return room;
         }
     }
+    // A copy that looks like a key or a password (kept as plain text when passwords are not kept) teaches nothing.
+    const bool teach = m_autoGrouping && e->group != target && !e->image && !e->secret && !looksSecret(e->content);
+    if (teach) {
+        ensureAutoSeeded(); // before the move, so the copy is not counted twice
+    }
     if (!target.isEmpty()) {
         createGroup(target);
     }
     m_setGroup->reset();
     m_setGroup->bindInt(1, id).bindTextOrNull(2, target);
     m_setGroup->run();
+    if (e->autoFiled && e->group != target) {
+        Stmt flag(m_db, "UPDATE clips SET auto_filed = 0 WHERE id = ?1");
+        flag.bindInt(1, id).run();
+    }
+    if (teach) {
+        // A copy that was filed automatically and is moved or unfiled was a wrong guess: that counts more.
+        const bool correction = e->autoFiled;
+        if (correction && !e->group.isEmpty()) {
+            learn(e->group, e->content, -autogroup::kCorrectionWeight);
+        }
+        if (!target.isEmpty()) {
+            learn(target, e->content, correction ? autogroup::kCorrectionWeight : 1);
+        }
+    }
     return Change::Done;
 }
 
@@ -1066,6 +1121,10 @@ bool Repository::renameGroup(const QString& from, const QString& to, QString* er
              "WHERE path = ?1 OR path LIKE ?3 ESCAPE '\\'",
              "UPDATE clips SET group_name = ?2 || substr(group_name, length(?1) + 1) "
              "WHERE group_name = ?1 OR group_name LIKE ?3 ESCAPE '\\'",
+             "UPDATE auto_examples SET group_name = ?2 || substr(group_name, length(?1) + 1) "
+             "WHERE group_name = ?1 OR group_name LIKE ?3 ESCAPE '\\'",
+             "UPDATE auto_tokens SET group_name = ?2 || substr(group_name, length(?1) + 1) "
+             "WHERE group_name = ?1 OR group_name LIKE ?3 ESCAPE '\\'",
          }) {
         Stmt s(m_db, sql);
         s.bindText(1, source).bindText(2, target).bindText(3, descendantsPattern(source));
@@ -1077,6 +1136,7 @@ bool Repository::renameGroup(const QString& from, const QString& to, QString* er
         s.bindText(1, target).run();
     }
     tx.commit();
+    m_autoModel.reset();
     return true;
 }
 
@@ -1088,7 +1148,9 @@ void Repository::deleteGroup(const QString& path)
     }
     Transaction tx(m_db);
     for (const char* sql : {
-             "UPDATE clips SET group_name = NULL WHERE group_name = ?1 OR group_name LIKE ?2 ESCAPE '\\'",
+             "UPDATE clips SET group_name = NULL, auto_filed = 0 WHERE group_name = ?1 OR group_name LIKE ?2 ESCAPE '\\'",
+             "DELETE FROM auto_examples WHERE group_name = ?1 OR group_name LIKE ?2 ESCAPE '\\'",
+             "DELETE FROM auto_tokens WHERE group_name = ?1 OR group_name LIKE ?2 ESCAPE '\\'",
              "DELETE FROM groups WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
          }) {
         Stmt s(m_db, sql);
@@ -1096,6 +1158,9 @@ void Repository::deleteGroup(const QString& path)
         s.run();
     }
     tx.commit();
+    m_autoModel.reset();
+    ++m_autoForgets;
+    checkpoint(); // the log may still hold the deleted rows
 }
 
 void Repository::setNote(qint64 id, const QString& note)
@@ -1226,6 +1291,13 @@ qint64 Repository::clearHistory(bool everything)
         Stmt s(m_db, everything ? "DELETE FROM clips" : "DELETE FROM clips WHERE is_saved = 0");
         s.run();
         deleted = m_db.changes();
+        if (everything) {
+            // What was learned from the copies goes with them.
+            m_db.exec("DELETE FROM auto_tokens");
+            m_db.exec("DELETE FROM auto_examples");
+            m_autoModel.reset();
+            ++m_autoForgets;
+        }
         // The search index only marks deleted rows; their text stays in its segments until
         // they are merged. Merge now, so nothing of the cleared copies is left in it.
         m_db.exec(everything ? "INSERT INTO clips_fts(clips_fts) VALUES ('delete-all');"
@@ -1337,6 +1409,135 @@ qint64 Repository::countUnsaved()
 void Repository::optimize()
 {
     m_db.exec("INSERT INTO clips_fts(clips_fts) VALUES ('optimize'); PRAGMA optimize;");
+}
+
+} // namespace clipitto::db
+
+namespace clipitto::db {
+
+// --- Auto grouping (AutoGroup.h) ----------------------------------------------------------------
+
+void Repository::setAutoGrouping(bool on)
+{
+    m_autoGrouping = on;
+}
+
+void Repository::learn(const QString& group, const QString& text, int delta)
+{
+    const auto toks = autogroup::tokens(text);
+    if (toks.empty() || group.isEmpty()) {
+        return;
+    }
+    Nested tx(m_db);
+    if (delta > 0) {
+        Stmt up(m_db, "INSERT INTO auto_tokens(group_name, token, weight) VALUES (?1, ?2, ?3) "
+                      "ON CONFLICT(group_name, token) DO UPDATE SET weight = weight + excluded.weight");
+        for (const autogroup::Token& t : toks) {
+            up.reset();
+            up.bindText(1, group).bindInt(2, t.hash).bindInt(3, delta).run();
+        }
+    } else {
+        Stmt down(m_db, "UPDATE auto_tokens SET weight = weight + ?3 WHERE group_name = ?1 AND token = ?2");
+        for (const autogroup::Token& t : toks) {
+            down.reset();
+            down.bindText(1, group).bindInt(2, t.hash).bindInt(3, delta).run();
+        }
+        Stmt clean(m_db, "DELETE FROM auto_tokens WHERE group_name = ?1 AND weight <= 0");
+        clean.bindText(1, group).run();
+    }
+    Stmt count(m_db, "INSERT INTO auto_examples(group_name, examples) VALUES (?1, MAX(0, ?2)) "
+                     "ON CONFLICT(group_name) DO UPDATE SET examples = MAX(0, examples + ?2)");
+    count.bindText(1, group).bindInt(2, delta > 0 ? 1 : -1).run();
+    tx.commit();
+    m_autoModel.reset();
+}
+
+void Repository::ensureAutoSeeded()
+{
+    {
+        Stmt seeded(m_db, "SELECT 1 FROM meta WHERE key = 'auto_seeded'");
+        if (seeded.step()) {
+            return;
+        }
+    }
+    // Copies already in groups are the first examples (those filed automatically are not: they are guesses).
+    std::vector<std::pair<QString, QString>> examples;
+    {
+        Stmt s(m_db, "SELECT group_name, content FROM clips WHERE kind = 'text' AND secret = 0 AND auto_filed = 0 "
+                     "AND group_name IS NOT NULL AND group_name <> ''");
+        while (s.step()) {
+            const QString content = s.colText(1);
+            if (!looksSecret(content)) {
+                examples.emplace_back(s.colText(0), content);
+            }
+        }
+    }
+    Nested tx(m_db);
+    for (const auto& [group, text] : examples) {
+        learn(group, text, 1);
+    }
+    Stmt mark(m_db, "INSERT INTO meta(key, value) VALUES ('auto_seeded', '1') "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    mark.run();
+    tx.commit();
+}
+
+std::shared_ptr<const autogroup::Model> Repository::autoModel()
+{
+    if (m_autoModel) {
+        return m_autoModel;
+    }
+    ensureAutoSeeded();
+    auto model = std::make_shared<autogroup::Model>();
+    Stmt s(m_db, "SELECT group_name, token, weight FROM auto_tokens");
+    while (s.step()) {
+        model->add(s.colText(0), s.colInt(1), int(s.colInt(2)));
+    }
+    m_autoModel = model;
+    return m_autoModel;
+}
+
+bool Repository::setAutoGroup(qint64 id, const QString& group)
+{
+    const QString target = groups::normalize(group);
+    if (target.isEmpty()) {
+        return false;
+    }
+    {
+        Stmt exists(m_db, "SELECT 1 FROM groups WHERE path = ?1");
+        exists.bindText(1, target);
+        if (!exists.step()) {
+            return false; // never creates a group
+        }
+    }
+    // Only a plain, still unfiled copy that is not saved in any way: the user may have acted since.
+    Stmt s(m_db, "UPDATE clips SET group_name = ?2, auto_filed = 1 WHERE id = ?1 AND kind = 'text' AND secret = 0 "
+                 "AND is_saved = 0 AND (group_name IS NULL OR group_name = '') AND auto_filed = 0");
+    s.bindInt(1, id).bindText(2, target).run();
+    return m_db.changes() > 0;
+}
+
+std::vector<Repository::AutoExamples> Repository::autoExamples()
+{
+    std::vector<AutoExamples> out;
+    Stmt s(m_db, "SELECT group_name, examples FROM auto_examples WHERE examples > 0 ORDER BY group_name");
+    while (s.step()) {
+        out.push_back({s.colText(0), int(s.colInt(1))});
+    }
+    return out;
+}
+
+void Repository::forgetAutoLearned()
+{
+    Nested tx(m_db);
+    m_db.exec("DELETE FROM auto_tokens");
+    m_db.exec("DELETE FROM auto_examples");
+    // Forgotten means forgotten: the groups' copies are not read again as first examples.
+    m_db.exec("INSERT INTO meta(key, value) VALUES ('auto_seeded', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    tx.commit();
+    m_autoModel.reset();
+    ++m_autoForgets;
+    checkpoint(); // the log may still hold the forgotten rows
 }
 
 } // namespace clipitto::db

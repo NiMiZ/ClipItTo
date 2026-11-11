@@ -269,6 +269,44 @@ private slots:
         QCOMPARE(d.shortcutStatus()->text(), QStringLiteral("Bind it yourself"));
     }
 
+    void groupsShowTheirExamplesAndLearningCanBeForgotten()
+    {
+        TestDb t;
+        t.repo->setAutoGrouping(true);
+        for (const QString& page : {QStringLiteral("os"), QStringLiteral("sys")}) {
+            const auto copy = t.repo->ingest(QStringLiteral("https://docs.python.org/3/library/%1.html").arg(page));
+            t.repo->setGroup(copy.id, QStringLiteral("Docs"));
+        }
+        t.repo->createGroup(QStringLiteral("Empty"));
+        SettingsDialog d(Config{}, *t.repo, {});
+        bool asked = false;
+        bool answer = false;
+        d.setConfirmPrompt([&](QWidget*, const QString&) {
+            asked = true;
+            return answer;
+        });
+        const auto examplesOf = [&](const QString& group) {
+            for (int i = 0; i < d.groupTree()->topLevelItemCount(); ++i) {
+                const auto* item = d.groupTree()->topLevelItem(i);
+                if (item->data(0, Qt::UserRole).toString() == group) {
+                    return item->text(2);
+                }
+            }
+            return QStringLiteral("<none>");
+        };
+        QCOMPARE(examplesOf(QStringLiteral("Docs")), QStringLiteral("2"));
+        QCOMPARE(examplesOf(QStringLiteral("Empty")), QString());
+
+        d.forgetLearnedButton()->click(); // declined: nothing changes
+        QVERIFY(asked);
+        QCOMPARE(t.repo->autoExamples().size(), size_t(1));
+        answer = true;
+        d.forgetLearnedButton()->click();
+        QVERIFY(t.repo->autoExamples().empty());
+        QCOMPARE(examplesOf(QStringLiteral("Docs")), QString());
+        QCOMPARE(t.repo->groupedEntries().size(), size_t(2)); // the copies stay in their group
+    }
+
     void managesGroups()
     {
         TestDb t;
@@ -574,6 +612,9 @@ private slots:
         QVERIFY(d.keepFormattingBox()->isChecked() && d.config().keepFormatting); // on by default
         d.keepFormattingBox()->setChecked(false);
         QVERIFY(!d.config().keepFormatting);
+        QVERIFY(!d.autoGroupBox()->isChecked() && !d.config().autoGroup); // off by default
+        d.autoGroupBox()->setChecked(true);
+        QVERIFY(d.config().autoGroup);
         QVERIFY(!d.debugLogBox()->isChecked() && !d.config().debugLog); // off by default
         QVERIFY(d.debugLogBox()->toolTip().contains(QLatin1String("debug.log")));
         d.debugLogBox()->setChecked(true);
