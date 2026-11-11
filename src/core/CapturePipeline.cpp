@@ -253,12 +253,13 @@ void CapturePipeline::autoFile(qint64 id, const QString& text)
         return;
     }
     ++m_autoPending;
+    const quint64 forgets = m_repo.autoForgets();
     auto* watcher = new QFutureWatcher<QString>(this);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, id] {
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, id, forgets] {
         const QString group = watcher->result();
         watcher->deleteLater();
         --m_autoPending;
-        if (group.isEmpty() || !m_autoGroup) {
+        if (group.isEmpty() || !m_autoGroup || m_paused || forgets != m_repo.autoForgets()) {
             return; // no clear match (or turned off meanwhile): the copy stays in Recent
         }
         try {

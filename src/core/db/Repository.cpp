@@ -2,6 +2,7 @@
 
 #include "AutoGroup.h"
 #include "GroupPath.h"
+#include "SecretScan.h"
 #include "db/FtsQuery.h"
 #include "db/Sqlite.h"
 
@@ -48,6 +49,11 @@ Entry readEntry(const Stmt& s)
     e.rich = s.colInt(11) != 0;
     e.autoFiled = s.colInt(12) != 0;
     return e;
+}
+
+bool looksSecret(const QString& text)
+{
+    return !secretscan::kindOf(text).isEmpty() || secretscan::looksLikeGeneratedPassword(text);
 }
 
 // A transaction that may run inside another one (a savepoint).
@@ -922,7 +928,8 @@ Repository::Change Repository::setGroup(qint64 id, const QString& group)
             return room;
         }
     }
-    const bool teach = m_autoGrouping && e->group != target && !e->image && !e->secret;
+    // A copy that looks like a key or a password (kept as plain text when passwords are not kept) teaches nothing.
+    const bool teach = m_autoGrouping && e->group != target && !e->image && !e->secret && !looksSecret(e->content);
     if (teach) {
         ensureAutoSeeded(); // before the move, so the copy is not counted twice
     }
@@ -1152,6 +1159,8 @@ void Repository::deleteGroup(const QString& path)
     }
     tx.commit();
     m_autoModel.reset();
+    ++m_autoForgets;
+    checkpoint(); // the log may still hold the deleted rows
 }
 
 void Repository::setNote(qint64 id, const QString& note)
@@ -1282,6 +1291,13 @@ qint64 Repository::clearHistory(bool everything)
         Stmt s(m_db, everything ? "DELETE FROM clips" : "DELETE FROM clips WHERE is_saved = 0");
         s.run();
         deleted = m_db.changes();
+        if (everything) {
+            // What was learned from the copies goes with them.
+            m_db.exec("DELETE FROM auto_tokens");
+            m_db.exec("DELETE FROM auto_examples");
+            m_autoModel.reset();
+            ++m_autoForgets;
+        }
         // The search index only marks deleted rows; their text stays in its segments until
         // they are merged. Merge now, so nothing of the cleared copies is left in it.
         m_db.exec(everything ? "INSERT INTO clips_fts(clips_fts) VALUES ('delete-all');"
@@ -1450,7 +1466,10 @@ void Repository::ensureAutoSeeded()
         Stmt s(m_db, "SELECT group_name, content FROM clips WHERE kind = 'text' AND secret = 0 AND auto_filed = 0 "
                      "AND group_name IS NOT NULL AND group_name <> ''");
         while (s.step()) {
-            examples.emplace_back(s.colText(0), s.colText(1));
+            const QString content = s.colText(1);
+            if (!looksSecret(content)) {
+                examples.emplace_back(s.colText(0), content);
+            }
         }
     }
     Nested tx(m_db);
@@ -1493,7 +1512,7 @@ bool Repository::setAutoGroup(qint64 id, const QString& group)
     }
     // Only a plain, still unfiled copy that is not saved in any way: the user may have acted since.
     Stmt s(m_db, "UPDATE clips SET group_name = ?2, auto_filed = 1 WHERE id = ?1 AND kind = 'text' AND secret = 0 "
-                 "AND is_saved = 0");
+                 "AND is_saved = 0 AND (group_name IS NULL OR group_name = '') AND auto_filed = 0");
     s.bindInt(1, id).bindText(2, target).run();
     return m_db.changes() > 0;
 }
@@ -1517,6 +1536,8 @@ void Repository::forgetAutoLearned()
     m_db.exec("INSERT INTO meta(key, value) VALUES ('auto_seeded', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
     tx.commit();
     m_autoModel.reset();
+    ++m_autoForgets;
+    checkpoint(); // the log may still hold the forgotten rows
 }
 
 } // namespace clipitto::db

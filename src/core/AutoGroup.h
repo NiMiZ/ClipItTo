@@ -12,7 +12,7 @@ namespace clipitto::autogroup {
 // Local, model-free matching for "auto grouping" (roadmap 16): a copy is reduced to a few
 // tokens (its words, and shapes such as a URL's host, a path's folder or a command's first
 // word); a group is the set of tokens its examples had. Tokens are stored as 64-bit hashes,
-// never as text, and the copy's text is never kept or logged here.
+// never as text (not readable at a glance, though a guessed word can be tested against it), and the copy's text is never kept or logged here.
 struct Token {
     qint64 hash = 0;
     int weight = 1; // how much a match on this token is worth: shapes more than words

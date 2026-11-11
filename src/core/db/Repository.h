@@ -223,6 +223,8 @@ public:
     };
     void setAutoGrouping(bool on);
     bool autoGrouping() const { return m_autoGrouping; }
+    // Counts the times what was learned was forgotten or a group deleted: an answer computed before is stale.
+    quint64 autoForgets() const { return m_autoForgets; }
     // What was learned, as an immutable snapshot (cached until something changes); the first call
     // also reads the copies already in groups as examples. Safe to use from another thread.
     std::shared_ptr<const autogroup::Model> autoModel();
@@ -263,6 +265,7 @@ private:
     bool m_ignoreCase = false;
     bool m_secretsPerNote = false;
     bool m_autoGrouping = false;
+    quint64 m_autoForgets = 0;
     std::shared_ptr<const autogroup::Model> m_autoModel;
     QDateTime m_lastStamp;
     std::unique_ptr<Stmt> m_ingest;

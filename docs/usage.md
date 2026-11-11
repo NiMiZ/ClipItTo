@@ -105,7 +105,7 @@ you give them (`Alt+↑/↓`, or Move up/down in Settings); new ones go last.
 **Auto grouping** (Settings › *Groups*, off by default; `auto_group`). ClipItTo learns from the copies you put in
 your groups, and files a *new* copy in the group it matches best, with a small **auto** tag on its group chip. It
 uses only words and shapes of the text (a link's site and first folder, a path's folders, a command's first word),
-locally: no model, no network, and what it learns stays in the history file, encrypted with it. It never creates a group,
+locally: no model, no network, and what it learns (hashed words, never the copies) stays in the history file, encrypted with it when history encryption is on; deleting one copy does not unlearn it, *Forget what was learned* does. It never creates a group,
 never files password copies or pictures, and leaves a copy in Recent when no group clearly matches (a copy matches
 one group, the best). Moving an auto-filed copy to another group, or out of its group, teaches it the other way, and
 counts more than a first example. Turning it off keeps the copies already filed; *Forget what was learned* clears the

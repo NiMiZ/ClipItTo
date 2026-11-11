@@ -444,7 +444,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                         "matches best, marked <b>auto</b>. It never makes a group, and a copy with no "
                                         "clear match stays in Recent. Moving an auto-filed copy elsewhere, or taking it "
                                         "out of its group, teaches it the other way. Never for passwords or pictures. "
-                                        "Everything learned stays in the history file (encrypted with it). Turning this "
+                                        "Everything learned stays in the history file (encrypted with it when history encryption is on). Turning this "
                                         "off keeps the copies already filed.")));
     m_forgetLearned = new QPushButton(tr("Forget what was learned"), this);
     m_forgetLearned->setAutoDefault(false);

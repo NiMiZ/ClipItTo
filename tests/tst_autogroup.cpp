@@ -367,6 +367,34 @@ private slots:
         QCOMPARE(groupOf(*t.repo, mine.id), QStringLiteral("Servers"));
     }
 
+    void aLateGuessNeverOverwritesTheUsersOwnFiling()
+    {
+        TestDb t;
+        teachTwoGroups(*t.repo);
+        const auto copy = t.repo->ingest(QStringLiteral("some text"));
+        t.repo->setGroup(copy.id, QStringLiteral("Servers")); // the user got there first
+        QVERIFY(!t.repo->setAutoGroup(copy.id, QStringLiteral("Docs")));
+        QCOMPARE(groupOf(*t.repo, copy.id), QStringLiteral("Servers"));
+    }
+
+    void clearingEverythingForgetsWhatWasLearned()
+    {
+        TestDb t;
+        t.repo->setAutoGrouping(true);
+        teachTwoGroups(*t.repo);
+        QVERIFY(!t.repo->autoExamples().empty());
+        t.repo->clearHistory(true);
+        QVERIFY(t.repo->autoExamples().empty());
+    }
+
+    void keysAndPasswordsFiledByHandTeachNothing()
+    {
+        TestDb t;
+        t.repo->setAutoGrouping(true);
+        fileByHand(*t.repo, QStringLiteral("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"), QStringLiteral("Tokens"));
+        QVERIFY(t.repo->autoExamples().empty());
+    }
+
     void renamingAndDeletingGroupsKeepsTheExamplesInStep()
     {
         TestDb t;
