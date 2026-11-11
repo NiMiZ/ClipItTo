@@ -1546,7 +1546,8 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
             addKeyboardLayoutEntries(target, text);
         } else if (itemId == QLatin1String(pasteas::kTranslate)) {
             addTranslateMenu(target, tr("Tran&slate"), text,
-                             [this, text](const QString& packId) { translateAndPaste(packId, text); });
+                             [this, text](const QString& packId) { translateAndPaste(packId, text); },
+                             /*withPreview=*/true);
         } else if (itemId == QLatin1String(pasteas::kRich)) {
             if (entry.rich) { // a copy without a formatted version has nothing to offer here
                 target->addAction(tr("With &formatting"), this, [this, entry] {
@@ -1606,7 +1607,7 @@ void PopupWindow::fixMnemonics(QMenu* menu)
 }
 
 void PopupWindow::addTranslateMenu(QMenu* menu, const QString& title, const QString& text,
-                                   std::function<void(const QString& packId)> chosen)
+                                   std::function<void(const QString& packId)> chosen, bool withPreview)
 {
     if (!m_translation.builtIn || !m_translation.packsFor) {
         return;
@@ -1625,6 +1626,13 @@ void PopupWindow::addTranslateMenu(QMenu* menu, const QString& title, const QStr
     for (const TranslationPackInfo& pack : packs) {
         const QString id = pack.id;
         sub->addAction(pack.label, this, [chosen, id] { chosen(id); });
+    }
+    if (withPreview) {
+        // The same as Ctrl+T: see the translation first, paste it only if you choose to.
+        QAction* show = sub->addAction(tr("Show the translation only\tCtrl+T"), this, [this] { previewTranslation(); });
+        show->setObjectName(QStringLiteral("translate_preview"));
+        show->setToolTip(tr("Translate and show the result in a window; nothing is pasted unless you choose Paste there."));
+        sub->setToolTipsVisible(true);
     }
 }
 

@@ -81,6 +81,8 @@ If recognition is not available (for example no language data on Linux) the read
 
 **Translation.** Shift+Enter › *Translate* translates a copy, or the text in a picture, with a language pack you
 add in Settings › Translation. It runs on your computer only; see [Translation](translation.md).
+To read a translation without pasting it, press **Ctrl+T** on a copy, or choose *Show the translation only* in the *Translate*
+submenu; the result opens in a window and is pasted only if you choose *Paste* there.
 
 **Search filters.** Type these next to your words to narrow the list (a filter alone works too):
 

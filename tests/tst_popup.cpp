@@ -1440,8 +1440,11 @@ private slots:
                 }
             }
             QVERIFY(translate);
-            QCOMPARE(translate->actions().size(), 1);
+            // The pack first, then (second) the same as Ctrl+T: see the translation without pasting it.
+            QCOMPARE(translate->actions().size(), 2);
             QCOMPARE(translate->actions().first()->text(), QStringLiteral("English → Chinese"));
+            QVERIFY(translate->actions().at(1)->text().startsWith(QStringLiteral("Show the translation only")));
+            QVERIFY(translate->actions().at(1)->text().contains(QStringLiteral("Ctrl+T")));
             translate->actions().first()->trigger();
         }
         QCOMPARE(pasted.size(), 1);
@@ -1465,6 +1468,27 @@ private slots:
         }
         QVERIFY(none && !none->isEnabled());
         QVERIFY(none->toolTip().contains(QStringLiteral("Settings")));
+    }
+
+    void theTranslateSubmenuCanShowTheTranslationWithoutPasting()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        QStringList shown;
+        f.popup->setTextViewer([&](QWidget*, const QString& text, bool) {
+            shown << text;
+            return false; // Paste not chosen
+        });
+        f.popup->setTranslation(fakeTranslation());
+        QSignalSpy pasted(f.popup.get(), &PopupWindow::textActivated);
+        const Entry beta = f.t.repo->search(QStringLiteral("beta")).front();
+        f.popup->view()->selectIndex(f.model()->findEntry(beta.id));
+        std::unique_ptr<QMenu> menu(f.popup->createContextMenu(beta, f.popup.get()));
+        QAction* show = menu->findChild<QAction*>(QStringLiteral("translate_preview"));
+        QVERIFY(show);
+        show->trigger();
+        QCOMPARE(shown, QStringList{QStringLiteral("[en-zh] beta")});
+        QCOMPARE(pasted.size(), 0);
     }
 
     void ctrlTShowsTheTranslationWithoutPasting()

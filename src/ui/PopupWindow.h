@@ -140,7 +140,7 @@ public:
     void pasteTextFromPicture(qint64 id, std::optional<texttransform::Kind> kind = std::nullopt);
     QMenu* createPictureMenu(const Entry& picture, QWidget* parent);
     // "Translate ▸" with the installed packs (those that fit `text` when given); disabled with a hint when there is none.
-    void addTranslateMenu(QMenu* menu, const QString& title, const QString& text, std::function<void(const QString& packId)> chosen);
+    void addTranslateMenu(QMenu* menu, const QString& title, const QString& text, std::function<void(const QString& packId)> chosen, bool withPreview = false);
     void previewTranslation();
     bool showQuiet(const QString& text, bool offerPaste = false); // see setTextViewer
     // How long a translation may take before the popup stops waiting for it (tests shorten it).
