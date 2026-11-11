@@ -1,5 +1,7 @@
 #include "Config.h"
+#include "FakeKeyStore.h"
 #include "HistoryModel.h"
+#include "PasswordKeeper.h"
 #include "SearchController.h"
 #include "TestDb.h"
 
@@ -28,6 +30,71 @@ class TestSearchController : public QObject {
     Q_OBJECT
 
 private slots:
+    void aPasswordSearchWhileLockedFindsOnlyTheWholePassword()
+    {
+        TestDb t;
+        auto keys = std::make_shared<FakeKeyStore>();
+        clipitto::PasswordKeeper keeper(*t.repo, keys);
+        keeper.setKdfCost({64, 1});
+        std::optional<bool> ok;
+        keeper.setMasterPassword("master", [&ok](bool r) { ok = r; });
+        QTRY_VERIFY(ok.has_value());
+        const auto& v = keeper.vault();
+        t.repo->ingestSecret(v.seal("Correct-Horse-1"), v.match("Correct-Horse-1"), QStringLiteral("Bank"), QString());
+        t.repo->ingestSecret(v.seal("battery staple"), v.match("battery staple"), QString(), QString());
+        t.repo->ingest(QStringLiteral("Correct-Horse-1 in a plain note"));
+
+        HistoryModel m;
+        SearchController c(*t.repo, m);
+        c.setPasswords(&keeper);
+        c.setPasswordQuery(QString(), true); // empty: every password copy, never a plain one
+        c.refresh();
+        QCOMPARE(m.rowCount(), 2);
+        c.setPasswordQuery(QStringLiteral("Correct-Horse-1"), true);
+        c.refresh();
+        QCOMPARE(m.rowCount(), 1); // the whole password, found while locked
+        QVERIFY(m.entryAt(m.index(0, 0))->secret);
+        QVERIFY(!c.passwordSearchNeedsUnlock());
+        c.setPasswordQuery(QStringLiteral("horse"), true);
+        c.refresh();
+        QCOMPARE(m.rowCount(), 0); // a part needs the unlock
+        QVERIFY(c.passwordSearchNeedsUnlock());
+        c.setPasswordQuery(QString(), false);
+        QVERIFY(!c.isPasswordSearch());
+    }
+
+    void aPasswordSearchWhileUnlockedFindsPartsIgnoringCaseNewestFirst()
+    {
+        TestDb t;
+        auto keys = std::make_shared<FakeKeyStore>();
+        clipitto::PasswordKeeper keeper(*t.repo, keys);
+        keeper.setKdfCost({64, 1});
+        std::optional<bool> ok;
+        keeper.setMasterPassword("master", [&ok](bool r) { ok = r; });
+        QTRY_VERIFY(ok.has_value());
+        const auto& v = keeper.vault();
+        const qint64 a = t.repo->ingestSecret(v.seal("Alpha-Horse-9"), v.match("Alpha-Horse-9"), QString(), QString()).id;
+        const qint64 b = t.repo->ingestSecret(v.seal("horse-beta"), v.match("horse-beta"), QString(), QString()).id;
+        ok.reset();
+        keeper.unlock("master", [&ok](bool r) { ok = r; });
+        QTRY_VERIFY(ok.has_value());
+        QVERIFY(*ok);
+
+        HistoryModel m;
+        SearchController c(*t.repo, m);
+        c.setPasswords(&keeper);
+        c.setPasswordQuery(QStringLiteral("HORSE"), true);
+        c.refresh();
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(m.entryAt(m.index(0, 0))->id, b); // newest first
+        QCOMPARE(m.entryAt(m.index(1, 0))->id, a);
+        QVERIFY(!c.passwordSearchNeedsUnlock());
+        c.setPasswordQuery(QStringLiteral("nothing-like-it"), true);
+        c.refresh();
+        QCOMPARE(m.rowCount(), 0);
+        QVERIFY(!c.passwordSearchNeedsUnlock()); // already unlocked: nothing more to find
+    }
+
     void defaultViewShowsPinnedThenRecent()
     {
         TestDb t;

@@ -1,12 +1,16 @@
+#include "Backup.h"
 #include "ClipFilter.h"
 #include "ControlChannel.h"
 #include "Daemon.h"
 #include "DesktopIntegration.h"
 #include "FakeKeyStore.h"
 #include "db/Sqlite.h"
+#include "GroupPath.h"
 #include "HistoryModel.h"
 #include "HistoryView.h"
+#include "PasswordKeeper.h"
 #include "PopupWindow.h"
+#include "SecretScan.h"
 #include "SearchBar.h"
 #include "SyntheticPaste.h"
 #include "db/Repository.h"
@@ -26,6 +30,8 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <set>
 
 using clipitto::Config;
 using clipitto::ControlChannel;
@@ -106,6 +112,112 @@ private:
     }
 
     QTemporaryDir m_dir;
+
+    // --- Passwords and grouping, end to end (the daemon, its popup, a real history file) ---
+
+    enum class VaultMode { Master, Open, None };
+
+    // A master password ("master"), the open mode, or neither. Cheap Argon2 costs.
+    static bool setUpVault(Daemon& d, VaultMode mode)
+    {
+        if (mode == VaultMode::None) {
+            return true;
+        }
+        d.passwords()->setKdfCost({64, 1});
+        std::optional<bool> ok;
+        const auto done = [&ok](bool result) { ok = result; };
+        if (mode == VaultMode::Master) {
+            d.passwords()->setMasterPassword("master", done);
+        } else {
+            d.passwords()->useWithoutMasterPassword(done);
+        }
+        return QTest::qWaitFor([&ok] { return ok.has_value(); }, 10000) && *ok;
+    }
+
+    static bool unlockWith(Daemon& d, const QByteArray& password)
+    {
+        std::optional<bool> ok;
+        d.passwords()->unlock(password, [&ok](bool result) { ok = result; });
+        return QTest::qWaitFor([&ok] { return ok.has_value(); }, 10000) && *ok;
+    }
+
+    // Does the history file (or its WAL / shared-memory files) hold these bytes? Files are closed again at once.
+    bool historyFileHolds(const QByteArray& needle) const
+    {
+        for (const QString& suffix : {QString(), QStringLiteral("-wal"), QStringLiteral("-shm")}) {
+            QFile file(options().databasePath + suffix);
+            if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+                continue;
+            }
+            const QByteArray bytes = file.readAll();
+            file.close();
+            if (bytes.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static QStringList marked(const QString& app = QStringLiteral("KeePassXC"))
+    {
+        return {QStringLiteral("text/plain"), QStringLiteral("x-kde-passwordManagerHint"),
+                QStringLiteral("x-clipitto-source:") + app};
+    }
+
+    static QAction* menuAction(QMenu* menu, const QString& text)
+    {
+        for (QAction* a : menu->actions()) {
+            if (a->text() == text) {
+                return a;
+            }
+            if (a->menu()) {
+                for (QAction* inner : a->menu()->actions()) {
+                    if (inner->text() == text) {
+                        return inner;
+                    }
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    qint64 ingestPlain(Daemon& d, const QString& text)
+    {
+        emit d.control()->ingestRequested(text, {QStringLiteral("text/plain")});
+        return d.repository()->allEntries().back().id;
+    }
+
+    // Detection: what happens to one copy with a master password, in the open mode and with neither.
+    // A detected (not marked) copy is an ordinary copy when there is no vault to keep it in (docs: passwords.md).
+    void detectionCase(const QString& text, const QStringList& mimes, const QByteArray& extraConfig, VaultMode mode,
+                       bool markedByManager, const QString& expectedNote)
+    {
+        writeConfig("password_ask_note = false\n" + extraConfig);
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, mode));
+        emit d.control()->ingestRequested(text, mimes);
+        auto* repo = d.repository();
+        if (mode == VaultMode::None && markedByManager) {
+            QCOMPARE(repo->count(), 0); // skipped: nothing stored
+            QVERIFY(!d.control()->passwordsWanted());
+            QVERIFY(!historyFileHolds(text.toUtf8()));
+        } else if (mode == VaultMode::None) {
+            QCOMPARE(repo->count(), 1); // only a guess: an ordinary copy
+            QCOMPARE(repo->countSecrets(), 0);
+        } else {
+            QCOMPARE(repo->count(), 1);
+            QCOMPARE(repo->countSecrets(), 1);
+            const Entry e = repo->allEntries().back();
+            QVERIFY(e.secret);
+            QCOMPARE(e.content, clipitto::db::Repository::secretLabel());
+            QCOMPARE(e.group, QStringLiteral("Passwords"));
+            QCOMPARE(e.note, expectedNote);
+            QVERIFY(repo->search(text.left(8)).empty()); // never in the search index
+            QVERIFY(d.control()->passwordsWanted());
+            QVERIFY(!historyFileHolds(text.toUtf8())); // sealed, never in clear
+        }
+    }
 
 private slots:
     void init()
@@ -1157,6 +1269,622 @@ private slots:
         Daemon d(options(), std::make_unique<FakeControl>());
         QVERIFY(d.start() == Daemon::StartResult::Ok);
         QCOMPARE(d.repository()->countUnsaved(), 12);
+    }
+
+    // --- Detection: a master password, "use without one", and neither ---
+
+    void aMarkedCopyIsKeptSealedOrSkipped_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::newRow("master password") << int(VaultMode::Master);
+        QTest::newRow("use without one") << int(VaultMode::Open);
+        QTest::newRow("neither") << int(VaultMode::None);
+    }
+    void aMarkedCopyIsKeptSealedOrSkipped()
+    {
+        QFETCH(int, mode);
+        detectionCase(QStringLiteral("marker-pw-Zq81xT"), marked(), {}, VaultMode(mode), true, QStringLiteral("KeePassXC"));
+    }
+
+    void aGeneratedLookingPasswordIsKeptSealedOrStaysOrdinary_data() { aMarkedCopyIsKeptSealedOrSkipped_data(); }
+    void aGeneratedLookingPasswordIsKeptSealedOrStaysOrdinary()
+    {
+        QFETCH(int, mode);
+        detectionCase(QStringLiteral("k9#Vf2!qLm8@Zp"), {QStringLiteral("text/plain")}, "detect_passwords = true\n",
+                      VaultMode(mode), false, QStringLiteral("Looks like a password"));
+    }
+
+    void aCopyThatFitsAUserRuleIsKeptSealedOrStaysOrdinary_data() { aMarkedCopyIsKeptSealedOrSkipped_data(); }
+    void aCopyThatFitsAUserRuleIsKeptSealedOrStaysOrdinary()
+    {
+        QFETCH(int, mode);
+        // Six to ten characters, at least three lower-case letters and two digits, ending with a digit.
+        detectionCase(QStringLiteral("vqzmpx47"), {QStringLiteral("text/plain")},
+                      "password_rules = [\"6-10 lower=3 digits=2 end\"]\n", VaultMode(mode), false,
+                      QStringLiteral("Matches your password rule"));
+    }
+
+    void anApiKeyTokenOrCardNumberIsKeptSealedOrStaysOrdinary_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<QString>("note");
+        const std::pair<const char*, VaultMode> modes[] = {{"master password", VaultMode::Master},
+                                                           {"use without one", VaultMode::Open},
+                                                           {"neither", VaultMode::None}};
+        for (const auto& m : modes) {
+            QTest::addRow("github token, %s", m.first)
+                << int(m.second) << QStringLiteral("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB") << QString();
+            QTest::addRow("card number, %s", m.first) << int(m.second) << QStringLiteral("4111 1111 1111 1111") << QString();
+        }
+    }
+    void anApiKeyTokenOrCardNumberIsKeptSealedOrStaysOrdinary()
+    {
+        QFETCH(int, mode);
+        QFETCH(QString, text);
+        detectionCase(text, {QStringLiteral("text/plain")}, {}, VaultMode(mode), false,
+                      clipitto::secretscan::kindOf(text));
+    }
+
+    void aRuleBelowSixCharactersIsNeverUsed()
+    {
+        // The minimum is part of loading the config: a rule asking for fewer is skipped, so a plain word is not caught.
+        writeConfig("password_ask_note = false\npassword_rules = [\"4-10 lower=1\", \"6-10 lower=3 digits=2 end\"]\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QCOMPARE(d.config().passwordRules.size(), 1);
+        QCOMPARE(d.config().passwordRules.front().minLength, 6);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        emit d.control()->ingestRequested(QStringLiteral("banana"), {QStringLiteral("text/plain")});
+        emit d.control()->ingestRequested(QStringLiteral("abc"), {QStringLiteral("text/plain")});
+        QCOMPARE(d.repository()->count(), 2);
+        QCOMPARE(d.repository()->countSecrets(), 0);
+        emit d.control()->ingestRequested(QStringLiteral("zxcvb12"), {QStringLiteral("text/plain")}); // fits the valid rule
+        QCOMPARE(d.repository()->countSecrets(), 1);
+    }
+
+    void picturesAreNeverKeptAsPasswordCopies()
+    {
+        for (const VaultMode mode : {VaultMode::Master, VaultMode::Open}) {
+            QFile::remove(options().databasePath);
+            Daemon d(options(), std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, mode));
+            QImage picture(40, 40, QImage::Format_RGB32);
+            picture.fill(QColor(10, 200, 10));
+            QByteArray png;
+            QBuffer buffer(&png);
+            buffer.open(QIODevice::WriteOnly);
+            picture.save(&buffer, "PNG");
+            // A picture a password manager marked is skipped.
+            emit d.control()->ingestImageRequested(png, QStringLiteral("image/png"),
+                                                   {QStringLiteral("image/png"), QStringLiteral("x-kde-passwordManagerHint")});
+            QTest::qWait(200);
+            QCOMPARE(d.repository()->countImages(), 0);
+            QCOMPARE(d.repository()->countSecrets(), 0);
+            // An ordinary picture is stored as a picture, and moving it to the Passwords group does not mark it.
+            emit d.control()->ingestImageRequested(png, QStringLiteral("image/png"), {QStringLiteral("image/png")});
+            QTRY_COMPARE(d.repository()->countImages(), 1);
+            const qint64 id = d.repository()->allEntries().back().id;
+            d.repository()->createGroup(QStringLiteral("Passwords"));
+            QSignalSpy markedSpy(d.popup(), &clipitto::ui::PopupWindow::passwordMarked);
+            std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(id), d.popup()));
+            QAction* toPasswords = menuAction(menu.get(), QStringLiteral("Passwords"));
+            QVERIFY(toPasswords);
+            toPasswords->trigger();
+            QCOMPARE(markedSpy.size(), 0);
+            QVERIFY(!d.repository()->get(id)->secret);
+            QCOMPARE(d.repository()->countSecrets(), 0);
+        }
+    }
+
+    // --- The name box after a copy is moved to the Passwords group (a real-use report: it did not open) ---
+
+    // With the settings a new user has (nothing changed), through the Group menu, with the group already there.
+    void movingToThePasswordsGroupFromTheMenuOpensTheNameBox()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(d.config().passwordAskNote);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        d.repository()->createGroup(QStringLiteral("Passwords"));
+
+        QStringList asked;
+        d.popup()->setNamePrompt([&asked](QWidget*, const QString& suggestion) {
+            asked << suggestion;
+            return std::optional<QString>(QStringLiteral("Bank"));
+        });
+        const qint64 id = ingestPlain(d, QStringLiteral("my-bank-secret"));
+        std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(id), d.popup()));
+        QAction* group = menuAction(menu.get(), QStringLiteral("Passwords"));
+        QVERIFY(group);
+        group->trigger();
+        QTRY_COMPARE(asked.size(), 1);
+        QVERIFY(d.repository()->get(id)->secret);
+        QCOMPARE(d.repository()->get(id)->group, QStringLiteral("Passwords"));
+        QTRY_COMPARE(d.repository()->get(id)->note, QStringLiteral("Bank"));
+        QTRY_VERIFY(!d.popup()->isVisible());
+        QVERIFY(d.status().value(QStringLiteral("password_feature")).toString().contains(QLatin1String("named")));
+        QVERIFY(!historyFileHolds("my-bank-secret"));
+    }
+
+    // Ctrl+G from the list with the popup open, in the open mode (no master password).
+    void ctrlGToThePasswordsGroupOpensTheNameBoxWithoutAMasterPassword()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Open));
+        const qint64 id = ingestPlain(d, QStringLiteral("open-mode-secret"));
+
+        QStringList asked;
+        d.popup()->setGroupPrompt([](QWidget*, const QString&, const QStringList&) {
+            return std::optional<QString>(QStringLiteral("Passwords"));
+        });
+        d.popup()->setNamePrompt([&asked](QWidget*, const QString& suggestion) {
+            asked << suggestion;
+            return std::optional<QString>(QStringLiteral("Router"));
+        });
+        emit d.control()->showRequested(QString());
+        QVERIFY(QTest::qWaitForWindowActive(d.popup()));
+        auto* view = d.popup()->view();
+        view->selectIndex(d.popup()->model()->findEntry(id));
+        view->setFocus();
+        QTest::keyClick(view, Qt::Key_G, Qt::ControlModifier);
+        QTRY_COMPARE(asked.size(), 1);
+        QTRY_COMPARE(d.repository()->get(id)->note, QStringLiteral("Router"));
+        QVERIFY(d.repository()->get(id)->secret);
+        QCOMPARE(d.repository()->get(id)->group, QStringLiteral("Passwords"));
+        QVERIFY(d.passwords()->isOpen());
+        QCOMPARE(d.passwords()->reveal(id).value_or(QByteArray()), QByteArray("open-mode-secret"));
+        QVERIFY(d.popup()->isVisible()); // it was open before: it stays open
+        QVERIFY(!historyFileHolds("open-mode-secret"));
+    }
+
+    // A sub-group, another spelling, the popup closed, two moves in a row, and the setting read back from the file.
+    void theNameBoxOpensForASubGroupAndAgainForTheNextMove()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        QVERIFY(d.applySettings(d.config())); // saved to the file ...
+        d.reloadConfig(); // ... and read back: the answer must survive that
+        QVERIFY(d.config().passwordAskNote);
+
+        QStringList asked;
+        d.popup()->setNamePrompt([&asked](QWidget*, const QString& suggestion) {
+            asked << suggestion;
+            return std::optional<QString>(QStringLiteral("Name %1").arg(asked.size()));
+        });
+        QString target = QStringLiteral("passwords/Work");
+        d.popup()->setGroupPrompt([&target](QWidget*, const QString&, const QStringList&) {
+            return std::optional<QString>(target);
+        });
+        const auto move = [&](qint64 id) {
+            std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(id), d.popup()));
+            menuAction(menu.get(), QStringLiteral("New group…"))->trigger();
+        };
+        const qint64 one = ingestPlain(d, QStringLiteral("sub-group-one"));
+        move(one);
+        QTRY_COMPARE(asked.size(), 1);
+        QVERIFY(d.repository()->get(one)->secret);
+        QTRY_COMPARE(d.repository()->get(one)->note, QStringLiteral("Name 1"));
+        QTRY_VERIFY(!d.popup()->isVisible());
+
+        target = QStringLiteral("Passwords"); // the group itself, right after
+        const qint64 two = ingestPlain(d, QStringLiteral("sub-group-two"));
+        move(two);
+        QTRY_COMPARE(asked.size(), 2);
+        QTRY_COMPARE(d.repository()->get(two)->note, QStringLiteral("Name 2"));
+        QCOMPARE(d.repository()->countSecrets(), 2);
+    }
+
+    // --- Lock and unlock, through the daemon ---
+
+    void lockNowFromTheCommandLineLocksAndPastingAsksAgain()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        Config quiet = d.config();
+        quiet.passwordAskNote = false;
+        QVERIFY(d.applySettings(quiet));
+        emit d.control()->ingestRequested(QStringLiteral("lock-me-pw"), marked());
+        const Entry e = d.repository()->allEntries().back();
+        QVERIFY(unlockWith(d, "master"));
+        QCOMPARE(d.status().value(QStringLiteral("passwords")).toString().startsWith(QLatin1String("unlocked")), true);
+        QCOMPARE(d.passwords()->reveal(e.id).value_or(QByteArray()), QByteArray("lock-me-pw"));
+
+        QSignalSpy lockChanged(d.passwords(), &clipitto::PasswordKeeper::lockChanged);
+        emit d.control()->lockPasswordsRequested(); // clipitto --lock, or "Lock now"
+        QCOMPARE(d.status().value(QStringLiteral("passwords")).toString(), QStringLiteral("locked"));
+        QVERIFY(!d.passwords()->isUnlocked());
+        QVERIFY(!d.passwords()->reveal(e.id));
+        QCOMPARE(lockChanged.size(), 1);
+        QCOMPARE(d.passwords()->secondsLeft(), 0);
+
+        // Pasting it now asks for the master password (a wrong one, then the right one).
+        QStringList prompts;
+        QString answer = QStringLiteral("wrong");
+        d.popup()->setPasswordPrompt([&](QWidget*, const QString& label) {
+            prompts << label;
+            return std::optional<QString>(answer);
+        });
+        QStringList notices;
+        d.popup()->setNotify([&notices](QWidget*, const QString& m) { notices << m; }); // must not block
+        QGuiApplication::clipboard()->clear();
+        emit d.control()->showRequested(QString());
+        QVERIFY(QTest::qWaitForWindowActive(d.popup()));
+        auto* view = d.popup()->view();
+        // Recent hides the Passwords group: find the copy through the password search.
+        QTest::keyClicks(d.popup()->searchBar(), QStringLiteral("p[] "));
+        QTRY_COMPARE(d.popup()->model()->rowCount(), 1);
+        view->selectIndex(d.popup()->model()->index(0, 0));
+        view->setFocus();
+        QTest::keyClick(view, Qt::Key_Return); // a wrong password: stays locked, nothing pasted
+        QTRY_COMPARE(prompts.size(), 1);
+        QVERIFY(!d.passwords()->isUnlocked());
+        QVERIFY(QGuiApplication::clipboard()->text().isEmpty());
+        answer = QStringLiteral("master");
+        QTRY_COMPARE(notices.size(), 1); // "Wrong master password."
+        QVERIFY(notices.at(0).contains(QLatin1String("Wrong")));
+        QVERIFY2(d.popup()->isVisible(), "hidden after a wrong password");
+        QVERIFY2(d.popup()->model()->rowCount() == 1, qPrintable(QString::number(d.popup()->model()->rowCount())));
+        view->selectIndex(d.popup()->model()->index(0, 0));
+        view->setFocus();
+        QTest::keyClick(view, Qt::Key_Return);
+        QTRY_COMPARE(prompts.size(), 2);
+        QTRY_VERIFY(d.passwords()->isUnlocked());
+        QTRY_COMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("lock-me-pw"));
+        QGuiApplication::clipboard()->clear();
+    }
+
+    void changingTheMasterPasswordKeepsPastingAndSearchWorking()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        Config quiet = d.config();
+        quiet.passwordAskNote = false;
+        QVERIFY(d.applySettings(quiet));
+        emit d.control()->ingestRequested(QStringLiteral("survives-change"), marked(QStringLiteral("Bitwarden")));
+        const qint64 id = d.repository()->allEntries().back().id;
+
+        std::optional<bool> changed;
+        d.passwords()->changeMasterPassword("wrong", "Second-pw-1x", [&](bool ok) { changed = ok; });
+        QTRY_VERIFY(changed.has_value());
+        QVERIFY(!*changed); // the old one must be right
+        changed.reset();
+        d.passwords()->changeMasterPassword("master", "Second-pw-1x", [&](bool ok) { changed = ok; });
+        QTRY_VERIFY(changed.has_value());
+        QVERIFY(*changed);
+        QVERIFY(!d.passwords()->isUnlocked()); // a new key: locked again
+        QVERIFY(!unlockWith(d, "master"));
+        QVERIFY(unlockWith(d, "Second-pw-1x"));
+        QCOMPARE(d.passwords()->reveal(id).value_or(QByteArray()), QByteArray("survives-change"));
+        QCOMPARE(d.passwords()->search(QStringLiteral("survives")).size(), size_t(1));
+        // The same password copied again is the same copy, not a second one (the match key did not change).
+        emit d.control()->ingestRequested(QStringLiteral("survives-change"), marked(QStringLiteral("Bitwarden")));
+        QCOMPARE(d.repository()->countSecrets(), 1);
+        QVERIFY(!historyFileHolds("survives-change"));
+    }
+
+    void removingTheMasterPasswordDeletesPasswordCopiesAndKeepsTheRest()
+    {
+        DaemonOptions o = options();
+        auto keys = std::make_shared<FakeKeyStore>();
+        o.matchKeyStore = keys;
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        Config quiet = d.config();
+        quiet.passwordAskNote = false;
+        QVERIFY(d.applySettings(quiet));
+        emit d.control()->ingestRequested(QStringLiteral("to-be-removed"), marked());
+        emit d.control()->ingestRequested(QStringLiteral("an ordinary copy"), {QStringLiteral("text/plain")});
+        QCOMPARE(d.repository()->countSecrets(), 1);
+        QVERIFY(d.control()->passwordsWanted());
+
+        d.passwords()->reset(); // Settings > Passwords > Remove
+        QCOMPARE(d.repository()->countSecrets(), 0);
+        QCOMPARE(d.repository()->count(), 1);
+        QVERIFY(!d.passwords()->isSetUp());
+        QVERIFY(!d.control()->passwordsWanted()); // helpers are told to stop reading them
+        QVERIFY(d.status().value(QStringLiteral("passwords")).toString().startsWith(QLatin1String("off")));
+        QVERIFY(!keys->stored); // the match key went with it
+        // A marked copy is skipped again, and a new master password can be set.
+        emit d.control()->ingestRequested(QStringLiteral("after-removal"), marked());
+        QCOMPARE(d.repository()->count(), 1);
+        QVERIFY(!historyFileHolds("to-be-removed"));
+        QVERIFY(!historyFileHolds("after-removal"));
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        emit d.control()->ingestRequested(QStringLiteral("after-removal"), marked());
+        QCOMPARE(d.repository()->countSecrets(), 1);
+    }
+
+    // --- Never in clear ---
+
+    void thePasswordIsNeverInTheHistoryFile()
+    {
+        const QByteArray secrets[] = {"file-pw-marked", "file-pw-by-hand", "file-pw-moved",
+                                      "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"};
+        {
+            DaemonOptions o = options();
+            o.matchKeyStore = std::make_shared<FakeKeyStore>();
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, VaultMode::Master));
+            Config c = d.config();
+            c.passwordAskNote = false;
+            QVERIFY(d.applySettings(c));
+            emit d.control()->ingestRequested(QString::fromLatin1(secrets[0]), marked());
+            emit d.control()->ingestRequested(QString::fromLatin1(secrets[3]), {QStringLiteral("text/plain")});
+            const qint64 byHand = ingestPlain(d, QString::fromLatin1(secrets[1]));
+            QVERIFY(d.passwords()->markAsPassword(byHand));
+            d.repository()->createGroup(QStringLiteral("Passwords"));
+            const qint64 moved = ingestPlain(d, QString::fromLatin1(secrets[2]));
+            std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(moved), d.popup()));
+            menuAction(menu.get(), QStringLiteral("Passwords"))->trigger();
+            QCOMPARE(d.repository()->countSecrets(), 4);
+            for (const QByteArray& s : secrets) {
+                QVERIFY2(!historyFileHolds(s), s.constData()); // while the database is open (WAL included)
+            }
+        }
+        for (const QByteArray& s : secrets) {
+            QVERIFY2(!historyFileHolds(s), s.constData()); // and after it is closed and checkpointed
+        }
+    }
+
+    void theDebugLogNeverHoldsAPassword()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        o.debugLogPath = m_dir.filePath(QStringLiteral("logs/debug.log"));
+        writeConfig("debug_log = true\ndetect_passwords = true\n");
+        const QStringList secrets = {QStringLiteral("log-pw-marked"), QStringLiteral("k9#Vf2!qLm8@Zp"),
+                                     QStringLiteral("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"),
+                                     QStringLiteral("log-pw-moved"), QStringLiteral("Tr0ub4dor&3x-near-miss")};
+        {
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, VaultMode::Master));
+            d.popup()->setNotify([](QWidget*, const QString&) {});
+            d.popup()->setNamePrompt([](QWidget*, const QString&) { return std::optional<QString>(QStringLiteral("Named")); });
+            emit d.control()->ingestRequested(secrets[0], marked()); // marked, with the name box
+            QTRY_COMPARE(d.repository()->allEntries().back().note, QStringLiteral("Named"));
+            QTRY_VERIFY(!d.popup()->isVisible());
+            emit d.control()->ingestRequested(secrets[1], {QStringLiteral("text/plain")}); // detected
+            emit d.control()->ingestRequested(secrets[2], {QStringLiteral("text/plain")});
+            emit d.control()->ingestRequested(secrets[4], {QStringLiteral("text/plain")}); // a near miss is logged by class only
+            // The detected copies each open a name box; let those finish (one box at a time, by design).
+            QTRY_COMPARE(d.status().value(QStringLiteral("password_feature")).toString().count(QLatin1String("named")), 1);
+            QTest::qWait(300);
+            QTRY_VERIFY(!d.popup()->isVisible());
+            const qint64 moved = ingestPlain(d, secrets[3]);
+            d.repository()->createGroup(QStringLiteral("Passwords"));
+            std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(moved), d.popup()));
+            menuAction(menu.get(), QStringLiteral("Passwords"))->trigger();
+            QTRY_COMPARE(d.repository()->get(moved)->note, QStringLiteral("Named"));
+            // Pasting one back, locking, a wrong unlock.
+            QVERIFY(unlockWith(d, "master"));
+            emit d.popup()->entryActivated(*d.repository()->get(moved));
+            emit d.control()->lockPasswordsRequested();
+            QVERIFY(!unlockWith(d, "not-the-master"));
+            QGuiApplication::clipboard()->clear();
+        }
+        QFile file(o.debugLogPath);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QString log = QString::fromUtf8(file.readAll());
+        file.close();
+        QVERIFY(!log.isEmpty());
+        QVERIFY(log.contains(QLatin1String("name box"))); // the flow was logged ...
+        for (const QString& s : secrets + QStringList{QStringLiteral("not-the-master")}) {
+            QVERIFY2(!log.contains(s), "a password reached debug.log");
+            QVERIFY2(!log.contains(QString::fromLatin1(s.toUtf8().toBase64())), "a password reached debug.log (base64)");
+        }
+    }
+
+    void theMarkersOnAPastedPasswordNeverHoldIt()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        Config c = d.config();
+        c.passwordAskNote = false;
+        c.passwordClearSeconds = 0; // stays on the clipboard so the test can look at it
+        QVERIFY(d.applySettings(c));
+        emit d.control()->ingestRequested(QStringLiteral("marker-check-pw"), marked());
+        const Entry e = d.repository()->allEntries().back();
+        QVERIFY(unlockWith(d, "master"));
+        emit d.popup()->entryActivated(e);
+        const QMimeData* data = QGuiApplication::clipboard()->mimeData();
+        QVERIFY(data);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("marker-check-pw"));
+        QVERIFY(clipitto::ClipFilter::isSensitive(data->formats()));
+        int markers = 0;
+        for (const QString& format : data->formats()) {
+            if (clipitto::ClipFilter::isSensitive({format})) {
+                ++markers;
+                const QByteArray bytes = data->data(format);
+                QVERIFY2(!bytes.contains("marker-check-pw"), qPrintable(format));
+                QVERIFY2(bytes.size() < 16, qPrintable(format)); // a flag, not a copy of the text
+            }
+        }
+        QVERIFY(markers >= 1);
+        QGuiApplication::clipboard()->clear();
+    }
+
+    // --- Backup of password copies captured by the daemon, restored into another one ---
+
+    void passwordsCapturedByTheDaemonSurviveBackupAndRestore_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::newRow("encrypted with the master password") << int(VaultMode::Master);
+        QTest::newRow("in clear text, without one") << int(VaultMode::Open);
+    }
+    void passwordsCapturedByTheDaemonSurviveBackupAndRestore()
+    {
+        QFETCH(int, mode);
+        const VaultMode vault = VaultMode(mode);
+        const QString file = m_dir.filePath(QStringLiteral("backup.json"));
+        QFile::remove(file);
+        {
+            DaemonOptions o = options();
+            o.matchKeyStore = std::make_shared<FakeKeyStore>();
+            Daemon a(o, std::make_unique<FakeControl>());
+            QVERIFY(a.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(a, vault));
+            Config c = a.config();
+            c.passwordAskNote = false;
+            QVERIFY(a.applySettings(c));
+            emit a.control()->ingestRequested(QStringLiteral("backup-pw-one"), marked(QStringLiteral("KeePassXC")));
+            emit a.control()->ingestRequested(QStringLiteral("backup-pw-two"), marked(QStringLiteral("Safari")));
+            emit a.control()->ingestRequested(QStringLiteral("a plain copy"), {QStringLiteral("text/plain")});
+            QCOMPARE(a.repository()->countSecrets(), 2);
+            if (vault == VaultMode::Master) {
+                QVERIFY(unlockWith(a, "master"));
+            }
+            QString error;
+            QVERIFY2(clipitto::backup::exportTo(file, *a.repository(), a.config(), a.passwords(), {true, false}, "master",
+                                                &error, vault == VaultMode::Master ? clipitto::backup::PasswordExport::Encrypted
+                                                                                    : clipitto::backup::PasswordExport::Clear),
+                     qPrintable(error));
+        }
+        QFile f(file);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QByteArray contents = f.readAll();
+        f.close();
+        const auto info = clipitto::backup::inspect(file);
+        QCOMPARE(info.passwords, 2);
+        QCOMPARE(info.passwordsClear, vault == VaultMode::Open);
+        if (vault == VaultMode::Master) {
+            QVERIFY(!contents.contains("backup-pw-one")); // never in clear, nor as plain base64
+            QVERIFY(!contents.contains(QByteArray("backup-pw-one").toBase64()));
+        }
+
+        // A second computer with its own master password.
+        DaemonOptions o2;
+        o2.configPath = m_dir.filePath(QStringLiteral("config2.toml"));
+        o2.databasePath = m_dir.filePath(QStringLiteral("data2/history.db"));
+        o2.syntheticPaste = [](PasteKeys) { return false; };
+        o2.matchKeyStore = std::make_shared<FakeKeyStore>();
+        QFile::remove(o2.databasePath);
+        Daemon b(o2, std::make_unique<FakeControl>());
+        QVERIFY(b.start() == Daemon::StartResult::Ok);
+        b.passwords()->setKdfCost({64, 1});
+        std::optional<bool> set;
+        b.passwords()->setMasterPassword("another master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set.has_value());
+        QVERIFY(*set);
+        QVERIFY(unlockWith(b, "another master"));
+        QString error;
+        const auto report = clipitto::backup::importFrom(file, {true, false}, *b.repository(), b.passwords(), "master", &error);
+        QVERIFY2(report, qPrintable(error));
+        QCOMPARE(report->passwordsAdded, 2);
+        QCOMPARE(report->passwordsSkipped, 0);
+        QCOMPARE(b.repository()->countSecrets(), 2);
+        std::set<QByteArray> restored;
+        for (const Entry& e : b.repository()->allEntries()) {
+            if (e.secret) {
+                restored.insert(b.passwords()->reveal(e.id).value_or(QByteArray()));
+                QCOMPARE(e.group, QStringLiteral("Passwords"));
+            }
+        }
+        QCOMPARE(restored, (std::set<QByteArray>{"backup-pw-one", "backup-pw-two"}));
+        // The restored copies are in the second computer's own file only as sealed copies.
+        QFile second(o2.databasePath);
+        QVERIFY(second.open(QIODevice::ReadOnly));
+        QVERIFY(!second.readAll().contains("backup-pw-one"));
+        second.close();
+    }
+
+    // --- Grouping through the popup ---
+
+    void ctrlGAndTheGroupMenuFileACopyAndNestedGroupsAreMade()
+    {
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        const qint64 one = ingestPlain(d, QStringLiteral("kubectl get nodes"));
+        const qint64 two = ingestPlain(d, QStringLiteral("ssh prod"));
+        d.repository()->setFavorite(two, true);
+        QString answer = QStringLiteral("Work/Servers/Prod");
+        d.popup()->setGroupPrompt([&answer](QWidget*, const QString&, const QStringList&) {
+            return std::optional<QString>(answer);
+        });
+        emit d.control()->showRequested(QString());
+        QVERIFY(QTest::qWaitForWindowActive(d.popup()));
+        auto* view = d.popup()->view();
+        view->selectIndex(d.popup()->model()->findEntry(one));
+        view->setFocus();
+        QTest::keyClick(view, Qt::Key_G, Qt::ControlModifier); // Ctrl+G: a nested path creates its parents
+        QCOMPARE(d.repository()->get(one)->group, QStringLiteral("Work/Servers/Prod"));
+        for (const char* g : {"Work", "Work/Servers", "Work/Servers/Prod"}) {
+            QVERIFY2(d.repository()->groups().contains(QString::fromLatin1(g)), g);
+        }
+        // The Group menu: an existing group, and out again; a star goes along.
+        std::unique_ptr<QMenu> menu(d.popup()->createContextMenu(*d.repository()->get(two), d.popup()));
+        QAction* toServers = menuAction(menu.get(), clipitto::groups::display(QStringLiteral("Work/Servers")));
+        QVERIFY(toServers);
+        toServers->trigger();
+        QCOMPARE(d.repository()->get(two)->group, QStringLiteral("Work/Servers"));
+        QVERIFY(d.repository()->get(two)->favorite);
+        menu.reset(d.popup()->createContextMenu(*d.repository()->get(two), d.popup()));
+        QAction* removeFromGroup = menuAction(menu.get(), QStringLiteral("Remove from group"));
+        QVERIFY(removeFromGroup);
+        removeFromGroup->trigger();
+        QVERIFY(d.repository()->get(two)->group.isEmpty());
+        QVERIFY(d.repository()->get(two)->favorite);
+        // The tree in the popup shows the nesting.
+        const QModelIndex prod = d.popup()->model()->findGroup(QStringLiteral("Work/Servers/Prod"));
+        QVERIFY(prod.isValid());
+        QCOMPARE(prod.parent(), d.popup()->model()->findGroup(QStringLiteral("Work/Servers")));
+        QCOMPARE(d.repository()->count(), 2);
+    }
+
+    void deletingTheGroupThatHoldsPasswordsKeepsThemAsPasswords()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        Config c = d.config();
+        c.passwordAskNote = false;
+        QVERIFY(d.applySettings(c));
+        emit d.control()->ingestRequested(QStringLiteral("grouped-pw"), marked());
+        const qint64 pw = d.repository()->allEntries().back().id;
+        QCOMPARE(d.repository()->get(pw)->group, QStringLiteral("Passwords"));
+        const qint64 plain = ingestPlain(d, QStringLiteral("plain in work"));
+        d.repository()->setGroup(plain, QStringLiteral("Work"));
+        d.popup()->setConfirmPrompt([](QWidget*, const QString&) { return true; });
+
+        emit d.control()->showRequested(QString());
+        QVERIFY(QTest::qWaitForWindowActive(d.popup()));
+        auto* view = d.popup()->view();
+        QTest::keyClick(d.popup()->searchBar(), Qt::Key_Right); // into the groups
+        view->selectIndex(d.popup()->model()->findGroup(QStringLiteral("Passwords")));
+        QTest::keyClick(view, Qt::Key_Delete);
+        QVERIFY(!d.repository()->groups().contains(QStringLiteral("Passwords")));
+        QVERIFY(d.repository()->groups().contains(QStringLiteral("Work")));
+        // The copy stays a sealed password copy, ungrouped, and still opens.
+        QVERIFY(d.repository()->get(pw));
+        QVERIFY(d.repository()->get(pw)->secret);
+        QVERIFY(d.repository()->get(pw)->group.isEmpty());
+        QVERIFY(unlockWith(d, "master"));
+        QCOMPARE(d.passwords()->reveal(pw).value_or(QByteArray()), QByteArray("grouped-pw"));
+        // The next captured password makes the group again.
+        emit d.control()->ingestRequested(QStringLiteral("next-pw"), marked());
+        QCOMPARE(d.repository()->allEntries().back().group, QStringLiteral("Passwords"));
+        QVERIFY(d.repository()->groups().contains(QStringLiteral("Passwords")));
     }
 };
 
