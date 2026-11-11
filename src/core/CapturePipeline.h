@@ -41,6 +41,13 @@ public:
     // Keep the HTML of a copy that has formatting next to its text (keep_formatting).
     void setKeepFormatting(bool on);
 
+    // Auto grouping (auto_group, off by default): a new plain text copy that matches what was learned from the
+    // user's groups is filed in the best matching group, off the GUI thread (AutoGroup.h). Never for password
+    // copies (marked, detected, or by a rule) or pictures. Turning it off keeps what was filed.
+    void setAutoGrouping(bool on);
+    // Copies being matched right now (0 when idle); for tests and shutdown.
+    int autoGroupingPending() const { return m_autoPending; }
+
     // While paused (the database is busy elsewhere, e.g. being encrypted), accepted clips
     // wait in memory; resuming stores them in order.
     void setPaused(bool paused);
@@ -59,11 +66,14 @@ signals:
     // A password copy that is new (not the same password copied again): its entry id and the
     // app it came from ("" when unknown), for "ask for a name after copying a password".
     void passwordStored(qint64 id, const QString& sourceApp);
+    // A new copy was put in `group` automatically (it carries the "auto" tag).
+    void autoFiled(qint64 id, const QString& group);
 
 private:
     struct Text {
         QString text;
         QString html;
+        bool secretLike = false; // looks like a key or password: never auto-filed
     };
     void store(const Text& copy);
     void storeImage(const ImageClip& image);
@@ -73,6 +83,7 @@ private:
         QString note;
     };
     void storeSecret(const SealedCopy& copy);
+    void autoFile(qint64 id, const QString& text);
 
     db::Repository& m_repo;
     ClipFilter m_filter;
@@ -88,6 +99,8 @@ private:
     bool m_detectPasswords = false;
     QList<PasswordRule> m_passwordRules;
     bool m_keepFormatting = true;
+    bool m_autoGroup = false;
+    int m_autoPending = 0;
     QString m_passwordGroup;
 };
 

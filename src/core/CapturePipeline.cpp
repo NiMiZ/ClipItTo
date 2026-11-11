@@ -6,7 +6,9 @@
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
+#include <QFutureWatcher>
 #include <QLoggingCategory>
+#include <QtConcurrent>
 
 #include <utility>
 
@@ -45,6 +47,12 @@ void CapturePipeline::setKeepFormatting(bool on)
             waiting.html.clear(); // turned off while paused: what is queued keeps no formatted version either
         }
     }
+}
+
+void CapturePipeline::setAutoGrouping(bool on)
+{
+    m_autoGroup = on;
+    m_repo.setAutoGrouping(on);
 }
 
 void CapturePipeline::setPasswords(const PasswordVault* vault, bool keep, const QString& group)
@@ -188,13 +196,13 @@ void CapturePipeline::process(const QString& text, const QStringList& mimeTypes,
     if (m_paused) {
         m_waiting.removeIf([&](const Text& w) { return w.text == text; }); // the same text copied twice is one entry anyway
         constexpr qsizetype kMaxWaitingRich = 50; // HTML can be large and is held in memory while paused
-        m_waiting << Text{text, m_waiting.size() < kMaxWaitingRich ? rich : QString()};
+        m_waiting << Text{text, m_waiting.size() < kMaxWaitingRich ? rich : QString(), looksSecret};
         while (m_waiting.size() > m_maxHistory) {
             m_waiting.removeFirst(); // keep memory bounded: the oldest would be pruned anyway
         }
         return;
     }
-    store({text, rich});
+    store({text, rich, looksSecret});
 }
 
 void CapturePipeline::storeSecret(const SealedCopy& copy)
@@ -230,9 +238,40 @@ void CapturePipeline::store(const Text& copy)
             m_repo.prune(m_maxHistory);
         }
         emit stored(result.id, result.inserted);
+        if (result.inserted && m_autoGroup && !copy.secretLike) {
+            autoFile(result.id, copy.text);
+        }
     } catch (const db::DbError& e) {
         qCWarning(lcCapture) << "failed to store clip:" << e.what();
     }
+}
+
+void CapturePipeline::autoFile(qint64 id, const QString& text)
+{
+    const std::shared_ptr<const autogroup::Model> model = m_repo.autoModel(); // cached; rebuilt only after learning
+    if (!model || model->empty()) {
+        return;
+    }
+    ++m_autoPending;
+    auto* watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, id] {
+        const QString group = watcher->result();
+        watcher->deleteLater();
+        --m_autoPending;
+        if (group.isEmpty() || !m_autoGroup) {
+            return; // no clear match (or turned off meanwhile): the copy stays in Recent
+        }
+        try {
+            if (m_repo.setAutoGroup(id, group)) {
+                qCDebug(lcCapture) << "auto-filed copy" << id;
+                emit autoFiled(id, group);
+            }
+        } catch (const db::DbError& e) {
+            qCWarning(lcCapture) << "failed to file a copy automatically:" << e.what();
+        }
+    });
+    // The worker only reads its own copy of the text and the immutable snapshot.
+    watcher->setFuture(QtConcurrent::run([model, text] { return model->classify(text); }));
 }
 
 } // namespace clipitto

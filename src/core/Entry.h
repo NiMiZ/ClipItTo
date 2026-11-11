@@ -33,6 +33,9 @@ struct Entry {
     // (Repository::richText).
     bool rich = false;
 
+    // Put in its group automatically (auto grouping), not by the user: shown with an "auto" tag.
+    bool autoFiled = false;
+
     bool pinned() const { return pinPosition >= 0; }
     // Saved items are immune to pruning and rank first in search.
     bool isSaved() const { return favorite || !group.isEmpty() || pinned(); }
