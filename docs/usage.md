@@ -102,6 +102,15 @@ tree: each group lists its sub-groups, then its copies. Put a copy in a group wi
 and a path such as `Work/Servers` (missing groups are created). Groups appear in the order
 you give them (`Alt+↑/↓`, or Move up/down in Settings); new ones go last.
 
+**Auto grouping** (Settings › *Groups*, off by default; `auto_group`). ClipItTo learns from the copies you put in
+your groups, and files a *new* copy in the group it matches best, with a small **auto** tag on its group chip. It
+uses only words and shapes of the text (a link's site and first folder, a path's folders, a command's first word),
+locally: no model, no network, and what it learns stays in the history file, encrypted with it. It never creates a group,
+never files password copies or pictures, and leaves a copy in Recent when no group clearly matches (a copy matches
+one group, the best). Moving an auto-filed copy to another group, or out of its group, teaches it the other way, and
+counts more than a first example. Turning it off keeps the copies already filed; *Forget what was learned* clears the
+examples (Settings › Groups shows how many each group has). Copies already in Recent are not filed, only new ones.
+
 **Stars** (`Ctrl+S`): a starred copy that is in no group is kept in **★ Favorites**, which is
 always the first group (up to 10 copies; Settings allows up to 20). A starred copy in a group
 is listed first in that group, up to 10 per group. Moving a starred copy into a group, or out

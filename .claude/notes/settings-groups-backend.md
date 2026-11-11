@@ -3,7 +3,7 @@
 ## Storage (`src/core/db`)
 SQLite3 Multiple Ciphers (optional encryption, key in system keyring), WAL, `secure_delete`, FTS5
 trigram. Migrations `src/core/db/migrations/001..006_*.sql`; each new one must be added to
-`qt_add_resources` in `src/core/CMakeLists.txt` and `tst_migrator` expects the schema version (6 now).
+`qt_add_resources` in `src/core/CMakeLists.txt` and `tst_migrator` expects the schema version (9 now).
 - 006: `groups.hide_from_recent`, `clips.off_recent`, `meta(key,value)`.
 - 005: `clips.secret`, `clip_secrets(sealed)`, `vault`. 004: images (content = label).
 `Repository` (+ `Stmt`/`Db`/`Transaction` wrappers) is the only SQL user. Key methods:
@@ -11,6 +11,15 @@ trigram. Migrations `src/core/db/migrations/001..006_*.sql`; each new one must b
 `setGroupHiddenFromRecent`, `setFavoritesHiddenFromRecent`, `allEntries`, `findByHash`,
 `restoreFiling(id, created, lastUsed, note, group, favorite, offRecent)`, `offRecentIds`,
 `placeGroupLast(path)`, `setIgnoreCase/ignoreCase/textHash`, `setSecretsPerNote`, `hasSecret(match,note)`, `findSecrets`.
+
+- 009: auto grouping: `clips.auto_filed`, `auto_examples(group_name, examples)`, `auto_tokens(group_name, token hash, weight)`.
+
+## Auto grouping (`AutoGroup.{h,cpp}`, roadmap 16, `auto_group`, off by default)
+Tokens (hashed words + URL host/domain/folder, path folders, command word) -> `Model` snapshot (`Repository::autoModel`,
+cached, reset by learn/forget/rename/delete). Learning is in `Repository::setGroup` only while `setAutoGrouping(true)`;
+a move of an `auto_filed` copy is a correction (weight 3, old group -3). `CapturePipeline::autoFile` classifies on a
+worker (QtConcurrent) and `Repository::setAutoGroup` files it (unsaved, existing group, never creates one) -> signal
+`autoFiled`. Never for secrets/pictures. Seeds once from copies already in groups (`meta.auto_seeded`; Forget sets it).
 
 ## Groups and stars
 Path syntax `Work/Servers` (missing groups created, `GroupPath`). Groups ordered manually (Alt+Up/Down,
