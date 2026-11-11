@@ -189,6 +189,48 @@ private slots:
         QVERIFY(!f.keeper.reveal(id));
     }
 
+    void severalWrongPasswordsLeaveItLockedAndTheRightOneStillWorks()
+    {
+        Fixture f;
+        QVERIFY(wait([&](auto done) { f.keeper.setMasterPassword("master", done); }));
+        const qint64 id = f.storePassword("hunter2");
+        QSignalSpy lockChanged(&f.keeper, &PasswordKeeper::lockChanged);
+        for (const char* wrong : {"", "Master", "master ", "wrong"}) {
+            QVERIFY(!wait([&](auto done) { f.keeper.unlock(wrong, done); }));
+            QVERIFY(!f.keeper.isUnlocked());
+            QCOMPARE(f.keeper.secondsLeft(), 0); // no timer runs for a failed unlock
+            QVERIFY(!f.keeper.reveal(id));
+        }
+        QCOMPARE(lockChanged.size(), 0);
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("master", done); }));
+        QCOMPARE(f.keeper.reveal(id).value_or(QByteArray()), QByteArray("hunter2"));
+    }
+
+    // Waiting minutes for the timer to fire is not done here: what is checked is that it runs with the setting's
+    // length, restarts at each unlock, stops when locked by hand, and never runs without a master password.
+    void theAutoLockTimerFollowsTheUnlockMinutes()
+    {
+        Fixture f;
+        QVERIFY(wait([&](auto done) { f.keeper.setMasterPassword("master", done); }));
+        QCOMPARE(f.keeper.secondsLeft(), 0);
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("master", done); }));
+        QVERIFY(f.keeper.secondsLeft() > 290 && f.keeper.secondsLeft() <= 300); // the default: 5 minutes
+        f.keeper.lock();
+        QCOMPARE(f.keeper.secondsLeft(), 0);
+        f.keeper.setUnlockMinutes(1);
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("master", done); }));
+        QVERIFY(f.keeper.secondsLeft() > 50 && f.keeper.secondsLeft() <= 60);
+        f.keeper.setUnlockMinutes(0); // never below a minute
+        f.keeper.lock();
+        QVERIFY(wait([&](auto done) { f.keeper.unlock("master", done); }));
+        QVERIFY(f.keeper.secondsLeft() > 50 && f.keeper.secondsLeft() <= 60);
+
+        Fixture g;
+        QVERIFY(wait([&](auto done) { g.keeper.useWithoutMasterPassword(done); }));
+        QVERIFY(g.keeper.isUnlocked());
+        QCOMPARE(g.keeper.secondsLeft(), 0);
+    }
+
     void anUnlockFinishingAfterALockIsDropped()
     {
         Fixture f;
