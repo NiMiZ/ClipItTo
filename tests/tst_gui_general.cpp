@@ -7,6 +7,7 @@
 #include "PopupWindow.h"
 #include "SearchBar.h"
 #include "SettingsDialog.h"
+#include "Theme.h"
 #include "TestDb.h"
 #include "ControlChannel.h"
 #include "db/Repository.h"
@@ -28,6 +29,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QToolButton>
 
 #include <functional>
 #include <QSet>
@@ -255,6 +257,47 @@ Config fileOnlyConfig()
     c.translateTimeout = 8;
     return c;
 }
+
+// A running daemon over temporary files, and the Settings dialog as the popup's settings button opens it.
+struct DaemonEnv {
+    QTemporaryDir dir;
+    clipitto::DaemonOptions options;
+    std::unique_ptr<clipitto::Daemon> daemon;
+    QStringList messages;
+
+    explicit DaemonEnv(const QByteArray& configFile = {}, bool writeConfig = false)
+    {
+        options.configPath = dir.filePath(QStringLiteral("config.toml"));
+        options.databasePath = dir.filePath(QStringLiteral("data/history.db"));
+        options.syntheticPaste = [](clipitto::PasteKeys) { return false; };
+        if (writeConfig) {
+            writeFile(options.configPath, configFile);
+        }
+        daemon = std::make_unique<clipitto::Daemon>(options, std::make_unique<QuietControl>());
+        QString error;
+        if (daemon->start(&error) != clipitto::Daemon::StartResult::Ok) {
+            qFatal("daemon did not start: %s", qPrintable(error));
+        }
+        daemon->popup()->setNotify([this](QWidget*, const QString& m) { messages << m; });
+    }
+
+    // Changes settings the way the user does: in the dialog, then OK (which saves the file and applies it).
+    bool change(const std::function<void(SettingsDialog&)>& edit)
+    {
+        clipitto::ui::PasswordSupport passwords;
+        passwords.keeper = daemon->passwords();
+        SettingsDialog d(daemon->config(), *daemon->repository(), clipitto::ui::ShortcutSupport{}, {}, nullptr, passwords);
+        d.setNotify([](QWidget*, const QString&) {});
+        edit(d);
+        d.accept();
+        QString error;
+        const bool ok = daemon->applySettings(d.config(), &error);
+        if (!ok) {
+            qWarning("%s", qPrintable(error));
+        }
+        return ok;
+    }
+};
 
 } // namespace
 
@@ -594,6 +637,286 @@ private slots:
             QVERIFY2(w->isEnabled(), qPrintable(w->metaObject()->className()));
         }
         QVERIFY(!on->helloBox()->isEnabled()); // no Windows Hello / Touch ID support here
+    }
+
+    void cleanup()
+    {
+        clipitto::ui::applyTheme(Theme::System); // a theme test must not colour the next one
+    }
+
+    void tabsAreThereAndEveryTabHasControls()
+    {
+        DialogEnv env;
+        auto d = env.open(Config{});
+        QStringList titles;
+        for (int i = 0; i < d->tabs()->count(); ++i) {
+            titles << d->tabs()->tabText(i);
+        }
+        QVERIFY(titles.mid(0, 4) == (QStringList{QStringLiteral("General"), QStringLiteral("Groups"),
+                                                 QStringLiteral("Passwords"), QStringLiteral("Backup")}));
+        QVERIFY(titles.contains(QStringLiteral("Paste as")));
+        for (int i = 0; i < d->tabs()->count(); ++i) {
+            QWidget* page = d->tabs()->widget(i);
+            const int controls = page->findChildren<QAbstractButton*>().size() + page->findChildren<QSpinBox*>().size()
+                + page->findChildren<QComboBox*>().size() + page->findChildren<QLineEdit*>().size()
+                + page->findChildren<QListWidget*>().size();
+            QVERIFY2(controls > 0, qPrintable(titles.at(i)));
+        }
+    }
+
+    void everySettingExplainsItselfInALabelOrATooltip()
+    {
+        DialogEnv env;
+        auto d = env.open(Config{});
+        for (const QCheckBox* box : d->findChildren<QCheckBox*>()) {
+            QVERIFY2(!box->text().trimmed().isEmpty(), "a check box without text");
+        }
+        // Spin boxes and fields carry their meaning in a tooltip (the row label is not part of the widget).
+        for (QWidget* w : QList<QWidget*>{d->copiesBox(), d->keptBox(), d->imagesBox(), d->linesBox(), d->favoritesBox(),
+                                          d->clearSecondsBox(), d->keywordEdit(), d->ocrLanguagesEdit(),
+                                          d->positionBox(), d->startFocusBox()}) {
+            QVERIFY2(!w->toolTip().isEmpty(), w->metaObject()->className());
+        }
+        for (QCheckBox* w : {d->ignoreCaseBox(), d->latestBox(), d->pasteBox(), d->keepFormattingBox(), d->indexPicturesBox(),
+                             d->debugLogBox(), d->autoGroupBox(), d->detectSecretsBox(), d->detectPasswordsBox(),
+                             d->passwordsPerNoteBox(), d->askNoteBox()}) {
+            QVERIFY2(!w->toolTip().isEmpty(), qPrintable(w->text()));
+        }
+    }
+
+    void settingsThatDoNotApplyHereAreDisabledAndSayWhy()
+    {
+        DialogEnv env;
+        // No keyring: the encryption box is disabled, says so, and the (i) holds the reason.
+        auto d = env.open(Config{}, /*encryptionAvailable=*/false);
+        QVERIFY(!d->encryptBox()->isEnabled());
+        QVERIFY(d->encryptionStatus()->text().contains(QLatin1String("Not available")));
+        QVERIFY(d->encryptionInfo()->toolTip().contains(QLatin1String("no keyring here")));
+        // A desktop where the shortcut can't be set by ClipItTo: read-only, with the note shown and in the (i).
+        clipitto::ui::ShortcutSupport readOnly;
+        readOnly.editable = false;
+        readOnly.note = QStringLiteral("Bind clipitto --toggle yourself.");
+        SettingsDialog fixed(Config{}, *env.t.repo, readOnly);
+        QVERIFY(!fixed.shortcutEdit()->isEnabled());
+        QVERIFY(fixed.shortcutStatus()->text().contains(QLatin1String("--toggle")));
+        QVERIFY(fixed.shortcutInfo()->toolTip().contains(QLatin1String("--toggle")));
+        // Windows Hello / Touch ID: off, because this system has none (Linux, or no Hello set up).
+        QVERIFY(!d->helloBox()->isEnabled());
+        QVERIFY(!d->helloBox()->isChecked());
+    }
+
+    void closingTheDialogWithoutOkLeavesTheFileAlone()
+    {
+        const QString file = path(QStringLiteral("cancel.toml"));
+        const QByteArray original = "# mine\ntheme = \"dark\"\n";
+        writeFile(file, original);
+        DialogEnv env;
+        auto d = env.open(Config::load(file));
+        controlChanges().at("recent_count")(*d);
+        d->reject();
+        QCOMPARE(readFile(file), original); // nothing saves until the owner takes config() and saves it
+    }
+
+    // ===== Save with no change ================================================================
+
+    void savingWithoutChangingAnythingLeavesTheFileIdentical_data()
+    {
+        QTest::addColumn<QByteArray>("file");
+        QFile example(QStringLiteral(CLIPITTO_EXAMPLE_CONFIG));
+        QVERIFY(example.open(QIODevice::ReadOnly));
+        const QByteArray full = example.readAll();
+        example.close();
+        QTest::newRow("the complete example") << full;
+        QTest::newRow("a few keys and comments")
+            << QByteArray("# my settings\ntheme = \"dark\"   # I like it dark\nrecent_count = 25\n\nfuture_key = 1\n");
+        QTest::newRow("windows line endings") << QByteArray("theme = \"light\"\r\nrecent_count = 30\r\n");
+        QTest::newRow("a comment only") << QByteArray("# nothing set\n");
+        QTest::newRow("settings in the wrong order") << QByteArray("preview_lines = 2\nrecent_count = 40\n");
+    }
+
+    void savingWithoutChangingAnythingLeavesTheFileIdentical()
+    {
+        QFETCH(QByteArray, file);
+        DaemonEnv env(file, true);
+        QVERIFY(env.change([](SettingsDialog&) {})); // OK, with nothing touched
+        QCOMPARE(readFile(env.options.configPath), file);
+    }
+
+    void savingWithoutAFileCreatesOneWithTheDefaults()
+    {
+        DaemonEnv env;
+        QVERIFY(!QFile::exists(env.options.configPath));
+        QVERIFY(env.change([](SettingsDialog&) {}));
+        QVERIFY(!readFile(env.options.configPath).isEmpty());
+        QVERIFY(Config::load(env.options.configPath) == Config{});
+    }
+
+    // ===== Settings change what the GUI does ==================================================
+
+    void theNumberOfCopiesListedFollowsTheSetting()
+    {
+        DaemonEnv env;
+        for (int i = 0; i < 12; ++i) {
+            env.daemon->repository()->ingest(QStringLiteral("copy %1").arg(i));
+        }
+        PopupWindow* popup = env.daemon->popup();
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        const auto copies = [popup] { return rowsOf(popup->model()).filter(QRegularExpression(QStringLiteral("^copy "))).size(); };
+        QCOMPARE(copies(), 12); // (the Groups row is there too: the default Passwords group)
+        QVERIFY(env.change([](SettingsDialog& d) { d.copiesBox()->setValue(5); }));
+        QTRY_COMPARE(copies(), 5);
+        QCOMPARE(rowsOf(popup->model()).at(1), QStringLiteral("copy 11")); // the newest stay
+        QVERIFY(env.change([](SettingsDialog& d) { d.copiesBox()->setValue(8); }));
+        QTRY_COMPARE(copies(), 8);
+        popup->hidePopup();
+    }
+
+    void theLinesShownPerCopyFollowTheSetting()
+    {
+        DaemonEnv env;
+        env.daemon->repository()->ingest(QStringLiteral("first\nsecond\nthird\nfourth"));
+        PopupWindow* popup = env.daemon->popup();
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        QVERIFY(popup->model()->firstEntry().data(HistoryModel::PreviewRole).toString().isEmpty());
+        QVERIFY(env.change([](SettingsDialog& d) { d.linesBox()->setValue(3); }));
+        const QStringList more = popup->model()->firstEntry().data(HistoryModel::PreviewRole).toString().split(QLatin1Char('\n'));
+        QCOMPARE(more.size(), 2); // 3 lines per copy: the title and two more
+        popup->hidePopup();
+    }
+
+    void theStartingSelectionFollowsTheSetting_data()
+    {
+        QTest::addColumn<int>("focus");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("pinned") << int(clipitto::StartFocus::Pinned) << QStringLiteral("pinned one");
+        QTest::newRow("grouped") << int(clipitto::StartFocus::Grouped) << QStringLiteral("grouped one");
+        QTest::newRow("unsaved") << int(clipitto::StartFocus::Unsaved) << QStringLiteral("newest plain");
+    }
+
+    void theStartingSelectionFollowsTheSetting()
+    {
+        QFETCH(int, focus);
+        QFETCH(QString, expected);
+        DaemonEnv env;
+        auto* repo = env.daemon->repository();
+        repo->setPinned(repo->ingest(QStringLiteral("pinned one")).id, true);
+        repo->setGroup(repo->ingest(QStringLiteral("grouped one")).id, QStringLiteral("Work"));
+        repo->ingest(QStringLiteral("newest plain"));
+        QVERIFY(env.change([focus](SettingsDialog& d) {
+            d.startFocusBox()->setCurrentIndex(d.startFocusBox()->findData(focus));
+        }));
+        PopupWindow* popup = env.daemon->popup();
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        QCOMPARE(popup->view()->currentIndex().data(HistoryModel::TitleRole).toString(), expected);
+        popup->hidePopup();
+    }
+
+    void thePopupPositionFollowsTheSetting_data()
+    {
+        QTest::addColumn<int>("position");
+        QTest::addColumn<bool>("left");
+        QTest::addColumn<bool>("top");
+        QTest::newRow("top-left") << int(clipitto::PopupPosition::TopLeft) << true << true;
+        QTest::newRow("bottom-right") << int(clipitto::PopupPosition::BottomRight) << false << false;
+    }
+
+    void thePopupPositionFollowsTheSetting()
+    {
+        QFETCH(int, position);
+        QFETCH(bool, left);
+        QFETCH(bool, top);
+        DaemonEnv env;
+        PopupWindow* popup = env.daemon->popup();
+        popup->resize(200, 150);
+        QVERIFY(env.change([position](SettingsDialog& d) {
+            d.positionBox()->setCurrentIndex(d.positionBox()->findData(position));
+        }));
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
+        const QPoint centre = QRect(popup->pos(), popup->size()).center();
+        QCOMPARE(centre.x() < area.center().x(), left);
+        QCOMPARE(centre.y() < area.center().y(), top);
+        popup->hidePopup();
+    }
+
+    void theFavoritesLimitFollowsTheSetting()
+    {
+        DaemonEnv env;
+        auto* repo = env.daemon->repository();
+        const qint64 a = repo->ingest(QStringLiteral("alpha")).id;
+        const qint64 b = repo->ingest(QStringLiteral("beta")).id;
+        QVERIFY(env.change([](SettingsDialog& d) { d.favoritesBox()->setValue(1); }));
+        PopupWindow* popup = env.daemon->popup();
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        popup->view()->setFocus();
+        popup->view()->setCurrentIndex(popup->model()->findEntry(a));
+        QTest::keyClick(popup->view(), Qt::Key_S, Qt::ControlModifier);
+        QVERIFY(repo->get(a)->favorite);
+        popup->view()->setCurrentIndex(popup->model()->findEntry(b));
+        QTest::keyClick(popup->view(), Qt::Key_S, Qt::ControlModifier);
+        QVERIFY(!repo->get(b)->favorite); // the second star is refused...
+        QCOMPARE(env.messages.size(), 1); // ...and the popup says why
+        QVERIFY(env.messages.first().contains(QLatin1String("already has 1")));
+        popup->hidePopup();
+    }
+
+    void theThemeFollowsTheSettingAndThePopupRepaints()
+    {
+        DaemonEnv env;
+        env.daemon->repository()->ingest(QStringLiteral("some text"));
+        PopupWindow* popup = env.daemon->popup();
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        const auto lightness = [popup] { return popup->palette().color(QPalette::Window).lightness(); };
+        QVERIFY(env.change([](SettingsDialog& d) { d.themeBox()->setCurrentIndex(d.themeBox()->findData(int(Theme::Dark))); }));
+        QTRY_VERIFY2(lightness() < 100, "dark theme: dark window");
+        QVERIFY(env.change([](SettingsDialog& d) { d.themeBox()->setCurrentIndex(d.themeBox()->findData(int(Theme::Light))); }));
+        QTRY_VERIFY2(lightness() > 180, "light theme: light window");
+        popup->hidePopup();
+    }
+
+    void settingsOnlyTheFileCanChangeStillWork_data()
+    {
+        QTest::addColumn<QByteArray>("line");
+        QTest::addColumn<int>("check"); // which behaviour to look at
+        QTest::newRow("hide_on_focus_loss = false") << QByteArray("hide_on_focus_loss = false\n") << 0;
+        QTest::newRow("show_saved_on_top = false") << QByteArray("show_saved_on_top = false\n") << 1;
+        QTest::newRow("saved_cap = 2") << QByteArray("saved_cap = 2\n") << 2;
+    }
+
+    void settingsOnlyTheFileCanChangeStillWork()
+    {
+        QFETCH(QByteArray, line);
+        QFETCH(int, check);
+        DaemonEnv env(line, true);
+        auto* repo = env.daemon->repository();
+        for (int i = 0; i < 4; ++i) {
+            repo->setPinned(repo->ingest(QStringLiteral("pin %1").arg(i)).id, true);
+        }
+        repo->ingest(QStringLiteral("plain"));
+        PopupWindow* popup = env.daemon->popup();
+        popup->showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(popup));
+        const QStringList rows = rowsOf(popup->model());
+        if (check == 0) { // the popup stays open when another window takes the focus
+            QWidget other;
+            other.show();
+            other.activateWindow();
+            QVERIFY(QTest::qWaitForWindowActive(&other));
+            QTest::qWait(150);
+            QVERIFY(popup->isVisible());
+        } else if (check == 1) {
+            QVERIFY(!rows.contains(QStringLiteral("#Pinned")));
+            QVERIFY(rows.contains(QStringLiteral("plain")));
+        } else {
+            QCOMPARE(rows.indexOf(QStringLiteral("#Recent")), 4); // Groups row, #Pinned, two pins, #Recent
+        }
+        popup->hidePopup();
     }
 };
 
