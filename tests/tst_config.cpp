@@ -114,7 +114,7 @@ private slots:
         QVERIFY(defaults.ocrLanguages.isEmpty());
         QVERIFY(!defaults.ignoreCase);
         QCOMPARE(defaults.passwordUnlockMinutes, 5);
-        QCOMPARE(defaults.passwordClearSeconds, 30);
+        QCOMPARE(defaults.passwordClearSeconds, 2);
         QVERIFY(!defaults.windowsHello);
         QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
 
