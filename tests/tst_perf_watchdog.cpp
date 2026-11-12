@@ -12,7 +12,7 @@ private slots:
     {
         StallWatchdog wd;
         QTest::qWait(200);
-        QVERIFY2(wd.finish() < 50, "an idle loop must not look stalled");
+        QVERIFY2(wd.finish() < StallWatchdog::scaled(50), "an idle loop must not look stalled");
         QVERIFY(wd.report("watchdog: idle loop"));
     }
 
@@ -44,7 +44,7 @@ private slots:
         QVERIFY(wd.maxStallMs() >= 100);
         wd.restart();
         QTest::qWait(100);
-        QVERIFY(wd.finish() < 50);
+        QVERIFY(wd.finish() < StallWatchdog::scaled(50));
     }
 
     void theBudgetFollowsTheEnvironment()

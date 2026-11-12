@@ -160,7 +160,7 @@ private slots:
         const qint64 growth = perf::residentKb() - before;
         perf::note("RSS growth over 5k copies (KiB)", QString::number(growth));
         QCOMPARE(t.repo->count(), 1000);
-        if (before > 0) {
+        if (before > 0 && !perf::underSanitizer()) { // a sanitizer keeps freed memory back, so RSS says nothing
             QVERIFY2(growth < 40 * 1024, "memory grows by more than 40 MB over 5k copies");
         }
         QVERIFY_NO_STALL(wd, "memory: 5k copies");

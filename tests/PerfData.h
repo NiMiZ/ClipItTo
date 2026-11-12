@@ -76,6 +76,22 @@ inline QImage noisyImage(int w, int h)
 }
 
 // Resident memory of this process in KiB (Linux; 0 elsewhere).
+// True in an AddressSanitizer / UndefinedBehaviorSanitizer / ThreadSanitizer build.
+inline bool underSanitizer()
+{
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+    return true;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+    return true;
+#else
+    return false;
+#endif
+#else
+    return false;
+#endif
+}
+
 inline qint64 residentKb()
 {
 #ifdef Q_OS_LINUX
