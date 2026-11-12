@@ -987,8 +987,11 @@ void Daemon::indexNextPicture()
                 m_indexFailed = true;
                 return;
             }
+            if (!m_config.indexPictures) {
+                return; // turned off while this one was read: record nothing (a "" would mean "read, nothing found")
+            }
             try {
-                m_repo->setPictureText(id, m_config.indexPictures ? result.first : QString());
+                m_repo->setPictureText(id, result.first);
             } catch (const db::DbError& e) {
                 qCWarning(lcDaemon) << "search inside pictures:" << e.what();
                 return;
