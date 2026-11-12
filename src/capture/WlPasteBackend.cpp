@@ -192,6 +192,12 @@ void WlPasteBackend::fetch()
             fetchDone();
         }
     });
+    // A clipboard owner that never answers must not stop capture for good: m_fetching stays set until this
+    // request ends, so a request that hangs would swallow every later copy.
+    auto* typesTimeout = new QTimer(types);
+    typesTimeout->setSingleShot(true);
+    connect(typesTimeout, &QTimer::timeout, types, [types] { types->kill(); });
+    typesTimeout->start(5000);
     types->start(m_program, {QStringLiteral("--list-types")});
 }
 
@@ -218,6 +224,10 @@ void WlPasteBackend::fetchText(const QStringList& mimeTypes)
             fetchDone();
         }
     });
+    auto* textTimeout = new QTimer(text); // same: an owner that stops halfway through serving the text
+    textTimeout->setSingleShot(true);
+    connect(textTimeout, &QTimer::timeout, text, [text] { text->kill(); });
+    textTimeout->start(15000);
     text->start(m_program, {QStringLiteral("--no-newline"), QStringLiteral("--type"), textType(mimeTypes)});
 }
 
