@@ -14,8 +14,8 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and run
-`sudo apt install ./clipitto_0.15.0_amd64.deb` (Ubuntu 24.04) or
-`sudo apt install ./clipitto_0.15.0_ubuntu26.04_amd64.deb` (Ubuntu 26.04). The two differ in the
+`sudo apt install ./clipitto_0.16.0_amd64.deb` (Ubuntu 24.04) or
+`sudo apt install ./clipitto_0.16.0_ubuntu26.04_amd64.deb` (Ubuntu 26.04). The two differ in the
 library packages they depend on (Qt's `t64` names, `liblept5` vs `libleptonica6`), so pick the one for
 your release. Other Debian-based systems: use the AppImage below. [install.sh](../install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
