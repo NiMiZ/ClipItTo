@@ -63,8 +63,11 @@ QString scriptOfLanguage(const QString& code)
 
 QString scriptOfText(const QString& text)
 {
+    // The first part decides: this runs on the GUI thread (menus, Ctrl+T) and a copy can be megabytes long
+    // (a 5 MB text took 450 ms to scan).
+    constexpr qsizetype kLookAt = 20000;
     QHash<QString, int> counts;
-    for (const QChar c : text) {
+    for (const QChar c : QStringView(text).left(kLookAt)) {
         const QString script = scriptOfChar(c);
         if (!script.isEmpty()) {
             ++counts[script];
