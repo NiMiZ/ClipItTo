@@ -96,6 +96,7 @@ public:
     bool undoPending() const { return m_undo.has_value(); }
     QToolButton* undoButton() const { return m_undoButton; }
     static constexpr int kUndoMs = 10000;
+    void setUndoMs(int ms); // tests shorten it
     void setQrView(QrView view) { m_qrView = std::move(view); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
     // Shows a text that is not a problem (a translation, a hint): a quiet window without a warning icon or a
@@ -273,7 +274,6 @@ private:
     QToolButton* m_undoButton; // "Undo" after a Paste once removal, for kUndoMs
     QTimer* m_undoTimer;
     std::optional<db::Repository::Removed> m_undo;
-    ConfirmPrompt m_deletePassword;
     int m_onceAskDelayMs = 250;
     Prompt m_groupPrompt;
     EditPrompt m_editPrompt;
@@ -281,6 +281,7 @@ private:
     QString m_footerHint;
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
+    ConfirmPrompt m_deletePassword; // "Delete this password copy?" after a Paste once of a password copy
     QrView m_qrView;
     Notify m_notify;
     TextViewer m_viewText;

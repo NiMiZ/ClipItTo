@@ -717,8 +717,12 @@ private slots:
         d.unlockMinutesBox()->setValue(30);
         QCOMPARE(d.clearSecondsBox()->value(), 2);
         d.clearSecondsBox()->setValue(0);
+        QCOMPARE(d.pasteOnceClearSecondsBox()->value(), 2);
+        QCOMPARE(d.pasteOnceClearSecondsBox()->maximum(), 60);
+        d.pasteOnceClearSecondsBox()->setValue(0);
         d.keywordEdit()->setText(QStringLiteral("pw:"));
         Config c = d.config();
+        QCOMPARE(c.pasteOnceClearSeconds, 0);
         QVERIFY(!c.keepPasswords);
         QVERIFY(c.passwordsInGroup);
         QCOMPARE(c.passwordUnlockMinutes, 30);

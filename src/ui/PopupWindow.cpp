@@ -820,6 +820,11 @@ void PopupWindow::forgetPasteOnce(qint64 id)
     refreshSelecting(std::nullopt, /*focusList=*/false);
 }
 
+void PopupWindow::setUndoMs(int ms)
+{
+    m_undoTimer->setInterval(ms);
+}
+
 void PopupWindow::showUndoNotice()
 {
     m_undoButton->setVisible(m_undo.has_value());
@@ -1723,7 +1728,6 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
         if (picture->isEmpty()) {
             picture->addAction(tr("No items selected: see Settings › Paste as"))->setEnabled(false);
         }
-        addPasteOnceAction(picture, entry);
         return picture;
     }
     auto* menu = new QMenu(tr("Paste &as"), parent);
@@ -1776,11 +1780,10 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
         QAction* hint = menu->addAction(tr("No items selected: see Settings › Paste as"));
         hint->setEnabled(false);
     }
-    addPasteOnceAction(menu, entry);
     return menu;
 }
 
-// "Paste once" (a toggle) at the end of a Paste as menu.
+// "Paste once" (a toggle) at the end of the Shift+Enter menu (the right-click menu has it at the top level).
 void PopupWindow::addPasteOnceAction(QMenu* menu, const Entry& entry)
 {
     const qint64 id = entry.id;
@@ -2021,6 +2024,7 @@ void PopupWindow::pasteAs(const QModelIndex& index)
             break;
         }
     }
+    addPasteOnceAction(menu, *e);
     const QRect row = m_view->visualRect(index);
     {
         ModalGuard guard(m_modalDepth); // the menu takes the focus; the popup must not hide because of it

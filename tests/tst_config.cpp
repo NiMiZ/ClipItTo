@@ -115,6 +115,7 @@ private slots:
         QVERIFY(!defaults.ignoreCase);
         QCOMPARE(defaults.passwordUnlockMinutes, 5);
         QCOMPARE(defaults.passwordClearSeconds, 2);
+        QCOMPARE(defaults.pasteOnceClearSeconds, 2);
         QVERIFY(!defaults.windowsHello);
         QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
 
@@ -211,6 +212,21 @@ private slots:
         QStringList notList;
         QVERIFY(Config::fromToml("auto_forget = 5", &notList).autoForget.isEmpty());
         QCOMPARE(notList.size(), 1);
+    }
+
+    void pasteOnceClearSecondsRange()
+    {
+        QCOMPARE(Config{}.pasteOnceClearSeconds, 2);
+        QCOMPARE(Config::fromToml("paste_once_clear_seconds = 0").pasteOnceClearSeconds, 0);
+        QCOMPARE(Config::fromToml("paste_once_clear_seconds = 60").pasteOnceClearSeconds, 60);
+        QStringList warnings;
+        QCOMPARE(Config::fromToml("paste_once_clear_seconds = 61", &warnings).pasteOnceClearSeconds, 2); // out of range: default
+        QVERIFY(!warnings.isEmpty());
+        QCOMPARE(Config::fromToml("paste_once_clear_seconds = -1").pasteOnceClearSeconds, 2);
+        // Written and read back.
+        Config c;
+        c.pasteOnceClearSeconds = 17;
+        QCOMPARE(Config::fromToml(c.toToml()).pasteOnceClearSeconds, 17);
     }
 
     void passwordClearSecondsRange()
