@@ -39,6 +39,11 @@ QString configFile()
 
 QString dataDir()
 {
+    // CLIPITTO_DATA_DIR overrides it: a smoke test or a side-by-side copy must never open the user's real history.
+    const QString overridden = qEnvironmentVariable("CLIPITTO_DATA_DIR");
+    if (!overridden.isEmpty()) {
+        return QDir::cleanPath(overridden);
+    }
     // Machine-local: $XDG_DATA_HOME, %LOCALAPPDATA%, ~/Library/Application Support.
     return QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)).filePath(kAppDir);
 }
