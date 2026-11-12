@@ -8,6 +8,7 @@
 #include "HistoryModel.h"
 #include "HistoryView.h"
 #include "PopupWindow.h"
+#include "TranslateCheck.h"
 #include "Translate.h"
 #include "db/Repository.h"
 
@@ -636,6 +637,94 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(r.quiet.size(), 1, 5000);
         QCOMPARE(r.quiet[0], QStringLiteral("No text found in the picture."));
         QCOMPARE(r.engine->calls(), 0);
+    }
+
+    // ---------------------------------------------------------------- the quality check tool (src/daemon/TranslateCheck)
+
+    void theWordListSkipsCommentsAndBlankLines()
+    {
+        QTemporaryDir dir;
+        QFile f(dir.filePath(QStringLiteral("words.txt")));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("\xEF\xBB\xBF# a comment\r\n\xD7\x9E\xD7\x9B\xD7\xA9\xD7\x95\xD7\x9C\r\n\r\n  hello world  \n#another\n42");
+        f.close();
+        QString error;
+        const auto words = clipitto::translatecheck::readWordList(f.fileName(), &error);
+        QVERIFY2(words.has_value(), qPrintable(error));
+        QCOMPARE(*words, (QStringList{hebrew("מכשול"), QStringLiteral("hello world"), QStringLiteral("42")}));
+        QVERIFY(!clipitto::translatecheck::readWordList(dir.filePath(QStringLiteral("missing.txt")), &error));
+        QVERIFY(!error.isEmpty());
+    }
+
+    void theCheckReportsInputOutputTimeAndFlagsTheBadOnes()
+    {
+        namespace tc = clipitto::translatecheck;
+        tc::Engine e;
+        e.packs = [] { return QList<tr::Pack>{pack(QStringLiteral("he"), QStringLiteral("Hebrew")), pack(QStringLiteral("zh"), QStringLiteral("Chinese"))}; };
+        e.slowMs = 30;
+        e.translate = [](const tr::Pack& p, const QString& text, QString* err) -> std::optional<QString> {
+            if (text == QString::fromUtf8("悪い")) {
+                *err = QStringLiteral("boom");
+                return std::nullopt;
+            }
+            if (text == hebrew("איטי")) { // slow
+                QThread::msleep(80);
+            }
+            if (text == hebrew("כמו שהיה")) {
+                return text;
+            }
+            return QStringLiteral("T(%1:%2)").arg(p.id, text);
+        };
+        QStringList lines;
+        const auto sum = tc::run({hebrew("מכשול"), hebrew("כמו שהיה"), hebrew("איטי"), QStringLiteral("你好"), QStringLiteral("hello"), QStringLiteral("a\nb")},
+                                 QString(), [&lines](const QString& l) { lines << l; }, e);
+        QCOMPARE(sum.total, 6);
+        QCOMPARE(sum.translated, 5 - 1); // "hello": no English pack; "a\nb" is Latin too
+        QCOMPARE(sum.failed, 2);
+        QCOMPARE(sum.unchanged, 1);
+        QCOMPARE(sum.slow, 1);
+        QVERIFY(lines[0].startsWith(hebrew("מכשול") + QStringLiteral(" -> T(he-en:") + hebrew("מכשול") + QStringLiteral(") (")));
+        QVERIFY(lines[0].contains(QStringLiteral(" ms, he-en)")));
+        QVERIFY(lines[1].endsWith(QStringLiteral("UNCHANGED")));
+        QVERIFY(lines[2].endsWith(QStringLiteral("SLOW")));
+        QVERIFY(lines[3].contains(QStringLiteral("T(zh-en:")));
+        QVERIFY(lines[4].contains(QStringLiteral("NO PACK")));
+        QVERIFY(lines.last().startsWith(QStringLiteral("# 6 checked")));
+        // One pack only.
+        lines.clear();
+        const auto onlyHe = tc::run({hebrew("מכשול"), QStringLiteral("你好")}, QStringLiteral("he-en"), [&lines](const QString& l) { lines << l; }, e);
+        QCOMPARE(onlyHe.translated, 1);
+        QVERIFY(lines[1].contains(QStringLiteral("NO PACK")));
+        // An engine error is shown with its reason.
+        lines.clear();
+        e.packs = [] { return QList<tr::Pack>{pack(QStringLiteral("ja"), QStringLiteral("Japanese"))}; };
+        tc::run({QString::fromUtf8("悪い")}, QString(), [&lines](const QString& l) { lines << l; }, e);
+        QVERIFY(lines[0].contains(QStringLiteral("ERROR: boom (")));
+    }
+
+    void theCheckCommandWritesAFileAndRefusesWhatCannotRun()
+    {
+        namespace tc = clipitto::translatecheck;
+        QTemporaryDir dir;
+        QFile f(dir.filePath(QStringLiteral("words.txt")));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D\n");
+        f.close();
+        tc::Engine e;
+        e.packs = [] { return QList<tr::Pack>{pack(QStringLiteral("he"), QStringLiteral("Hebrew"))}; };
+        e.translate = [](const tr::Pack&, const QString& t, QString*) { return std::optional<QString>(t + QStringLiteral("!")); };
+        const QString out = dir.filePath(QStringLiteral("report.txt"));
+        QCOMPARE(tc::runCommand(f.fileName(), QString(), out, e), 0);
+        QFile report(out);
+        QVERIFY(report.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(report.readAll());
+        report.close();
+        QVERIFY(text.contains(hebrew("שלום -> שלום!")));
+        QVERIFY(text.contains(QStringLiteral("# 1 checked")));
+        QCOMPARE(tc::runCommand(dir.filePath(QStringLiteral("none.txt")), QString(), out, e), 2);
+        QCOMPARE(tc::runCommand(f.fileName(), QStringLiteral("zh-en"), out, e), 2); // that pack is not installed
+        e.packs = [] { return QList<tr::Pack>{}; };
+        QCOMPARE(tc::runCommand(f.fileName(), QString(), out, e), 2); // no packs at all
     }
 
 private:

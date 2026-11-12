@@ -4,6 +4,7 @@ add_library(clipitto_daemon_lib STATIC
     GnomeShortcut.cpp GnomeShortcut.h
     LoginItem.cpp LoginItem.h
     Notify.cpp Notify.h
+    TranslateCheck.cpp TranslateCheck.h
 )
 target_include_directories(clipitto_daemon_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_translate clipitto_output clipitto_ui Qt6::Concurrent)

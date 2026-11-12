@@ -7,6 +7,7 @@
 #include "PopupWindow.h"
 #include "KeyStore.h"
 #include "SystemKeyStore.h"
+#include "TranslateCheck.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -80,7 +81,19 @@ int main(int argc, char* argv[])
     parser.addVersionOption();
     const QCommandLineOption verbose(QStringLiteral("verbose"), QStringLiteral("Enable debug logging."));
     parser.addOption(verbose);
+    // Hidden: the translation quality check (scripts/translate-check.sh, docs/translation.md). Needs no running daemon.
+    QCommandLineOption checkList(QStringLiteral("translate-check"), QStringLiteral("Translate a word list with the installed packs."),
+                                 QStringLiteral("file"));
+    QCommandLineOption checkPack(QStringLiteral("translate-pack"), QStringLiteral("Use only this pack, e.g. he-en."), QStringLiteral("id"));
+    QCommandLineOption checkOut(QStringLiteral("translate-out"), QStringLiteral("Write the report to this file."), QStringLiteral("file"));
+    for (QCommandLineOption* o : {&checkList, &checkPack, &checkOut}) {
+        o->setFlags(QCommandLineOption::HiddenFromHelp);
+        parser.addOption(*o);
+    }
     parser.process(app);
+    if (parser.isSet(checkList)) {
+        return clipitto::translatecheck::runCommand(parser.value(checkList), parser.value(checkPack), parser.value(checkOut));
+    }
 
     clipitto::DaemonOptions options;
     options.verbose = parser.isSet(verbose); // the daemon switches debug lines and the log file on (see applyDebugLog)
