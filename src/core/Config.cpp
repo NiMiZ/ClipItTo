@@ -10,6 +10,7 @@
 
 #include <toml++/toml.hpp>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <set>
@@ -525,20 +526,39 @@ bool Config::save(const QString& path, QString* error) const
         }
         return false;
     }
+    // Keep the user's file (comments, layout, unknown keys); only values change.
+    std::string text;
+    bool hadFile = false;
+    {
+        QFile existing(path);
+        if (existing.exists() && existing.open(QIODevice::ReadOnly)) {
+            const QByteArray old = existing.readAll();
+            existing.close();
+            hadFile = true;
+            const std::string_view current(old.constData(), std::size_t(old.size()));
+            // Nothing to change (OK pressed in Settings with nothing touched): leave the file as it is, instead of
+            // appending every key the user never set.
+            // (A key of a newer version is no problem; a wrong value is: the file gets rewritten.)
+            QStringList warnings;
+            const Config parsed = fromToml(current, &warnings);
+            const bool onlyUnknownKeys = std::all_of(warnings.begin(), warnings.end(), [](const QString& w) {
+                return w.startsWith(QLatin1String("unknown key "));
+            });
+            if (parsed == *this && onlyUnknownKeys) {
+                return true;
+            }
+            text = mergeInto(current);
+        }
+    }
+    if (!hadFile) {
+        text = toToml(); // UTF-8, LF line endings on every platform
+    }
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
         if (error) {
             *error = file.errorString();
         }
         return false;
-    }
-    // Keep the user's file (comments, layout, unknown keys); only values change.
-    std::string text;
-    if (QFile existing(path); existing.exists() && existing.open(QIODevice::ReadOnly)) {
-        const QByteArray old = existing.readAll();
-        text = mergeInto(std::string_view(old.constData(), std::size_t(old.size())));
-    } else {
-        text = toToml(); // UTF-8, LF line endings on every platform
     }
     file.write(text.data(), qint64(text.size()));
     if (!file.commit()) {
