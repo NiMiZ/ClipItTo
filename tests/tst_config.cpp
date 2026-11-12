@@ -166,6 +166,64 @@ private slots:
         QCOMPARE(more.size(), 1);
     }
 
+    void autoForgetRules()
+    {
+        QVERIFY(Config{}.autoForget.isEmpty()); // nothing happens by default
+
+        Config c;
+        clipitto::AutoForgetRule age;
+        age.amount = 14;
+        clipitto::AutoForgetRule bearer;
+        bearer.type = clipitto::AutoForgetRule::Type::Contains;
+        bearer.amount = 5;
+        bearer.text = QStringLiteral("Bearer ");
+        clipitto::AutoForgetRule card;
+        card.type = clipitto::AutoForgetRule::Type::Secret;
+        card.amount = 3;
+        card.secret = clipitto::AutoForgetRule::SecretKind::Card;
+        c.autoForget = {age, bearer, card};
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        QVERIFY(Config::fromToml(c.mergeInto("auto_forget = []  # mine\nrecent_count = 7\n")) == c);
+
+        // The file is a list of strings, one per rule.
+        const Config fromFile = Config::fromToml("auto_forget = [\"age 14d\", \"match 5m contains \\\"Bearer \\\"\", \"match 3m card\"]");
+        QVERIFY(fromFile.autoForget == c.autoForget);
+
+        // Bad rules are skipped with one warning each; the warning never quotes the rule (it may hold what the
+        // user wants forgotten). More than eight: the rest is dropped with a warning.
+        QStringList warnings;
+        const Config bad = Config::fromToml("auto_forget = [\"age 0d\", \"nonsense\", \"match 5m contains \\\"secretword\\\"x\", 7, \"age 3d\"]",
+                                            &warnings);
+        QCOMPARE(bad.autoForget.size(), 1);
+        QCOMPARE(bad.autoForget.front().amount, 3);
+        QCOMPARE(warnings.size(), 4);
+        for (const QString& w : std::as_const(warnings)) {
+            QVERIFY(!w.contains(QLatin1String("secretword")));
+        }
+        QStringList many;
+        QString nine = QStringLiteral("auto_forget = [");
+        for (int i = 0; i < 9; ++i) {
+            nine += QStringLiteral("\"age %1d\",").arg(i + 1);
+        }
+        nine += QLatin1Char(']');
+        QCOMPARE(Config::fromToml(nine.toStdString(), &many).autoForget.size(), 8);
+        QCOMPARE(many.size(), 1);
+        QStringList notList;
+        QVERIFY(Config::fromToml("auto_forget = 5", &notList).autoForget.isEmpty());
+        QCOMPARE(notList.size(), 1);
+    }
+
+    void passwordClearSecondsRange()
+    {
+        QCOMPARE(Config{}.passwordClearSeconds, 2);
+        QCOMPARE(Config::fromToml("password_clear_seconds = 0").passwordClearSeconds, 0);
+        QCOMPARE(Config::fromToml("password_clear_seconds = 60").passwordClearSeconds, 60);
+        QStringList warnings;
+        QCOMPARE(Config::fromToml("password_clear_seconds = 61", &warnings).passwordClearSeconds, 2); // out of range: default
+        QCOMPARE(warnings.size(), 1);
+        QCOMPARE(Config::fromToml("password_clear_seconds = -1").passwordClearSeconds, 2);
+    }
+
     void defaultsMatchSpec()
     {
         const Config c;
