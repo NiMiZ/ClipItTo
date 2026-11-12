@@ -22,6 +22,9 @@ TextPrompt defaultTextPrompt();
 // through the choices from the first one. nullopt = cancelled.
 std::optional<QString> askGroup(QWidget* parent, const QString& current, const QStringList& choices);
 ConfirmPrompt defaultConfirmPrompt();
+// "Delete this password copy?" after a Paste once paste of a password copy: Yes / No, No is the default
+// (Enter and Esc keep the copy). Always asked; nothing deletes a password copy without it.
+ConfirmPrompt defaultDeletePasswordPrompt();
 
 // Ctrl+E: the note of a copy and, for a plain-text copy, its text. `text` is nullopt for a picture
 // or a password copy (the dialog then has only the Note box). `apply` is called when the user

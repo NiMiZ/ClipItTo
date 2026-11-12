@@ -7,11 +7,51 @@
 #endif
 
 #include <QClipboard>
+#include <QCryptographicHash>
 #include <QGuiApplication>
 #include <QImage>
 #include <QMimeData>
 
+#include <utility>
+
 namespace clipitto {
+
+namespace {
+
+// What is on the clipboard compared with what was pasted: a hash of the size and the pixels (whatever the format).
+QByteArray pictureHash(const QImage& image)
+{
+    if (image.isNull()) {
+        return {};
+    }
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    const QImage argb = image.convertToFormat(QImage::Format_ARGB32);
+    const qint32 size[2] = {argb.width(), argb.height()};
+    hash.addData(QByteArrayView(reinterpret_cast<const char*>(size), sizeof(size)));
+    const qsizetype rowBytes = qsizetype(argb.width()) * 4;
+    for (int y = 0; y < argb.height(); ++y) {
+        hash.addData(QByteArrayView(reinterpret_cast<const char*>(argb.constScanLine(y)), rowBytes));
+    }
+    return hash.result();
+}
+
+// The picture on the clipboard: Qt converts it where the platform clipboard says so (X11, Windows, macOS); a clipboard
+// that just holds the PNG we put there (the offscreen platform) is read from those bytes.
+QImage clipboardPicture(QClipboard* clipboard)
+{
+    QImage image = clipboard->image(QClipboard::Clipboard);
+    if (image.isNull()) {
+        if (const QMimeData* data = clipboard->mimeData(QClipboard::Clipboard)) {
+            const QByteArray png = data->data(QStringLiteral("image/png"));
+            if (!png.isEmpty()) {
+                image = QImage::fromData(png, "PNG");
+            }
+        }
+    }
+    return image;
+}
+
+} // namespace
 
 ClipboardWriter::ClipboardWriter(QClipboard* clipboard, ClipFilter& filter, DesktopIntegration* integration)
     : m_clipboard(clipboard)
@@ -20,9 +60,13 @@ ClipboardWriter::ClipboardWriter(QClipboard* clipboard, ClipFilter& filter, Desk
 {
 }
 
-void ClipboardWriter::setImage(const QByteArray& png, const QString& pixelHash)
+void ClipboardWriter::setImage(const QByteArray& png, const QString& pixelHash, bool once)
 {
-    m_filter.noteOwnImage(pixelHash);
+    m_filter.noteOwnImage(pixelHash, once);
+    m_pendingImage = once ? pictureHash(QImage::fromData(png, "PNG")) : QByteArray();
+    if (once) {
+        m_filter.ownPasswordDone(); // a password paste still waiting is no longer what the clipboard holds
+    }
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboardImage(png);
         return;
@@ -48,6 +92,8 @@ void ClipboardWriter::setImage(const QByteArray& png, const QString& pixelHash)
 
 void ClipboardWriter::setText(const QString& text)
 {
+    m_pendingImage.clear();
+    m_filter.ownImageDone();
     m_filter.noteOwnWrite(text);
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboard(text);
@@ -58,6 +104,8 @@ void ClipboardWriter::setText(const QString& text)
 
 void ClipboardWriter::setRich(const QString& text, const QString& html)
 {
+    m_pendingImage.clear();
+    m_filter.ownImageDone();
     m_filter.noteOwnWrite(text);
     auto* data = new QMimeData;
     data->setText(text); // for apps that take plain text only
@@ -65,8 +113,11 @@ void ClipboardWriter::setRich(const QString& text, const QString& html)
     m_clipboard->setMimeData(data, QClipboard::Clipboard);
 }
 
-ClipboardWriter::ClearResult ClipboardWriter::clearPassword()
+ClipboardWriter::ClearResult ClipboardWriter::clearPasted()
 {
+    if (!m_pendingImage.isEmpty()) {
+        return clearPastedImage();
+    }
     // A newer copy the capture has seen ends the wait (ClipFilter forgets the password then).
     if (!m_filter.ownPasswordPending()) {
         return ClearResult::NothingPending;
@@ -101,8 +152,32 @@ ClipboardWriter::ClearResult ClipboardWriter::clearPassword()
     return result;
 }
 
+ClipboardWriter::ClearResult ClipboardWriter::clearPastedImage()
+{
+    const QByteArray pasted = std::exchange(m_pendingImage, QByteArray());
+    // A newer copy the capture has seen ends the wait (ClipFilter forgets the picture then).
+    if (!m_filter.ownImagePending()) {
+        return ClearResult::NothingPending;
+    }
+    ClearResult result = ClearResult::Cleared;
+    if (m_integration && m_integration->isAvailable()) {
+        m_integration->setClipboard(QString()); // cannot be read back: the capture's check above is all there is
+    } else if (pictureHash(clipboardPicture(m_clipboard)) != pasted) {
+        result = ClearResult::Changed; // something else is there now: not ours to empty
+    } else {
+        m_clipboard->clear(QClipboard::Clipboard);
+        if (pictureHash(clipboardPicture(m_clipboard)) == pasted) {
+            result = ClearResult::Unsupported; // the system accepted the call and did nothing
+        }
+    }
+    m_filter.ownImageDone();
+    return result;
+}
+
 void ClipboardWriter::setPassword(const QString& text)
 {
+    m_pendingImage.clear();
+    m_filter.ownImageDone();
     m_filter.noteOwnPassword(text);
     m_macChangeCount = -1;
     if (m_integration && m_integration->isAvailable()) {

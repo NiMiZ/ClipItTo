@@ -172,6 +172,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_askNote(new QCheckBox(tr("After copying a password, ask for a name"), this))
     , m_unlockMinutes(new QSpinBox(this))
     , m_clearSeconds(new QSpinBox(this))
+    , m_pasteOnceClearSeconds(new QSpinBox(this))
     , m_hello(new QCheckBox(tr("Unlock with Windows Hello too"), this))
     , m_keyword(new QLineEdit(this))
     , m_masterStatus(new QLabel(this))
@@ -624,6 +625,15 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                   "the paste, but only if the clipboard still holds that password: something you "
                                   "copied meanwhile stays. Never = it stays until you copy something else."));
     passwordsForm->addRow(tr("Clear a pasted password after:"), m_clearSeconds);
+    m_pasteOnceClearSeconds->setRange(0, 60);
+    m_pasteOnceClearSeconds->setSuffix(tr(" s"));
+    m_pasteOnceClearSeconds->setSpecialValueText(tr("Never"));
+    m_pasteOnceClearSeconds->setValue(config.pasteOnceClearSeconds);
+    m_pasteOnceClearSeconds->setToolTip(tr("A copy marked Paste once is forgotten right after it is pasted from "
+                                           "ClipItTo, and taken off the clipboard this long after the paste, but only "
+                                           "if the clipboard still holds it. Never = it stays on the clipboard until "
+                                           "you copy something else."));
+    passwordsForm->addRow(tr("Clear a Paste once copy after:"), m_pasteOnceClearSeconds);
 
     // Auto-forget: copies that remove themselves. Pinned, starred, grouped and password copies are never touched.
     m_forgetPanel = new QWidget(this);
@@ -917,6 +927,7 @@ Config SettingsDialog::config() const
     c.passwordAskNote = m_askNote->isChecked();
     c.passwordUnlockMinutes = m_unlockMinutes->value();
     c.passwordClearSeconds = m_clearSeconds->value();
+    c.pasteOnceClearSeconds = m_pasteOnceClearSeconds->value();
     c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
     if (m_keyword->hasAcceptableInput()) {
         c.passwordSearchKeyword = m_keyword->text();

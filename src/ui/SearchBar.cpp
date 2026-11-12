@@ -201,7 +201,9 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
         return;
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        if (event->modifiers() & Qt::ShiftModifier) {
+        if ((event->modifiers() & ~Qt::KeypadModifier) == (Qt::ControlModifier | Qt::ShiftModifier)) {
+            emit pasteOnceRequested();
+        } else if (event->modifiers() & Qt::ShiftModifier) {
             emit pasteAsRequested();
         } else {
             emit activateRequested();

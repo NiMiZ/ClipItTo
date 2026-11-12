@@ -191,10 +191,13 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_dragHandle(new DragHandle(this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
+    , m_undoButton(new QToolButton(this))
+    , m_undoTimer(new QTimer(this))
     , m_groupPrompt(askGroup)
     , m_editPrompt(defaultEditPrompt())
     , m_textPrompt(defaultTextPrompt())
     , m_confirm(defaultConfirmPrompt())
+    , m_deletePassword(defaultDeletePasswordPrompt())
     , m_qrView(defaultQrView())
     , m_notify([](QWidget* parent, const QString& message) {
         QMessageBox::warning(parent, QStringLiteral("ClipItTo"), message);
@@ -259,6 +262,20 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_footer->setFont(scaledFont(m_footer->font(), 0.85));
     m_footer->setEnabled(false); // dim
     m_footer->setWordWrap(true); // a second line rather than a wider popup (fonts vary)
+    // Paste once: after a copy was forgotten, Undo for kUndoMs (button, or Ctrl+Shift+Z; plain Ctrl+Z belongs to the
+    // search box).
+    m_undoButton->setObjectName(QStringLiteral("undoOnceButton"));
+    m_undoButton->setText(tr("Undo"));
+    m_undoButton->setAutoRaise(true);
+    m_undoButton->setFocusPolicy(Qt::NoFocus);
+    m_undoButton->setVisible(false);
+    m_undoButton->setToolTip(platformKeys(tr("Put the copy back (Ctrl+Shift+Z)")));
+    connect(m_undoButton, &QToolButton::clicked, this, [this] { undoPasteOnce(); });
+    auto* undoShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this);
+    connect(undoShortcut, &QShortcut::activated, this, [this] { undoPasteOnce(); });
+    m_undoTimer->setSingleShot(true);
+    m_undoTimer->setInterval(kUndoMs);
+    connect(m_undoTimer, &QTimer::timeout, this, &PopupWindow::endUndo);
 
     auto* frame = new QFrame(this);
     frame->setFrameShape(QFrame::StyledPanel);
@@ -286,7 +303,11 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     inner->setSpacing(6);
     inner->addLayout(top);
     inner->addWidget(m_view, 1);
-    inner->addWidget(m_footer);
+    auto* footerRow = new QHBoxLayout;
+    footerRow->setContentsMargins(0, 0, 0, 0);
+    footerRow->addWidget(m_footer, 1);
+    footerRow->addWidget(m_undoButton);
+    inner->addLayout(footerRow);
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->addWidget(frame);
@@ -402,6 +423,14 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
         QCoreApplication::sendEvent(m_search, &copy);
     });
     connect(m_view, &HistoryView::activateRequested, this, &PopupWindow::activate);
+    connect(m_view, &HistoryView::pasteOnceRequested, this, &PopupWindow::activateOnce);
+    connect(m_search, &SearchBar::pasteOnceRequested, this, [this] {
+        if (m_controller->isPending()) {
+            m_controller->refresh();
+        }
+        const QModelIndex current = m_view->currentIndex();
+        activateOnce(entryFor(current) ? current : m_model->firstEntry(m_startFocus));
+    });
     connect(m_view, &HistoryView::pasteAsRequested, this, &PopupWindow::pasteAs);
     connect(m_search, &SearchBar::pasteAsRequested, this, [this] {
         if (m_controller->isPending()) {
@@ -495,6 +524,7 @@ void PopupWindow::showPopup(const QString& activationToken)
             m_search->clear(); // refreshes through textChanged
         }
         placeOnScreen();
+        showUndoNotice(); // a Paste once removal within the last 10 seconds can still be undone
     }
     if (!activationToken.isEmpty() && QGuiApplication::platformName() == QLatin1String("wayland")) {
         // Lets Qt's Wayland plugin activate us with the compositor-issued xdg-activation token.
@@ -654,9 +684,23 @@ PopupWindow::Selection PopupWindow::selectionOf(const QModelIndex& index) const
 
 void PopupWindow::activate(const QModelIndex& index)
 {
+    activateWith(index, false);
+}
+
+void PopupWindow::activateOnce(const QModelIndex& index)
+{
+    activateWith(index, true);
+}
+
+// `once`: Ctrl+Shift+Enter, which pastes and forgets a copy whether it is marked or not. (Enter on a marked copy
+// is the plain signal: the owner sees the mark on the entry.)
+void PopupWindow::activateWith(const QModelIndex& index, bool once)
+{
     const QModelIndex target = index.isValid() ? index : m_model->firstEntry();
     if (m_model->isExpandable(target)) {
-        m_view->toggleExpanded(target);
+        if (!once) {
+            m_view->toggleExpanded(target);
+        }
         return;
     }
     const Entry* e = entryFor(target);
@@ -664,15 +708,167 @@ void PopupWindow::activate(const QModelIndex& index)
         return; // a header or an empty group
     }
     const Entry chosen = *e; // receivers may refresh the model
-    if (chosen.secret) {
-        withPasswordsUnlocked([this, chosen] {
+    const auto paste = [this, chosen, once] {
+        if (once) {
+            emit onceActivated(chosen);
+        } else {
             emit entryActivated(chosen);
-            hidePopup();
+        }
+        hidePopup();
+    };
+    if (chosen.secret) {
+        withPasswordsUnlocked(paste);
+        return;
+    }
+    paste();
+}
+
+void PopupWindow::togglePasteOnce(qint64 id)
+{
+    try {
+        if (const auto e = m_repo.get(id)) {
+            m_repo.setPasteOnce(id, !e->pasteOnce);
+        }
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "paste once mark failed:" << err.what();
+    }
+    refreshSelecting(Selection{Kind::Entry, id, {}});
+}
+
+void PopupWindow::consumePasteOnce(qint64 id)
+{
+    std::optional<Entry> e;
+    try {
+        e = m_repo.get(id);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "paste once: reading the copy failed:" << err.what();
+        return;
+    }
+    if (!e) {
+        return;
+    }
+    if (e->pinned() || e->favorite) {
+        // Never deleted: the mark is only taken off, and the popup says so quietly.
+        try {
+            m_repo.setPasteOnce(id, false);
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "paste once: removing the mark failed:" << err.what();
+        }
+        flash(e->pinned() ? tr("Pasted. Pinned copies are not deleted: the Paste once mark was removed.")
+                          : tr("Pasted. Starred copies are not deleted: the Paste once mark was removed."));
+        refreshSelecting(std::nullopt, /*focusList=*/false);
+        return;
+    }
+    if (e->secret) {
+        // Pasted first; then the question, every time. The window that got the paste keeps the keyboard a moment.
+        QTimer::singleShot(m_onceAskDelayMs, this, [this, id, self = QPointer<PopupWindow>(this)] {
+            if (!self) {
+                return;
+            }
+            std::optional<Entry> now;
+            try {
+                now = m_repo.get(id);
+            } catch (const db::DbError&) {
+                return;
+            }
+            if (!now || !now->secret) {
+                return;
+            }
+            if (m_askingDelete) {
+                return; // one question at a time
+            }
+            m_askingDelete = true;
+            bool yes = false;
+            {
+                ModalGuard guard(m_modalDepth);
+                yes = m_deletePassword(this, now->note.isEmpty()
+                                                 ? tr("Delete this password copy?")
+                                                 : tr("Delete this password copy?\n%1").arg(now->note));
+            }
+            m_askingDelete = false;
+            if (yes) {
+                forgetPasteOnce(id);
+            } else {
+                try {
+                    m_repo.setPasteOnce(id, false); // kept: it is not one-time any more
+                } catch (const db::DbError&) {
+                }
+                refreshSelecting(std::nullopt, /*focusList=*/false);
+            }
         });
         return;
     }
-    emit entryActivated(chosen);
-    hidePopup();
+    forgetPasteOnce(id);
+}
+
+void PopupWindow::forgetPasteOnce(qint64 id)
+{
+    try {
+        std::optional<db::Repository::Removed> removed = m_repo.snapshot(id);
+        if (!removed) {
+            return;
+        }
+        if (removed->entry.image) {
+            QPixmapCache::remove(QStringLiteral("clipitto-thumb-") + removed->entry.contentHash); // see HistoryModel
+        }
+        if (!m_repo.forgetNow(id)) {
+            return;
+        }
+        m_undo = std::move(removed);
+        m_undoTimer->start();
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "paste once: forgetting the copy failed:" << err.what();
+        return;
+    }
+    qCDebug(lcPopup) << "paste once: a copy was forgotten";
+    showUndoNotice();
+    refreshSelecting(std::nullopt, /*focusList=*/false);
+}
+
+void PopupWindow::setUndoMs(int ms)
+{
+    m_undoTimer->setInterval(ms);
+}
+
+void PopupWindow::showUndoNotice()
+{
+    m_undoButton->setVisible(m_undo.has_value());
+    if (m_undo) {
+        m_footer->setText(platformKeys(tr("Pasted and forgotten. Undo: Ctrl+Shift+Z")));
+    }
+}
+
+void PopupWindow::endUndo()
+{
+    m_undoTimer->stop();
+    if (m_undo) { // the copy is gone for good: its bytes are overwritten before they are freed
+        m_undo->entry.content.fill(QLatin1Char('\0'));
+        m_undo->png.fill('\0');
+        m_undo->thumbnail.fill('\0');
+        m_undo->html.fill(QLatin1Char('\0'));
+    }
+    m_undo.reset();
+    m_undoButton->setVisible(false);
+    m_footer->setText(m_footerHint);
+}
+
+bool PopupWindow::undoPasteOnce()
+{
+    if (!m_undo) {
+        return false;
+    }
+    const db::Repository::Removed removed = *m_undo; // a copy: endUndo wipes the original
+    endUndo();
+    qint64 id = 0;
+    try {
+        id = m_repo.restore(removed); // without the once mark
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "paste once: undo failed:" << err.what();
+        return false;
+    }
+    flash(tr("Put back."));
+    refreshSelecting(Selection{Kind::Entry, id, {}}, /*focusList=*/false);
+    return true;
 }
 
 void PopupWindow::setPasswords(PasswordKeeper* keeper)
@@ -1064,6 +1260,7 @@ void PopupWindow::clearHistory(bool everything)
     if (isBusy()) {
         return;
     }
+    endUndo(); // nothing forgotten may come back after a clear
     qint64 count = 0;
     try {
         count = everything ? m_repo.count() : m_repo.countRecent();
@@ -1112,6 +1309,7 @@ void PopupWindow::remove(const QModelIndex& index, bool focusList)
     if (!e) {
         return;
     }
+    endUndo();
     const qint64 id = e->id;
     if (e->image) {
         QPixmapCache::remove(QStringLiteral("clipitto-thumb-") + e->contentHash); // see HistoryModel
@@ -1355,6 +1553,14 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     }
 
     menu->addAction(entry.note.isEmpty() ? tr("Add note…\tF2") : tr("Edit note…\tF2"), this, [this, id] { editNote(id); });
+    {
+        QAction* once = menu->addAction(platformKeys(tr("Paste once\tCtrl+Shift+Enter")), this,
+                                        [this, id] { togglePasteOnce(id); });
+        once->setCheckable(true);
+        once->setChecked(entry.pasteOnce);
+        once->setToolTip(tr("Forgotten from the history right after it is pasted from ClipItTo. "
+                            "Pinned and starred copies are kept; their mark is removed."));
+    }
     if (entry.secret) {
         menu->addSeparator();
         menu->addAction(tr("Show password"), this, [this, id] { revealPassword(id); });
@@ -1590,6 +1796,16 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
     return menu;
 }
 
+// "Paste once" (a toggle) at the end of the Shift+Enter menu (the right-click menu has it at the top level).
+void PopupWindow::addPasteOnceAction(QMenu* menu, const Entry& entry)
+{
+    const qint64 id = entry.id;
+    menu->addSeparator();
+    QAction* once = menu->addAction(tr("Paste on&ce"), this, [this, id] { togglePasteOnce(id); });
+    once->setCheckable(true);
+    once->setChecked(entry.pasteOnce);
+}
+
 // One mnemonic letter per shown item: the later of two items with the same letter loses it.
 void PopupWindow::fixMnemonics(QMenu* menu)
 {
@@ -1821,6 +2037,7 @@ void PopupWindow::pasteAs(const QModelIndex& index)
             break;
         }
     }
+    addPasteOnceAction(menu, *e);
     const QRect row = m_view->visualRect(index);
     {
         ModalGuard guard(m_modalDepth); // the menu takes the focus; the popup must not hide because of it

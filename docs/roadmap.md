@@ -145,10 +145,9 @@ Items are numbered to carry on from the list above. Ones already listed there (q
 command line, undo, clean links, sync through a folder, smart paste keys per app, `app:` filter, code highlighting) are not repeated.
 
 ### Privacy and safety
-17. **Paste once.** *Details below.* The clearing mechanism now exists (see item 18 and *Clipboard clearing* below): since the
-    password-clear work, `ClipboardWriter::clearPassword()` empties the clipboard only if it still holds our paste, per system, and
-    returns an explicit result (cleared, changed, nothing pending, unsupported). *Paste once* only has to call it, for any
-    copy rather than just password copies, with `paste_once_clear_seconds`.
+17. **DONE: Paste once** (`Ctrl+Shift+Enter`, *Paste once* in the menus, `paste_once_clear_seconds`). *Details below.* Built on the
+    clearing mechanism of the password work: `ClipboardWriter::clearPasted()` (the old `clearPassword()`) now also handles Paste once
+    text and pictures. The automatic rules (by pattern or app) are not done.
 18. **DONE: Auto-forget:** copies that expire (`auto_forget`, Settings › Passwords › *Auto-forget*). *Details below.*
 19. **Password-field copies on Windows and macOS.** Some browsers set no password-manager marker when a password is copied from a
     field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
@@ -188,6 +187,27 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
 33. **Longest GUI pause in `--status`** since the program started, so a stall report has a number.
 
 ### Paste once (17): details
+**Done (by hand; the automatic rules are still open).** Decisions made with the user:
+- The copy is *stored* like any other (migration 010, `clips.paste_once`; encrypted with the history), survives a restart, and wears a
+  small **once** tag. Marked with *Paste once* (a toggle) in the right-click and Shift+Enter menus; `Ctrl+Shift+Enter` pastes the
+  selected copy and forgets it in one go, marked or not (no existing shortcut used it; `Ctrl+Shift+Z` is the Undo).
+- Removed right *after* the paste keys were sent (`Daemon::pasteIfWanted` reports whether they went out), with the secure delete of
+  *Clear history* (`Repository::forgetNow`: `secure_delete`, index merge, WAL checkpoint). If the keys were not sent (paste on Enter off,
+  blocked, unsupported) nothing is deleted and the clipboard is left alone.
+- The clipboard is emptied `paste_once_clear_seconds` (default 2, 0 = never, 0-60, Settings › Passwords next to the password one) after
+  the paste, through the same code as pasted passwords: only if it still holds that paste (text is marked like a password and compared
+  by keyed hash; a picture by a hash of its pixels), never a newer copy, not recorded as a copy, done at quit if pending.
+- A password copy: pasted first, then *Delete this password copy?* every time (`PopupWindow::setDeletePasswordPrompt`, injectable);
+  *No* keeps it and removes the mark. Pictures: paste, then delete. Pinned and starred copies are never deleted: the mark is removed and
+  the popup says so. Grouped copies are deleted.
+- Undo for 10 seconds in the popup (button and `Ctrl+Shift+Z`): `Repository::snapshot` / `restore` put back text or picture, group,
+  note, times (a password copy as its sealed blob); the mark is not restored. The snapshot is kept in memory only for those 10 seconds.
+- Not in backups: export skips once copies, import ignores any item flagged `once`.
+- *Paste as* transforms and *With formatting* do not use up a marked copy.
+Tests: `tst_pasteonce` (repository, backup, popup, daemon), `tst_passwordclear` (writer and filter), `tst_migrator`, `tst_config`,
+`tst_settings`, `tst_gui_general`. Untested on real systems: see `docs/untested.md`.
+
+
 **What it is.** A copy marked *Paste once* is removed from the history right after it has been pasted from ClipItTo, and the
 system clipboard is cleared if it still holds it. For one-time codes, a password typed into a stranger's form, or a private
 number that should not stay anywhere.

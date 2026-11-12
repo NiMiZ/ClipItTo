@@ -116,6 +116,9 @@ bool exportTo(const QString& path, db::Repository& repo, const Config& config, P
             entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& e) { return e.secret; }),
                           entries.end());
         }
+        // Paste once copies are meant to disappear: never written to a file.
+        entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& e) { return e.pasteOnce; }),
+                      entries.end());
         const QSet<qint64> offRecent = repo.offRecentIds();
         const bool clearPasswords = passwordMode == PasswordExport::Clear;
         const bool hasPasswords = std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.secret; });
@@ -301,6 +304,9 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
 
     for (const QJsonValue& v : copies.value(QStringLiteral("items")).toArray()) {
         const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("once")).toBool()) {
+            continue; // a Paste once copy is never imported (this program writes none)
+        }
         if (o.value(QStringLiteral("kind")).toString() == QLatin1String("image")) {
             ImageClip image;
             image.png = unb64(o.value(QStringLiteral("png")));
@@ -345,6 +351,9 @@ std::optional<Report> importFrom(const QString& path, Parts parts, db::Repositor
             const PasswordVault& vault = keeper->vault();
             for (const QJsonValue& v : sealedItems) {
                 const QJsonObject o = v.toObject();
+                if (o.value(QStringLiteral("once")).toBool()) {
+                    continue; // never imported
+                }
                 const QByteArray data = unb64(o.value(QStringLiteral("data")));
                 auto plain = clear ? std::optional<QByteArray>(data) : PasswordVault::unboxWithBackupKey(key, data);
                 if (!plain) {

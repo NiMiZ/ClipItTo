@@ -145,6 +145,26 @@ private slots:
         QCOMPARE(left.colInt(0), 0); // the picture went with its row
     }
 
+    void pasteOnceMigrationAddsAFlagThatIsOffForExistingCopies()
+    {
+        Db db(QStringLiteral(":memory:"));
+        configureConnection(db);
+        const auto migrations = builtinMigrations();
+        QCOMPARE(migrations.back().version, 10);
+        std::vector<Migration> before(migrations.begin(), migrations.end() - 1);
+        migrate(db, before);
+        QCOMPARE(schemaVersion(db), 9);
+        db.exec("INSERT INTO clips(content, content_hash) VALUES ('old copy', 'h-old')");
+        migrate(db);
+        QCOMPARE(schemaVersion(db), 10);
+        Stmt flag(db, "SELECT paste_once FROM clips WHERE content = 'old copy'");
+        QVERIFY(flag.step());
+        QCOMPARE(flag.colInt(0), 0);
+        db.exec("INSERT INTO clips(content, content_hash, paste_once) VALUES ('once', 'h-once', 1)");
+        QVERIFY_EXCEPTION_THROWN(db.exec("INSERT INTO clips(content, content_hash, paste_once) VALUES ('x', 'h-x', 2)"),
+                                 DbError); // only 0 or 1
+    }
+
     void passwordsMigrationAddsSecretsAndVault()
     {
         Db db(QStringLiteral(":memory:"));
@@ -153,7 +173,7 @@ private slots:
         migrate(db, {migrations[0], migrations[1], migrations[2], migrations[3]}); // schema 4
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
         migrate(db);
-        QCOMPARE(schemaVersion(db), 9);
+        QCOMPARE(schemaVersion(db), 10);
 
         Stmt secret(db, "SELECT secret FROM clips WHERE content = 'old text'");
         QVERIFY(secret.step());

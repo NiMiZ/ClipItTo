@@ -35,7 +35,7 @@ add_library(clipitto_core STATIC
 qt_add_resources(clipitto_core "clipitto_migrations"
     PREFIX "/clipitto"
     BASE db
-    FILES db/migrations/001_init.sql db/migrations/002_groups.sql db/migrations/003_pins_and_order.sql db/migrations/004_images.sql db/migrations/005_passwords.sql db/migrations/006_recent_rules.sql db/migrations/007_picture_text.sql db/migrations/008_rich_text.sql db/migrations/009_auto_grouping.sql
+    FILES db/migrations/001_init.sql db/migrations/002_groups.sql db/migrations/003_pins_and_order.sql db/migrations/004_images.sql db/migrations/005_passwords.sql db/migrations/006_recent_rules.sql db/migrations/007_picture_text.sql db/migrations/008_rich_text.sql db/migrations/009_auto_grouping.sql db/migrations/010_paste_once.sql
 )
 
 target_include_directories(clipitto_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

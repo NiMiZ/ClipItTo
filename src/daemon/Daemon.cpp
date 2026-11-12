@@ -115,13 +115,13 @@ void Daemon::clearPastedPassword()
     // the text is logged: only what happened.)
     switch (m_writer->clearPassword()) {
     case ClipboardWriter::ClearResult::Cleared:
-        qCDebug(lcDaemon) << "pasted password taken off the clipboard";
+        qCDebug(lcDaemon) << "pasted password or Paste once copy taken off the clipboard";
         break;
     case ClipboardWriter::ClearResult::Changed:
-        qCDebug(lcDaemon) << "pasted password not cleared: the clipboard holds something else now";
+        qCDebug(lcDaemon) << "pasted password or Paste once copy not cleared: the clipboard holds something else now";
         break;
     case ClipboardWriter::ClearResult::Unsupported:
-        qCWarning(lcDaemon) << "pasted password could not be taken off the clipboard on this system";
+        qCWarning(lcDaemon) << "pasted password or Paste once copy could not be taken off the clipboard on this system";
         break;
     case ClipboardWriter::ClearResult::NothingPending:
         break;
@@ -287,6 +287,7 @@ Daemon::StartResult Daemon::start(QString* error)
     // Before the list is read: what is due is gone when the popup shows.
     connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [this] { runAutoForget(); });
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
+    connect(m_popup.get(), &ui::PopupWindow::onceActivated, this, &Daemon::onOnceActivated);
     connect(m_popup.get(), &ui::PopupWindow::textActivated, this, &Daemon::onTextActivated);
     connect(m_popup.get(), &ui::PopupWindow::richActivated, this, &Daemon::onRichActivated);
     connect(m_popup.get(), &ui::PopupWindow::textEdited, this, &Daemon::onTextEdited);
@@ -426,8 +427,21 @@ void Daemon::onPopupVisibilityChanged(bool visible)
 
 void Daemon::onEntryActivated(const Entry& entry)
 {
+    pasteEntry(entry, entry.pasteOnce); // a copy marked Paste once is forgotten after this paste
+}
+
+void Daemon::onOnceActivated(const Entry& entry)
+{
+    pasteEntry(entry, true); // Ctrl+Shift+Enter: paste and forget, marked or not
+}
+
+void Daemon::pasteEntry(const Entry& entry, bool once)
+{
     // Runs before the popup hides: without the shell integration on Wayland, setting the
     // clipboard needs our focus.
+    if (once) {
+        m_clearPassword->stop(); // a clear for an earlier paste must not take this one away; started after the paste
+    }
     if (entry.image) {
         QByteArray png;
         try {
@@ -438,7 +452,7 @@ void Daemon::onEntryActivated(const Entry& entry)
         if (png.isEmpty()) {
             return;
         }
-        m_writer->setImage(png, entry.contentHash.mid(int(qstrlen("image:"))));
+        m_writer->setImage(png, entry.contentHash.mid(int(qstrlen("image:"))), once);
     } else if (entry.secret) {
         // The popup asked for the unlock already; it may have expired just now.
         std::optional<QByteArray> plain = m_passwords ? m_passwords->reveal(entry.id) : std::nullopt;
@@ -449,9 +463,11 @@ void Daemon::onEntryActivated(const Entry& entry)
         PasswordVault::wipe(*plain);
         m_writer->setPassword(text);
         PasswordVault::wipe(text);
-        if (m_config.passwordClearSeconds > 0) {
+        if (!once && m_config.passwordClearSeconds > 0) {
             m_clearPassword->start(m_config.passwordClearSeconds * 1000);
         }
+    } else if (once) {
+        m_writer->setPassword(entry.content); // marked like a password: other managers skip it; cleared after the paste
     } else {
         m_writer->setText(entry.content);
     }
@@ -466,7 +482,32 @@ void Daemon::onEntryActivated(const Entry& entry)
         }
     }
 
-    pasteIfWanted();
+    if (!once) {
+        pasteIfWanted();
+        return;
+    }
+    // Paste once: the copy is forgotten only when the paste keys really went out, and the clipboard is emptied
+    // (if it still holds it) a few seconds after that. Otherwise the copy stays, and so does the clipboard (the
+    // user may paste by hand).
+    const qint64 id = entry.id;
+    const bool secret = entry.secret;
+    pasteIfWanted([this, id, secret](bool sent) {
+        if (!m_popup) {
+            return;
+        }
+        if (!sent) {
+            qCInfo(lcDaemon) << "paste once: the paste keys were not sent, the copy is kept";
+            m_popup->flash(tr("Paste once: the copy was kept, because the paste keys could not be sent."));
+            if (secret && m_config.passwordClearSeconds > 0) {
+                m_clearPassword->start(m_config.passwordClearSeconds * 1000); // a password never lingers
+            }
+            return;
+        }
+        if (m_config.pasteOnceClearSeconds > 0) {
+            m_clearPassword->start(m_config.pasteOnceClearSeconds * 1000);
+        }
+        m_popup->consumePasteOnce(id);
+    });
 }
 
 void Daemon::onTextEdited(qint64 id, const QString& text)
@@ -525,10 +566,10 @@ void Daemon::onRichActivated(const Entry& entry)
         qCWarning(lcDaemon) << "failed to read the formatted copy:" << e.what();
     }
     if (html.isEmpty()) {
-        onEntryActivated(entry);
+        pasteEntry(entry, false);
         return;
     }
-    m_writer->setRich(entry.content, html);
+    m_writer->setRich(entry.content, html); // a marked copy is not consumed by a paste with changes (Paste as)
     if (m_config.latestAfterPaste && !entry.isSaved()) {
         try {
             m_repo->touch(entry.id);
@@ -545,20 +586,29 @@ void Daemon::onTextActivated(const QString& text)
     pasteIfWanted();
 }
 
-void Daemon::pasteIfWanted()
+void Daemon::pasteIfWanted(std::function<void(bool sent)> done)
 {
-    if (m_config.pasteOnEnter) {
-        // Give the previously focused window time to get focus back after the popup hides.
-        QTimer::singleShot(80, this, [this] {
-            if (integrationAvailable()) {
-                m_integration->paste(m_config.pasteKeys);
-            } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(m_config.pasteKeys)
-                                                  : pasteWithSyntheticKeys(m_config.pasteKeys))) {
-                qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
-                                    "(needs the GNOME Shell extension on Wayland)";
-            }
-        });
+    if (!m_config.pasteOnEnter) {
+        if (done) {
+            done(false);
+        }
+        return;
     }
+    // Give the previously focused window time to get focus back after the popup hides.
+    QTimer::singleShot(80, this, [this, done = std::move(done)] {
+        bool sent = true;
+        if (integrationAvailable()) {
+            m_integration->paste(m_config.pasteKeys); // a call over D-Bus with no answer: taken as sent
+        } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(m_config.pasteKeys)
+                                              : pasteWithSyntheticKeys(m_config.pasteKeys))) {
+            qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
+                                "(needs the GNOME Shell extension on Wayland)";
+            sent = false;
+        }
+        if (done) {
+            done(sent);
+        }
+    });
 }
 
 // Debug lines are on by default in Qt, so the off state is set explicitly. The file is for people who cannot read a console (the

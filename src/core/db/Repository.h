@@ -159,6 +159,27 @@ public:
     // The copy with the newest last_used (the top of Recent); nullopt for an empty history.
     std::optional<qint64> newestId();
     void remove(qint64 id);
+
+    // --- Paste once (roadmap 17)
+    // Marks a copy to be forgotten after its paste, or takes the mark off. Not in a backup.
+    void setPasteOnce(qint64 id, bool once);
+    // Everything of a copy, kept in memory for the Undo of a Paste once removal (a password copy only as its sealed
+    // blob, never in clear).
+    struct Removed {
+        Entry entry;
+        bool offRecent = false;
+        QByteArray png; // a picture
+        QByteArray thumbnail;
+        QByteArray sealed; // a password copy
+        QString html; // the formatted version
+    };
+    std::optional<Removed> snapshot(qint64 id);
+    // Deletes one copy like Clear history does: pages zeroed (secure_delete), search index merged, write-ahead log
+    // folded in, so nothing of it is left in the file. False when there was no such copy.
+    bool forgetNow(qint64 id);
+    // Puts a removed copy back exactly as it was (text or picture, group, note, times), without the once mark.
+    // A copy with the same content that was made meanwhile is left as it is (its id is returned).
+    qint64 restore(const Removed& removed);
     // Deletes the history: unsaved copies (text and pictures) only, or with `everything` also
     // starred, pinned and grouped ones. Groups themselves stay. Returns the number deleted.
     qint64 clearHistory(bool everything);

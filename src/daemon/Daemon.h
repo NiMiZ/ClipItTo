@@ -144,7 +144,11 @@ private:
     void onTextActivated(const QString& text);
     void onRichActivated(const Entry& entry);
     void onTextEdited(qint64 id, const QString& text);
-    void pasteIfWanted();
+    // Types the paste keys after the popup has hidden. `done(sent)` says whether they went out (false: paste_on_enter
+    // is off, or this session cannot type them).
+    void pasteIfWanted(std::function<void(bool sent)> done = {});
+    void pasteEntry(const Entry& entry, bool once);
+    void onOnceActivated(const Entry& entry);
     void helloUnlock(std::function<void(bool)> done);
     void setWindowsHello(bool on, std::function<void(QString error)> done);
     QString cliCommand() const;

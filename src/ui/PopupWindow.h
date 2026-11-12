@@ -7,6 +7,7 @@
 #include "HistoryModel.h"
 #include "PasteAs.h"
 #include "Prompts.h"
+#include "db/Repository.h"
 
 #include <QSet>
 #include <QWidget>
@@ -83,6 +84,19 @@ public:
     void flash(const QString& message);
     void setTextPrompt(TextPrompt prompt) { m_textPrompt = std::move(prompt); }
     void setConfirmPrompt(ConfirmPrompt prompt) { m_confirm = std::move(prompt); }
+    // Paste once (roadmap 17). The owner calls this after the paste keys were sent for copy `id`: it is forgotten
+    // (secure delete) with a 10-second Undo; a pinned or starred copy is kept and only loses its mark; a password
+    // copy is deleted only after asking (setDeletePasswordPrompt), every time. Nothing is logged but counts.
+    void consumePasteOnce(qint64 id);
+    void setDeletePasswordPrompt(ConfirmPrompt prompt) { m_deletePassword = std::move(prompt); }
+    // How long after the paste the question about a password copy comes (the pasted-into window has the keys first).
+    void setOnceAskDelayMs(int ms) { m_onceAskDelayMs = ms; }
+    // Puts the copy that Paste once just forgot back (until kUndoMs have passed); false when there is none.
+    bool undoPasteOnce();
+    bool undoPending() const { return m_undo.has_value(); }
+    QToolButton* undoButton() const { return m_undoButton; }
+    static constexpr int kUndoMs = 10000;
+    void setUndoMs(int ms); // tests shorten it
     void setQrView(QrView view) { m_qrView = std::move(view); }
     void setNotify(Notify notify) { m_notify = std::move(notify); }
     // Shows a text that is not a problem (a translation, a hint): a quiet window without a warning icon or a
@@ -129,6 +143,7 @@ public:
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
     // The transforms for a text copy (Shift+Enter, and a submenu of the right-click menu).
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
+    void addPasteOnceAction(QMenu* menu, const Entry& entry); // the "Paste once" toggle at the end of a Paste as menu
     void showQrCode(qint64 id);
     static void fixMnemonics(QMenu* menu);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
@@ -187,6 +202,9 @@ signals:
     void richActivated(const clipitto::Entry& entry);
     // Ctrl+E saved a new text for this copy (its place and time are unchanged).
     void textEdited(qint64 id, const QString& text);
+    // Ctrl+Shift+Enter (or the menu's paste once): paste this copy and forget it, marked or not. The owner pastes it,
+    // then calls consumePasteOnce when the paste keys went out.
+    void onceActivated(const clipitto::Entry& entry);
     void aboutToShow(); // before the popup takes focus (the previous window still has it)
     void closedAt(QPoint topLeft); // where it was when it hid (for popup_position = last)
     void visibilityChanged(bool visible);
@@ -214,6 +232,13 @@ private:
     const Entry* entryFor(const QModelIndex& index) const;
     Selection selectionOf(const QModelIndex& index) const;
     void activate(const QModelIndex& index);
+    void activateOnce(const QModelIndex& index); // Ctrl+Shift+Enter
+    void activateWith(const QModelIndex& index, bool once);
+    void togglePasteOnce(qint64 id);
+
+    void forgetPasteOnce(qint64 id);
+    void showUndoNotice();
+    void endUndo();
     void openGroups();
     void toggleFavorite(qint64 id);
     void togglePin(qint64 id);
@@ -246,12 +271,18 @@ private:
     QWidget* m_dragHandle; // the app name: drag it to move the popup
     HistoryView* m_view;
     QLabel* m_footer;
+    QToolButton* m_undoButton; // "Undo" after a Paste once removal, for kUndoMs
+    QTimer* m_undoTimer;
+    std::optional<db::Repository::Removed> m_undo;
+    int m_onceAskDelayMs = 250;
+    bool m_askingDelete = false;
     Prompt m_groupPrompt;
     EditPrompt m_editPrompt;
     qint64 m_maxItemBytes = 1024 * 1024;
     QString m_footerHint;
     TextPrompt m_textPrompt;
     ConfirmPrompt m_confirm;
+    ConfirmPrompt m_deletePassword; // "Delete this password copy?" after a Paste once of a password copy
     QrView m_qrView;
     Notify m_notify;
     TextViewer m_viewText;
