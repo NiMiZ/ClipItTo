@@ -100,6 +100,7 @@ function(clipitto_add_perf_test name)
 endfunction()
 clipitto_add_perf_test(tst_perf_watchdog)
 clipitto_add_perf_test(tst_perf_translate clipitto_daemon_lib clipitto_ui clipitto_translate Qt6::Concurrent)
+clipitto_add_perf_test(tst_perf_popup clipitto_ui)
 
 # D-Bus integration (Linux): daemon in-process + the real CLI binary, on a private session bus.
 if(CLIPITTO_DBUS)
