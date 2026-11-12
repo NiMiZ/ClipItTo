@@ -21,6 +21,13 @@ a move of an `auto_filed` copy is a correction (weight 3, old group -3). `Captur
 worker (QtConcurrent) and `Repository::setAutoGroup` files it (unsaved, existing group, never creates one) -> signal
 `autoFiled`. Never for secrets/pictures. Seeds once from copies already in groups (`meta.auto_seeded`; Forget sets it).
 
+## Auto-forget (`AutoForget.{h,cpp}`, roadmap 18, `auto_forget`, none by default)
+Rules as strings (`age 30d [text|picture]`, `match 5m contains "x"`, `match 5m token|key|card|secret`), max 8.
+`autoforget::Pruner` (owned by `Daemon`) runs at start, every `autoForgetIntervalMs` (60 s), on popup `aboutToShow`
+and on rule change: `Repository::forget` deletes age cuts + matched ids, at most 100 per run (`hasMore()` -> rerun
+in 100 ms), scrub (FTS optimize + WAL checkpoint) when done. Only `is_saved=0 AND secret=0`; pattern scan reads at most
+500 copies/4 MiB per run, remembers non-matches by (id, hash). Silent; debug log count only. By app needs roadmap 21.
+
 ## Groups and stars
 Path syntax `Work/Servers` (missing groups created, `GroupPath`). Groups ordered manually (Alt+Up/Down,
 new ones last). Star = Favorites (limit `favorites_limit`, 1-20) when ungrouped; in a group up to 10, listed
