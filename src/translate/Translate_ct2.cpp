@@ -57,6 +57,7 @@ int translationThreads()
 
 struct Loaded {
     QString packId;
+    qint64 stamp = 0; // size and time of model.bin: a pack installed again (a newer model) under the same id is loaded again
     std::unique_ptr<sentencepiece::SentencePieceProcessor> sp;
     std::unique_ptr<ctranslate2::Translator> translator;
 };
@@ -65,7 +66,9 @@ Loaded g_loaded;
 
 bool load(const Pack& pack, QString* error)
 {
-    if (g_loaded.packId == pack.id && g_loaded.translator) {
+    const QFileInfo modelFile(pack.path + QStringLiteral("/model/model.bin"));
+    const qint64 stamp = modelFile.size() ^ modelFile.lastModified().toMSecsSinceEpoch();
+    if (g_loaded.packId == pack.id && g_loaded.stamp == stamp && g_loaded.translator) {
         return true;
     }
     g_loaded = {};
@@ -92,6 +95,7 @@ bool load(const Pack& pack, QString* error)
     }
     g_loaded.sp = std::move(sp);
     g_loaded.packId = pack.id;
+    g_loaded.stamp = stamp;
     return true;
 }
 
