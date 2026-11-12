@@ -181,6 +181,7 @@ private:
     bool m_passwordNoticeShown = false; // "set a master password", once per session
     QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
     void clearPastedPassword(); // now, if it is still pending and still on the clipboard
+    QTimer* m_forgetMore = nullptr; // the next step of a backlog, one at a time
     QTimer* m_forgetTimer = nullptr; // runs the auto_forget rules once a minute
     std::unique_ptr<autoforget::Pruner> m_forgetter;
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile

@@ -236,7 +236,7 @@ use. **By app** waits for item 21 (the source app is stored for password copies 
 `tst_autoforget`, `tst_daemon`, `tst_settings`, `tst_config`, `tst_perf_data`.
 
 **Clipboard clearing (done for pasted passwords).** `password_clear_seconds` (default 2, 0 = off, 0-60) empties the clipboard that
-long after a password paste, only if the clipboard still holds it: Windows and X11/Wayland (Qt) check that we still own it and that
+long after a password paste, only if the clipboard still holds it: Windows and X11/Wayland (Qt) read it back and clear only if
 it still holds the password (compared by hash), macOS compares the pasteboard's change count, and through the GNOME extension (which
 cannot be read back) a newer copy seen by the capture is the only check. A pending clear also runs when the program quits. The
 clear is never recorded as a copy. Not done: `wl-copy --clear` for the wl-paste backend (the repo has no `wl-copy` channel; writes

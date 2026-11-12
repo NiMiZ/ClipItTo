@@ -264,6 +264,7 @@ public:
 private:
     QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
+    bool m_scrubOwed = false; // forget() deleted in steps: the last one merges the index and folds the log
     bool checkpoint(); // WAL folded in and truncated; false if a reader kept it busy
     void scrub(); // after removing text: search index merged, WAL folded in
     void loadImageDetails(Entry& entry);

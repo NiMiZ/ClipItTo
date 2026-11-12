@@ -35,7 +35,7 @@ public:
     };
     // A pasted password's time is up: empties the clipboard, but only if it still holds that very paste. Never
     // clears something newer. Per system: macOS compares the pasteboard's change count; Windows and X11/Wayland
-    // (Qt) need that we still own the clipboard and that it still holds the password (compared by hash); through
+    // (Qt) read the clipboard back and clear it only if it still holds the password (compared by hash); through
     // the GNOME extension (which cannot be read back) a newer copy seen by the capture is the only check.
     // The clearing itself is not recorded: an empty clipboard is never a copy.
     ClearResult clearPassword();

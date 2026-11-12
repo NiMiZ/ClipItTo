@@ -1414,7 +1414,11 @@ qint64 Repository::forget(const std::vector<std::pair<QDateTime, ForgetKind>>& c
     if (more) {
         *more = limited;
     }
-    if (deleted > 0 && !limited) {
+    if (deleted > 0) {
+        m_scrubOwed = true;
+    }
+    if (m_scrubOwed && !limited) {
+        m_scrubOwed = false;
         scrub(); // freed pages were zeroed (secure_delete); the index and the log may still hold the text
     }
     return deleted;

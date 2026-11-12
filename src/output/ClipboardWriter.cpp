@@ -85,12 +85,9 @@ ClipboardWriter::ClearResult ClipboardWriter::clearPassword()
     } else {
         // Ownership first (X11, Wayland, Windows say whether the clipboard is still ours), then the content: a
         // copy of ours that someone replaced with another text, a picture or files is not ours to empty.
-        const QString platform = QGuiApplication::platformName();
-        const bool ownershipKnown = platform == QLatin1String("windows") || platform == QLatin1String("xcb")
-            || platform.startsWith(QLatin1String("wayland"));
-        if (ownershipKnown && !m_clipboard->ownsClipboard()) {
-            result = ClearResult::Changed;
-        } else if (!m_filter.isOwnPassword(m_clipboard->text(QClipboard::Clipboard))) {
+        // (The content is the test, not ownership alone: a clipboard manager that took over and serves the same
+        // password still gets emptied, and Qt platforms that cannot report ownership work the same way.)
+        if (!m_filter.isOwnPassword(m_clipboard->text(QClipboard::Clipboard))) {
             result = ClearResult::Changed;
         } else {
             m_clipboard->clear(QClipboard::Clipboard);

@@ -81,6 +81,9 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     m_clearPassword = new QTimer(this);
     m_clearPassword->setSingleShot(true);
     connect(m_clearPassword, &QTimer::timeout, this, &Daemon::clearPastedPassword);
+    m_forgetMore = new QTimer(this);
+    m_forgetMore->setSingleShot(true);
+    connect(m_forgetMore, &QTimer::timeout, this, [this] { runAutoForget(); });
     m_forgetTimer = new QTimer(this);
     m_forgetTimer->setInterval(m_options.autoForgetIntervalMs);
     connect(m_forgetTimer, &QTimer::timeout, this, [this] { runAutoForget(); });
@@ -137,7 +140,9 @@ qint64 Daemon::runAutoForget()
         const qint64 removed = m_forgetter->run();
         if (m_forgetter->hasMore()) {
             // A big backlog (a new rule on a long history) goes on in small steps, so the window never freezes.
-            QTimer::singleShot(100, this, [this] { runAutoForget(); });
+            if (!m_forgetMore->isActive()) {
+                m_forgetMore->start(100);
+            }
         }
         if (removed > 0) {
             qCDebug(lcDaemon) << "auto-forget removed" << removed << "copies"; // a count, never contents
