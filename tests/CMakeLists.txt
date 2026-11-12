@@ -90,6 +90,21 @@ clipitto_set_warnings(bench_encryption)
 add_test(NAME bench_encryption COMMAND bench_encryption CONFIGURATIONS bench)
 set_tests_properties(bench_encryption PROPERTIES LABELS bench)
 
+# --- Performance and stalling (label `perf`: ctest -L perf). Event-loop watchdog in StallWatchdog.h. ---
+function(clipitto_add_perf_test name)
+    add_executable(${name} ${name}.cpp StallWatchdog.h TestDb.h)
+    target_link_libraries(${name} PRIVATE clipitto_core Qt6::Test ${ARGN})
+    clipitto_set_warnings(${name})
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS perf TIMEOUT 180)
+endfunction()
+clipitto_add_perf_test(tst_perf_watchdog)
+clipitto_add_perf_test(tst_perf_translate clipitto_daemon_lib clipitto_ui clipitto_translate Qt6::Concurrent)
+clipitto_add_perf_test(tst_perf_popup clipitto_ui)
+clipitto_add_perf_test(tst_perf_capture clipitto_daemon_lib clipitto_ui clipitto_capture)
+clipitto_add_perf_test(tst_perf_data clipitto_daemon_lib clipitto_ui)
+clipitto_add_perf_test(tst_perf_system clipitto_daemon_lib clipitto_ui)
+
 # D-Bus integration (Linux): daemon in-process + the real CLI binary, on a private session bus.
 if(CLIPITTO_DBUS)
     add_executable(tst_dbus tst_dbus.cpp)

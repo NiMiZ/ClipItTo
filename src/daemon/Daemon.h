@@ -8,6 +8,7 @@
 #include "KeyStore.h"
 #include "PasswordKeeper.h"
 #include "SessionEnv.h"
+#include "Translate.h"
 #include "Translation.h"
 
 #include <QObject>
@@ -36,7 +37,17 @@ class Db;
 class Repository;
 } // namespace db
 
+// Tests: stand-ins for the language packs and the translation engine, so that the real worker plumbing (the pool, the
+// guard, the answer back on the GUI thread) can run in a build without the engine.
+struct FakeTranslation {
+    QList<translate::Pack> packs;
+    std::function<std::optional<QString>(const translate::Pack&, const QString& text, QString* error,
+                                         const std::atomic<bool>& cancelled)>
+        engine;
+};
+
 struct DaemonOptions {
+    std::shared_ptr<FakeTranslation> fakeTranslation; // null: the real packs and engine
     QString configPath;
     QString databasePath;
     SessionEnv session;

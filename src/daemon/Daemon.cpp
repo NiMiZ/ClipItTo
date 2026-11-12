@@ -2,6 +2,8 @@
 
 #include "DebugLog.h"
 
+#include <algorithm>
+
 #include "CapturePipeline.h"
 #include "GnomeShortcut.h"
 #include "Hotkey.h"
@@ -868,32 +870,41 @@ void runOn(QThreadPool* pool, QObject* context, std::function<Result()> work, st
 ui::TranslationSupport Daemon::translationSupport()
 {
     ui::TranslationSupport support;
-    support.builtIn = translate::builtIn();
+    const std::shared_ptr<FakeTranslation> fake = m_options.fakeTranslation;
+    support.builtIn = fake ? true : translate::builtIn();
     if (!support.builtIn) {
         return support;
     }
     const auto info = [](const translate::Pack& p) { return ui::TranslationPackInfo{p.id, p.label()}; };
-    support.packsFor = [info](const QString& text) {
+    const auto installed = [fake] { return fake ? fake->packs : translate::PackStore().installed(); };
+    support.packsFor = [info, installed](const QString& text) {
         QList<ui::TranslationPackInfo> out;
-        for (const translate::Pack& pack : translate::PackStore().installed()) {
+        for (const translate::Pack& pack : installed()) {
             if (text.isEmpty() || translate::fits(pack, text)) {
                 out.push_back(info(pack));
             }
         }
         return out;
     };
-    support.fits = [](const QString& packId, const QString& text) {
-        for (const translate::Pack& pack : translate::PackStore().installed()) {
+    support.fits = [installed](const QString& packId, const QString& text) {
+        for (const translate::Pack& pack : installed()) {
             if (pack.id == packId) {
                 return translate::fits(pack, text);
             }
         }
         return false;
     };
-    support.translate = [this](const QString& packId, const QString& text,
-                               std::function<void(const QString&, const QString&)> done) {
+    support.translate = [this, fake, installed](const QString& packId, const QString& text,
+                                                std::function<void(const QString&, const QString&)> done) {
+        // Answered at once, on this thread: a text this long can never finish inside the timeout, and its run
+        // would keep every later translation waiting (see kMaxTranslateChars).
+        if (text.size() > translate::kMaxTranslateChars) {
+            done(QString(), tr("The text is too long to translate (more than %1 characters). Select a shorter part.")
+                                .arg(translate::kMaxTranslateChars));
+            return;
+        }
         std::optional<translate::Pack> chosen;
-        for (const translate::Pack& pack : translate::PackStore().installed()) {
+        for (const translate::Pack& pack : installed()) {
             if (pack.id == packId) {
                 chosen = pack;
             }
@@ -904,9 +915,16 @@ ui::TranslationSupport Daemon::translationSupport()
         }
         runOn<std::pair<QString, QString>>(
             &m_translatePool, this,
-            [pack = *chosen, text, seconds = m_config.translateTimeout] {
+            [pack = *chosen, text, fake, seconds = m_config.translateTimeout] {
                 QString error;
-                const std::optional<QString> out = translate::translate(pack, text, &error, seconds);
+                std::optional<QString> out;
+                if (fake && fake->engine) {
+                    out = translate::runGuarded(
+                        [fake, pack, text](QString* err, const std::atomic<bool>& cancelled) { return fake->engine(pack, text, err, cancelled); },
+                        &error, std::clamp(seconds, 1, 10) * 1000);
+                } else {
+                    out = translate::translate(pack, text, &error, seconds);
+                }
                 if (!out) {
                     return std::pair<QString, QString>(QString(), error.isEmpty() ? QStringLiteral("Translation failed.") : error);
                 }

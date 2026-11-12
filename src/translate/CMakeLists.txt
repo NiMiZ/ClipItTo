@@ -3,7 +3,7 @@
 # (Translate_none.cpp) and the rest of ClipItTo is unchanged.
 add_library(clipitto_translate STATIC
     Translate.h
-    TextSplit.cpp PackStore.cpp ZipReader.cpp ZipReader.h
+    TextSplit.cpp Guard.cpp PackStore.cpp ZipReader.cpp ZipReader.h
 )
 
 set(CLIPITTO_TRANSLATE_PREFIX "" CACHE PATH "Prefix holding CTranslate2 and SentencePiece (scripts/build-translation-libs.*)")
