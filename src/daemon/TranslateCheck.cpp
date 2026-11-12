@@ -108,6 +108,9 @@ int runCommand(const QString& listFile, const QString& packId, const QString& ou
         std::fprintf(stderr, "cannot write %s\n", qPrintable(outFile));
         return 2;
     }
+    if (!outFile.isEmpty()) {
+        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner); // the report holds the user's words
+    }
     run(*words, packId, [&file, &outFile](const QString& line) {
         if (outFile.isEmpty()) {
             std::fprintf(stdout, "%s\n", line.toUtf8().constData());

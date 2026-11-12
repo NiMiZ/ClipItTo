@@ -661,14 +661,14 @@ private slots:
         namespace tc = clipitto::translatecheck;
         tc::Engine e;
         e.packs = [] { return QList<tr::Pack>{pack(QStringLiteral("he"), QStringLiteral("Hebrew")), pack(QStringLiteral("zh"), QStringLiteral("Chinese"))}; };
-        e.slowMs = 30;
+        e.slowMs = 50;
         e.translate = [](const tr::Pack& p, const QString& text, QString* err) -> std::optional<QString> {
             if (text == QString::fromUtf8("悪い")) {
                 *err = QStringLiteral("boom");
                 return std::nullopt;
             }
             if (text == hebrew("איטי")) { // slow
-                QThread::msleep(80);
+                QThread::msleep(250);
             }
             if (text == hebrew("כמו שהיה")) {
                 return text;
