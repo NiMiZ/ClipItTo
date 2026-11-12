@@ -87,6 +87,21 @@ public:
         return max <= m_budgetMs;
     }
 
+    static constexpr bool sanitizerBuild()
+    {
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+        return true;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+        return true;
+#else
+        return false;
+#endif
+#else
+        return false;
+#endif
+    }
+
     // `baseMs` after the environment's scaling: for a test that has its own limit (a wall-clock limit, say).
     static int scaled(int baseMs)
     {
@@ -95,6 +110,9 @@ public:
             factor = 5.0;
         } else if (qEnvironmentVariable("CLIPITTO_PERF_STRICT") == QLatin1String("1")) {
             factor = 0.5;
+        }
+        if (sanitizerBuild()) {
+            factor *= 3.0; // an AddressSanitizer / ThreadSanitizer build runs several times slower
         }
         return std::max(1, static_cast<int>(baseMs * factor));
     }

@@ -101,7 +101,9 @@ private slots:
         const qint64 max = wd.finish();
         perf::note("slow keyring (700 ms/call): longest stall (ms)", QString::number(max));
         wd.report("keyring: set master password, 700 ms keyring");
-        QEXPECT_FAIL("", "keyring calls run on the GUI thread (PasswordKeeper::matchKey)", Continue);
+        if (max > wd.budgetMs()) { // a known stall; with a bigger budget (sanitizer) it may fit, which is fine
+            QEXPECT_FAIL("", "keyring calls run on the GUI thread (PasswordKeeper::matchKey)", Continue);
+        }
         QVERIFY(max <= wd.budgetMs());
     }
 
