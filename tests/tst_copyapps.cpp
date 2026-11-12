@@ -489,15 +489,14 @@ private slots:
 
     void crlfAndLfCopiesAreOneEntry()
     {
-        // The Windows and macOS readers turn CRLF into LF before this point; through Qt on Linux (and wl-paste) the
-        // text is kept as the app sent it, so the two are separate entries today (an optional item on the roadmap).
+        // The same text with Windows and Unix line ends is one entry, stored with LF (as on Windows and macOS).
         Rig rig;
         clip()->setText(QStringLiteral("line one\r\nline two"));
         QTRY_COMPARE(rig.stored.size(), 1);
         clip()->setText(QStringLiteral("line one\nline two"));
-        QTRY_COMPARE(rig.stored.size(), 2);
-        QEXPECT_FAIL("", "CRLF is not normalised when deduplicating (docs/roadmap.md, optional)", Continue);
-        QCOMPARE(rig.db.repo->count(), 1);
+        QTRY_COMPARE(rig.stored.size(), 2); // both were captured ...
+        QCOMPARE(rig.db.repo->count(), 1); // ... but they are one entry
+        QCOMPARE(rig.newest().content, QStringLiteral("line one\nline two"));
     }
 
     // ---- Our own paste-back ----

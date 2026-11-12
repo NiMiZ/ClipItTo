@@ -18,7 +18,6 @@ the real clipboard where it can. These need a person at the machine. Tick them o
 | Copies from real apps (formats) | CI simulates the data each app puts on the clipboard. Check with the real apps: Word and Excel on Windows (the real *HTML Format* offsets, CF_HDROP, a password manager's `ExcludeClipboardContentFromMonitorProcessing`), Chrome and Firefox (HTML with `<meta charset>`), Explorer files, a screenshot (Win+Shift+S), a browser *Copy image* | Windows |
 | Copies from real apps (macOS) | Finder file copy (file URLs), 1Password and KeePassXC (`org.nspasteboard.ConcealedType`), Pages / browsers with formatting (`public.html`), Terminal | a Mac |
 | Copies from real apps (Linux) | Nautilus `x-special/gnome-copied-files`, KeePassXC and Bitwarden (`x-kde-passwordManagerHint`), LibreOffice and Firefox HTML through `wl-paste` on KDE / wlroots, VS Code (`vscode-editor-data`) | X11, Wayland |
-| CRLF vs LF | the same text copied with Windows and Unix line breaks on Linux is two entries today (optional item in the roadmap); on Windows and macOS the readers make it one | Windows, Linux |
 | Wayland drag fix | dragging the popup by its name (issue #3) | Wayland |
 
 Known to work on real machines: paste and Hebrew input on Linux (issue #3), the Windows installer on a
