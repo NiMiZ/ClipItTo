@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Force "$smoke\data", "$smoke\roaming" | Out-Null
 $savedAppData = $env:APPDATA
 $env:CLIPITTO_DATA_DIR = "$smoke\data"
 $env:APPDATA = "$smoke\roaming"
-$env:QT_QPA_PLATFORM = 'offscreen'
+# Not 'offscreen': windeployqt stages only the windows platform plugin, so an offscreen daemon cannot start.
 $env:CLIPITTO_SERVER_NAME = 'clipitto-release'
 $daemon = Start-Process "$stage\bin\clipitto-daemon.exe" -PassThru
 Start-Sleep -Seconds 3
@@ -33,7 +33,7 @@ $status
 & "$stage\bin\clipitto.exe" --quit
 if (-not $daemon.WaitForExit(10000)) { $daemon.Kill(); throw 'the daemon did not quit' }
 if (-not ($status -match '^items: 1$')) { throw "unexpected status: $status" }
-Remove-Item Env:QT_QPA_PLATFORM, Env:CLIPITTO_SERVER_NAME, Env:CLIPITTO_DATA_DIR
+Remove-Item Env:CLIPITTO_SERVER_NAME, Env:CLIPITTO_DATA_DIR
 $env:APPDATA = $savedAppData
 Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
 
