@@ -76,7 +76,7 @@ ClipboardWriter::ClearResult ClipboardWriter::clearPassword()
     if (m_macChangeCount >= 0) {
         result = clearPasteboardIfUnchanged(m_macChangeCount) ? ClearResult::Cleared : ClearResult::Changed;
         m_macChangeCount = -1;
-        m_filter.forgetOwnPassword();
+        m_filter.ownPasswordDone();
         return result;
     }
 #endif
@@ -100,7 +100,7 @@ ClipboardWriter::ClearResult ClipboardWriter::clearPassword()
             }
         }
     }
-    m_filter.forgetOwnPassword();
+    m_filter.ownPasswordDone();
     return result;
 }
 

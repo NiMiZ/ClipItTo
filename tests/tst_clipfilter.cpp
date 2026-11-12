@@ -102,6 +102,30 @@ private slots:
         QVERIFY(f.check(QStringLiteral("hunter2"), {}) == Verdict::Accept); // copied again, later: a copy
     }
 
+    void aClearedPasswordIsNotPendingButItsLateEchoIsStillOurs()
+    {
+        qint64 now = 1000;
+        ClipFilter f(1024, [&now] { return now; });
+        QVERIFY(!f.ownPasswordPending());
+        f.noteOwnPassword(QStringLiteral("hunter2"));
+        QVERIFY(f.ownPasswordPending());
+        QVERIFY(f.isOwnPassword(QStringLiteral("hunter2")));
+        QVERIFY(!f.isOwnPassword(QStringLiteral("hunter3")));
+        f.ownPasswordDone(); // taken off the clipboard
+        QVERIFY(!f.ownPasswordPending());
+        now += 10 * ClipFilter::ownWriteWindowMs;
+        // A late report of the paste must not store the password after it was cleared.
+        QVERIFY(f.check(QStringLiteral("hunter2"), {}) == Verdict::OwnWrite);
+        // The empty clipboard that clearing leaves is not a copy and does not end anything.
+        QVERIFY(f.check(QString(), {}) == Verdict::Empty);
+        QVERIFY(f.check(QStringLiteral("hunter2"), {}) == Verdict::OwnWrite);
+        QVERIFY(f.check(QStringLiteral("something else"), {}) == Verdict::Accept);
+        QVERIFY(!f.ownPasswordPending());
+        // Pasting a password again makes it pending again.
+        f.noteOwnPassword(QStringLiteral("hunter2"));
+        QVERIFY(f.ownPasswordPending());
+    }
+
     void ownPastedPasswordIsAnEchoNotASecret()
     {
         ClipFilter f(1024);
