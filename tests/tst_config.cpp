@@ -310,6 +310,40 @@ private slots:
         QVERIFY(c.toToml().find("backend = \"qt-clipboard\"") != std::string::npos);
     }
 
+    void savingUnchangedSettingsLeavesTheFileAsItIs()
+    {
+        // OK in Settings with nothing touched must not append the keys the user never set, nor rewrite values.
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("config.toml"));
+        const QByteArray text = "# mine\r\ntheme = \"dark\"  # dark\r\nfuture_key = 1\r\n";
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(text);
+        f.close();
+        QVERIFY(Config::load(path).save(path));
+        QFile again(path);
+        QVERIFY(again.open(QIODevice::ReadOnly));
+        QCOMPARE(again.readAll(), text);
+        again.close();
+
+        // A changed value still is saved (and the missing keys are appended as before).
+        Config changed = Config::load(path);
+        changed.recentCount = 33;
+        QVERIFY(changed.save(path));
+        QVERIFY(Config::load(path).recentCount == 33);
+
+        // A wrong value is repaired by a save, not kept.
+        QFile bad(path);
+        QVERIFY(bad.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        bad.write("recent_count = 99999\n");
+        bad.close();
+        QVERIFY(Config::load(path).save(path));
+        QFile fixed(path);
+        QVERIFY(fixed.open(QIODevice::ReadOnly));
+        QVERIFY(fixed.readAll().contains("recent_count = 20"));
+        fixed.close();
+    }
+
     void saveKeepsTheUsersFile()
     {
         QTemporaryDir dir;
