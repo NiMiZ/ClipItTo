@@ -225,6 +225,7 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"detect_secrets", [](SettingsDialog& d) { toggle(d.detectSecretsBox()); }},
         {"detect_passwords", [](SettingsDialog& d) { toggle(d.detectPasswordsBox()); }},
         {"password_rules", [](SettingsDialog& d) { d.addRuleButton()->click(); }},
+        {"auto_forget", [](SettingsDialog& d) { d.addForgetButton()->click(); }},
         {"passwords_per_note", [](SettingsDialog& d) { toggle(d.passwordsPerNoteBox()); }},
         {"password_ask_note", [](SettingsDialog& d) { toggle(d.askNoteBox()); }},
         {"password_unlock_minutes", [](SettingsDialog& d) { d.unlockMinutesBox()->setValue(17); }},
@@ -381,7 +382,7 @@ private slots:
             {"detect_secrets", "true"},   {"detect_passwords", "false"}, {"auto_group", "false"},
             {"debug_log", "false"},       {"translate_timeout", "5"},    {"capture_primary", "false"},
             {"index_pictures", "true"},   {"keep_passwords", "true"},    {"password_unlock_minutes", "5"},
-            {"password_clear_seconds", "30"}, {"password_search_keyword", "\"p[]\""}, {"backend", "\"auto\""},
+            {"password_clear_seconds", "2"}, {"password_search_keyword", "\"p[]\""}, {"backend", "\"auto\""},
         };
         for (const auto& [key, expected] : rows) {
             QTest::newRow(key) << QString::fromLatin1(key) << QString::fromLatin1(expected);

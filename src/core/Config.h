@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AutoForget.h"
 #include "PasswordRules.h"
 
 #include <QList>
@@ -73,7 +74,8 @@ struct Config {
     bool passwordsPerNote = true; // the same password under another note is another copy
     bool passwordAskNote = true; // after copying a new password, open ClipItTo to name it
     int passwordUnlockMinutes = 5; // an unlock lasts this long
-    int passwordClearSeconds = 30; // a pasted password leaves the clipboard after this; 0 = stays
+    int passwordClearSeconds = 2; // a pasted password leaves the clipboard this long after the paste (0..60); 0 = stays
+    QList<AutoForgetRule> autoForget; // rules (up to 8) for copies that remove themselves; none = nothing is removed
     bool windowsHello = false; // Windows: unlock with Windows Hello too
     QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
 

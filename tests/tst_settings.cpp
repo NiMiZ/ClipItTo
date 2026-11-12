@@ -715,7 +715,7 @@ private slots:
         d.keepPasswordsBox()->setChecked(false);
         d.passwordsInGroupBox()->setChecked(true);
         d.unlockMinutesBox()->setValue(30);
-        QCOMPARE(d.clearSecondsBox()->value(), 30);
+        QCOMPARE(d.clearSecondsBox()->value(), 2);
         d.clearSecondsBox()->setValue(0);
         d.keywordEdit()->setText(QStringLiteral("pw:"));
         Config c = d.config();
@@ -727,6 +727,93 @@ private slots:
         QVERIFY(!c.windowsHello);
         d.keywordEdit()->setText(QString()); // not acceptable: the keyword stays
         QCOMPARE(d.config().passwordSearchKeyword, QStringLiteral("p[]"));
+    }
+
+    void autoForgetEditorAddsEditsAndRemovesRules()
+    {
+        using clipitto::AutoForgetRule;
+        TestDb t;
+        // Rules from the config show up as rows, in order, with the right controls.
+        Config start;
+        AutoForgetRule bearer;
+        bearer.type = AutoForgetRule::Type::Contains;
+        bearer.amount = 5;
+        bearer.text = QStringLiteral("Bearer ");
+        AutoForgetRule age;
+        age.amount = 90;
+        age.scope = AutoForgetRule::Scope::Picture;
+        start.autoForget = {age, bearer};
+        {
+            SettingsDialog d(start, *t.repo, {});
+            QCOMPARE(d.forgetRowCount(), 2);
+            QVERIFY(d.config().autoForget == start.autoForget); // untouched: the same on the way out
+            QVERIFY(!d.forgetScopeBox(0)->isHidden() && d.forgetTextEdit(0)->isHidden() && d.forgetSecretBox(0)->isHidden());
+            QVERIFY(d.forgetScopeBox(1)->isHidden() && !d.forgetTextEdit(1)->isHidden() && d.forgetSecretBox(1)->isHidden());
+            QCOMPARE(d.forgetTextEdit(1)->text(), QStringLiteral("Bearer "));
+        }
+
+        SettingsDialog d(Config{}, *t.repo, {});
+        QCOMPARE(d.forgetRowCount(), 0); // none by default: nothing is forgotten
+        QVERIFY(d.config().autoForget.isEmpty());
+        QVERIFY(d.forgetErrorLabel()->isHidden());
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+
+        d.addForgetButton()->click();
+        QCOMPARE(d.forgetRowCount(), 1);
+        QCOMPARE(d.config().autoForget.size(), 1); // a new row is a valid age rule (30 days)
+        QCOMPARE(d.config().autoForget.front().amount, 30);
+        d.forgetAmountBox(0)->setValue(7);
+        d.forgetScopeBox(0)->setCurrentIndex(d.forgetScopeBox(0)->findData(int(AutoForgetRule::Scope::Text)));
+        QCOMPARE(clipitto::autoforget::format(d.config().autoForget.front()), QStringLiteral("age 7d text"));
+
+        // Switch it to a text rule: it starts invalid (no text), so OK waits and the rule is not saved.
+        d.forgetTypeBox(0)->setCurrentIndex(d.forgetTypeBox(0)->findData(int(AutoForgetRule::Type::Contains)));
+        QVERIFY(d.forgetTextEdit(0)->isEnabled() && !d.forgetTextEdit(0)->isHidden() && d.forgetScopeBox(0)->isHidden());
+        QVERIFY(!d.forgetErrorLabel()->isHidden());
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        QVERIFY(d.config().autoForget.isEmpty());
+        d.forgetTextEdit(0)->setText(QStringLiteral("ab")); // too short
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.forgetTextEdit(0)->setText(QStringLiteral("a\"b")); // a quote can't be written in the file's form
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.forgetTextEdit(0)->setText(QStringLiteral("Bearer "));
+        QVERIFY(d.forgetErrorLabel()->isHidden());
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.forgetAmountBox(0)->setValue(10);
+        QCOMPARE(clipitto::autoforget::format(d.config().autoForget.front()), QStringLiteral("match 10m contains \"Bearer \""));
+
+        // A secret rule; minutes go up to a week while days go up to ten years (the box follows the kind).
+        d.forgetTypeBox(0)->setCurrentIndex(d.forgetTypeBox(0)->findData(int(AutoForgetRule::Type::Secret)));
+        d.forgetSecretBox(0)->setCurrentIndex(d.forgetSecretBox(0)->findData(int(AutoForgetRule::SecretKind::Card)));
+        QCOMPARE(clipitto::autoforget::format(d.config().autoForget.front()), QStringLiteral("match 10m card"));
+        QCOMPARE(d.forgetAmountBox(0)->maximum(), clipitto::autoforget::kMaxMinutes);
+        d.forgetTypeBox(0)->setCurrentIndex(d.forgetTypeBox(0)->findData(int(AutoForgetRule::Type::Age)));
+        QCOMPARE(d.forgetAmountBox(0)->maximum(), clipitto::autoforget::kMaxDays);
+
+        // The limit of eight, and removing.
+        for (int i = 1; i < clipitto::autoforget::kMaxRules; ++i) {
+            d.addForgetButton()->click();
+        }
+        QCOMPARE(d.forgetRowCount(), clipitto::autoforget::kMaxRules);
+        QVERIFY(!d.addForgetButton()->isEnabled());
+        d.addForgetButton()->click(); // disabled: nothing
+        QCOMPARE(d.forgetRowCount(), clipitto::autoforget::kMaxRules);
+        d.forgetRemoveButton(3)->click();
+        QCOMPARE(d.forgetRowCount(), clipitto::autoforget::kMaxRules - 1);
+        QVERIFY(d.addForgetButton()->isEnabled());
+        while (d.forgetRowCount() > 0) {
+            d.forgetRemoveButton(0)->click();
+        }
+        QVERIFY(d.config().autoForget.isEmpty());
+
+        // An invalid row also blocks OK when the password rules are fine, and fixing it frees OK again.
+        d.addForgetButton()->click();
+        d.forgetTypeBox(0)->setCurrentIndex(d.forgetTypeBox(0)->findData(int(AutoForgetRule::Type::Contains)));
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.addRuleButton()->click(); // a password rule changes nothing about the forget error
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.forgetRemoveButton(0)->click();
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
     }
 
     void backupTabAsksForTheMasterPasswordAndImportsTheChosenParts()

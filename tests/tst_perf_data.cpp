@@ -1,5 +1,6 @@
 // Stalling with a lot of data: backup, startup, migration, clearing and pruning, pasting a big copy back, encrypting the
 // history, and the write-ahead log. Several of these run on the GUI thread in the app (called out per test).
+#include "AutoForget.h"
 #include "Backup.h"
 #include "Config.h"
 #include "PerfData.h"
@@ -196,6 +197,52 @@ private slots:
         }
         perf::note("prune: worst single copy over the limit at 5k (ms)", QString::number(worst));
         QVERIFY2(worst < StallWatchdog::scaled(100), "one copy over the limit takes more than 100 ms to store");
+    }
+
+    // Auto-forget on the GUI thread (Daemon::runAutoForget: at start, once a minute, when the popup opens). A new rule
+    // on a long history removes its backlog in small steps, 100 copies a run, so the window never freezes; and a run that
+    // finds nothing new to remove is a single indexed query.
+    void autoForgetBacklogGoesInSmallSteps()
+    {
+        perf::DaemonRig rig("auto_forget = [\"age 30d\"]\n", /*start=*/false);
+        QDir().mkpath(rig.dir.filePath(QStringLiteral("data")));
+        const int n = 3000;
+        {
+            clipitto::db::Db db(rig.dir.filePath(QStringLiteral("data/history.db")));
+            clipitto::db::configureConnection(db);
+            clipitto::db::migrate(db);
+            QDateTime clock = QDateTime::currentDateTimeUtc().addDays(-100);
+            clipitto::db::Repository repo(db, [&clock] { return clock = clock.addMSecs(1); });
+            perf::fill(db, repo, 0, n);
+            db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        }
+        QVERIFY(rig.daemon->start() == clipitto::Daemon::StartResult::Ok); // the first 100 go in here
+        QVERIFY(rig.repo().count() > 0);
+        StallWatchdog wd(500);
+        QTRY_COMPARE_WITH_TIMEOUT(rig.repo().count(), 0, StallWatchdog::scaled(60000));
+        QVERIFY_NO_STALL(wd, "auto-forget: a 3000-copy backlog");
+    }
+
+    void autoForgetPatternScanOn50kCopies()
+    {
+        TestDb t;
+        perf::fill(t.db, *t.repo, 0, 50000);
+        clipitto::autoforget::Pruner pruner(*t.repo, [] { return QDateTime::currentDateTimeUtc().addDays(1); });
+        clipitto::AutoForgetRule rule;
+        rule.type = clipitto::AutoForgetRule::Type::Secret;
+        rule.amount = 1;
+        pruner.setRules({rule});
+        QVERIFY_FAST(500, "auto-forget: one scan step at 50k", pruner.run());
+        QVERIFY(pruner.hasMore()); // 500 of 50000 read: the rest in later steps
+        // Once everything was read, a run only lists the candidates: one indexed query.
+        int runs = 1;
+        while (pruner.hasMore() && runs < 1000) {
+            pruner.run();
+            ++runs;
+        }
+        QVERIFY(!pruner.hasMore());
+        QVERIFY_FAST(500, "auto-forget: a run with nothing new at 50k", pruner.run());
+        QCOMPARE(t.repo->count(), 50000);
     }
 
     // Pasting a 1 MB copy: the popup tells the daemon, which puts it on the clipboard.

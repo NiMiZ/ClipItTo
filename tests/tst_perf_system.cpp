@@ -12,7 +12,9 @@
 #include "TestDb.h"
 #include "Translate.h"
 
+#include <QClipboard>
 #include <QElapsedTimer>
+#include <QGuiApplication>
 #include <QThread>
 #include <QTest>
 
@@ -105,6 +107,28 @@ private slots:
             QEXPECT_FAIL("", "keyring calls run on the GUI thread (PasswordKeeper::matchKey)", Continue);
         }
         QVERIFY(max <= wd.budgetMs());
+    }
+
+    // Clearing a pasted password runs from a timer on the GUI thread: it reads and empties the clipboard, nothing else.
+    void clearingAPastedPasswordDoesNotStall()
+    {
+        perf::DaemonRig rig("password_ask_note = false\npassword_clear_seconds = 1\n");
+        rig.daemon->passwords()->setKdfCost({64, 1});
+        std::optional<bool> set;
+        rig.daemon->passwords()->setMasterPassword("master", [&set](bool r) { set = r; });
+        QTRY_VERIFY_WITH_TIMEOUT(set.has_value(), 10000);
+        QVERIFY(*set);
+        std::optional<bool> unlocked;
+        rig.daemon->passwords()->unlock("master", [&unlocked](bool r) { unlocked = r; });
+        QTRY_VERIFY_WITH_TIMEOUT(unlocked.has_value(), 10000);
+        const QStringList marked = {QStringLiteral("text/plain"), QStringLiteral("x-kde-passwordManagerHint")};
+        emit rig.daemon->control()->ingestRequested(QStringLiteral("hunter2-perf"), marked);
+        QCOMPARE(rig.repo().countSecrets(), 1);
+        StallWatchdog wd;
+        emit rig.popup()->entryActivated(rig.repo().allEntries().back());
+        QTRY_VERIFY_WITH_TIMEOUT(QGuiApplication::clipboard()->text().isEmpty(), 10000);
+        QTest::qWait(50);
+        QVERIFY_NO_STALL(wd, "password: paste and clear after 1 s");
     }
 
     void anUnreachableKeyringDoesNotStall()

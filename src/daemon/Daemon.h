@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AutoForget.h"
 #include "BackendSelector.h"
 #include "Config.h"
 #include "ControlChannel.h"
@@ -70,6 +71,8 @@ struct DaemonOptions {
     std::function<bool(const QString&, const QString&)> notify;
     bool verbose = false; // --verbose: debug lines and the log file for the whole run, whatever the debug_log setting says
     QString debugLogPath; // the diagnostic log file; empty: paths::debugLogFile() (tests set one)
+    int autoForgetIntervalMs = 60000; // how often the auto_forget rules run (tests shorten it)
+    std::function<QDateTime()> autoForgetClock; // what "now" is for the rules; null: the system clock (tests)
 };
 
 // Owns everything that lives for the whole session: config, database, capture, the popup,
@@ -111,6 +114,9 @@ public:
     ControlChannel* control() const { return m_control; }
     ui::PopupWindow* popup() const { return m_popup.get(); } // null until start() succeeded
     PasswordKeeper* passwords() const { return m_passwords.get(); } // null until start() succeeded
+    // Runs the auto_forget rules now (as the timer, the start and the popup opening do); returns how many copies went.
+    // Does nothing without rules, while the history is converted or on a database error.
+    qint64 runAutoForget();
 
 signals:
     void configReloaded();
@@ -174,6 +180,10 @@ private:
     QString m_lastNameBox; // outcome and time of the last password name box, for --status
     bool m_passwordNoticeShown = false; // "set a master password", once per session
     QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
+    void clearPastedPassword(); // now, if it is still pending and still on the clipboard
+    QTimer* m_forgetMore = nullptr; // the next step of a backlog, one at a time
+    QTimer* m_forgetTimer = nullptr; // runs the auto_forget rules once a minute
+    std::unique_ptr<autoforget::Pruner> m_forgetter;
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
     QThreadPool m_translatePool; // one thread: translating takes a second or two

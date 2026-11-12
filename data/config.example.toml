@@ -77,8 +77,16 @@ auto_group = false         # true = a new copy that clearly matches one of your 
 debug_log = false          # true = write a diagnostic log file for troubleshooting (what ClipItTo does, never what you
                             # copied); false deletes it. The daemon's --verbose does the same for one run
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
-password_clear_seconds = 30 # a password pasted from ClipItTo leaves the clipboard after this
-                            # (unless something else was copied meanwhile); 0 = it stays
+password_clear_seconds = 2  # a password pasted from ClipItTo leaves the clipboard this many seconds
+                            # after the paste (0-60), but only if the clipboard still holds it:
+                            # something copied meanwhile stays; 0 = it stays. Also cleared at quit
+auto_forget = []            # copies that remove themselves, quietly (up to 8 rules; none = nothing is
+                            # removed). Pinned, starred, grouped and password copies are never removed.
+                            # ["age 30d", "age 1d picture", "age 7d text"]: older than that (last used)
+                            # ["match 5m token"]: a copy that looks like an access token, 5 minutes after
+                            #   it was copied; also key, card (a card number) and secret (any of them)
+                            # ["match 5m contains \"Bearer \""]: text containing that (any letter case)
+                            # (by program is not possible yet: the source app is not stored)
 windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks

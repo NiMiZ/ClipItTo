@@ -30,8 +30,12 @@ public:
     // so a late echo would otherwise pass as plain text). Also counts as noteOwnWrite().
     void noteOwnPassword(const QString& text);
     // Our pasted password is still the last thing on the clipboard (nothing else was copied).
-    bool ownPasswordPending() const { return !m_ownPasswordHash.isEmpty(); }
-    void forgetOwnPassword() { m_ownPasswordHash.clear(); }
+    bool ownPasswordPending() const { return !m_ownPasswordHash.isEmpty() && !m_ownPasswordCleared; }
+    // The pasted password was taken off the clipboard (or left alone because something else is there): nothing is
+    // pending any more. Its echo is still ignored, so a late report of the paste cannot store it afterwards.
+    void ownPasswordDone() { m_ownPasswordCleared = true; }
+    // Is `text` the password we pasted (compared by keyed hash; the password itself is not kept)?
+    bool isOwnPassword(const QString& text) const;
 
     // Call right before ClipItTo itself puts text on the clipboard: every echo of it that the
     // capture backend reports within ownWriteWindowMs is then ignored (Windows may report one
@@ -69,6 +73,7 @@ private:
     QByteArray m_hashKey; // random, this process only
     QByteArray m_ownTextHash;
     QByteArray m_ownPasswordHash; // until the clipboard holds something else
+    bool m_ownPasswordCleared = false; // cleared (or given up on) already: no longer pending
     qint64 m_ownAtMs = 0;
     bool m_hasOwn = false;
     QString m_ownImageHash;

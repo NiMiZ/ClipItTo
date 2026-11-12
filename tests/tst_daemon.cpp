@@ -4,6 +4,7 @@
 #include "Daemon.h"
 #include "DesktopIntegration.h"
 #include "FakeKeyStore.h"
+#include "db/Migrator.h"
 #include "db/Sqlite.h"
 #include "GroupPath.h"
 #include "HistoryModel.h"
@@ -366,6 +367,230 @@ private slots:
         const qint64 before = d.repository()->countSecrets();
         emit d.control()->ingestRequested(QStringLiteral("other"), marked);
         QCOMPARE(d.repository()->countSecrets(), before);
+    }
+
+    // --- Auto-forget (roadmap 18) and clearing a pasted password, end to end ---
+
+    // A history file with copies made `daysAgo` days ago, written before the daemon starts.
+    void seedHistory(const QList<std::pair<QString, int>>& copies, const QString& pinned = QString())
+    {
+        QVERIFY(QDir().mkpath(QFileInfo(options().databasePath).absolutePath()));
+        clipitto::db::Db db(options().databasePath);
+        clipitto::db::configureConnection(db);
+        clipitto::db::migrate(db);
+        QDateTime clock = QDateTime::currentDateTimeUtc();
+        clipitto::db::Repository repo(db, [&clock] { return clock; });
+        for (const auto& [text, daysAgo] : copies) {
+            clock = QDateTime::currentDateTimeUtc().addDays(-daysAgo);
+            const qint64 id = repo.ingest(text).id;
+            if (text == pinned) {
+                repo.setPinned(id, true);
+            }
+        }
+    } // the file is closed again here (Windows cannot reopen it otherwise)
+
+    void autoForgetRunsAtStartAndIsSilent()
+    {
+        seedHistory({{QStringLiteral("zqxw-ancient"), 400}, {QStringLiteral("zqxw-pinned-ancient"), 400},
+                     {QStringLiteral("zqxw-last-week"), 7}, {QStringLiteral("zqxw-today"), 0}},
+                    QStringLiteral("zqxw-pinned-ancient"));
+        writeConfig("debug_log = true\nauto_forget = [\"age 30d\"]\n");
+        int toasts = 0;
+        DaemonOptions o = options();
+        o.debugLogPath = m_dir.filePath(QStringLiteral("debug.log"));
+        o.notify = [&toasts](const QString&, const QString&) { ++toasts; return true; };
+        {
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QCOMPARE(d.config().autoForget.size(), 1);
+            QCOMPARE(d.repository()->count(), 3); // the ancient one went at the start
+            QStringList left;
+            for (const clipitto::Entry& e : d.repository()->allEntries()) {
+                left << e.content;
+            }
+            QVERIFY(!left.contains(QStringLiteral("zqxw-ancient")));
+            QVERIFY(left.contains(QStringLiteral("zqxw-pinned-ancient"))); // pinned: never
+            QCOMPARE(toasts, 0); // silent: no notification
+            QVERIFY(!historyFileHolds("zqxw-ancient"));
+            QVERIFY(historyFileHolds("zqxw-last-week"));
+        }
+        // Nothing but a count in the log, never the copies.
+        QFile log(o.debugLogPath);
+        QVERIFY(log.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(log.readAll());
+        log.close();
+        QVERIFY(text.contains(QLatin1String("auto-forget removed 1")));
+        QVERIFY(!text.contains(QLatin1String("zqxw")));
+    }
+
+    void noRulesNothingIsForgotten()
+    {
+        seedHistory({{QStringLiteral("ancient"), 4000}});
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(d.config().autoForget.isEmpty());
+        QCOMPARE(d.runAutoForget(), qint64(0));
+        QCOMPARE(d.repository()->count(), 1);
+    }
+
+    void autoForgetRunsFromTheTimer()
+    {
+        writeConfig("auto_forget = [\"match 1m contains \\\"Bearer\\\"\"]\n");
+        qint64 shiftSecs = 0;
+        DaemonOptions o = options();
+        o.autoForgetIntervalMs = 50;
+        o.autoForgetClock = [&shiftSecs] { return QDateTime::currentDateTimeUtc().addSecs(shiftSecs); };
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        emit d.control()->ingestRequested(QStringLiteral("curl -H 'Authorization: Bearer abc'"), {QStringLiteral("text/plain")});
+        emit d.control()->ingestRequested(QStringLiteral("an ordinary note"), {QStringLiteral("text/plain")});
+        QCOMPARE(d.repository()->count(), 2);
+        QTest::qWait(300); // several timer ticks: not due yet
+        QCOMPARE(d.repository()->count(), 2);
+        shiftSecs = 120; // two minutes later
+        QTRY_COMPARE_WITH_TIMEOUT(d.repository()->count(), 1, 5000);
+        QCOMPARE(d.repository()->recent(1, false).front().content, QStringLiteral("an ordinary note"));
+    }
+
+    void autoForgetRunsWhenThePopupOpens()
+    {
+        writeConfig("hide_on_focus_loss = false\nauto_forget = [\"match 1m token\"]\n");
+        qint64 shiftSecs = 0;
+        DaemonOptions o = options();
+        o.autoForgetIntervalMs = 3600 * 1000; // the timer is not what does it here
+        o.autoForgetClock = [&shiftSecs] { return QDateTime::currentDateTimeUtc().addSecs(shiftSecs); };
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        emit d.control()->ingestRequested(QString(QStringLiteral("ghp_")) + QString(36, QLatin1Char('a')),
+                                          {QStringLiteral("text/plain")});
+        emit d.control()->ingestRequested(QStringLiteral("an ordinary note"), {QStringLiteral("text/plain")});
+        // (A detected token is an ordinary copy when there is no master password to keep it in.)
+        QCOMPARE(d.repository()->count(), 2);
+        QCOMPARE(d.repository()->countSecrets(), 0);
+        shiftSecs = 300;
+        QCOMPARE(d.repository()->count(), 2); // nothing yet: no timer tick, popup closed
+        d.popup()->showPopup();
+        QCOMPARE(d.repository()->count(), 1);
+        d.popup()->hidePopup();
+    }
+
+    void changedRulesApplyAtOnceAndOnReload()
+    {
+        seedHistory({{QStringLiteral("old one"), 100}, {QStringLiteral("newer one"), 2}});
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QCOMPARE(d.repository()->count(), 2);
+        Config c = d.config();
+        clipitto::AutoForgetRule rule;
+        rule.amount = 30;
+        c.autoForget = {rule};
+        QVERIFY(d.applySettings(c));
+        QCOMPARE(d.repository()->count(), 1);
+        // And the file is what a user would edit by hand.
+        writeConfig("auto_forget = [\"age 1d\"]\n");
+        d.reloadConfig();
+        QCOMPARE(d.config().autoForget.size(), 1);
+        QCOMPARE(d.repository()->count(), 0); // the other copy is two days old: over the new limit of one
+    }
+
+    void aBadAutoForgetRuleIsSkippedWithAWarningAndNothingElseHappens()
+    {
+        seedHistory({{QStringLiteral("old one"), 100}});
+        writeConfig("auto_forget = [\"every day at noon\"]\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(d.config().autoForget.isEmpty());
+        QCOMPARE(d.repository()->count(), 1);
+    }
+
+    // Pastes a freshly kept password; the clipboard then holds it with the markers.
+    void pastePassword(Daemon& d, const QString& text)
+    {
+        emit d.control()->ingestRequested(text, marked());
+        const clipitto::Entry e = d.repository()->allEntries().back();
+        QVERIFY2(e.secret, "not kept as a password copy");
+        emit d.popup()->entryActivated(e);
+    }
+
+    void aPastedPasswordIsClearedAfterTheSecondsAndNotRecorded()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        writeConfig("password_ask_note = false\npassword_clear_seconds = 1\n");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        QVERIFY(unlockWith(d, "master"));
+        pastePassword(d, QStringLiteral("hunter2-clear"));
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("hunter2-clear"));
+        QTRY_VERIFY_WITH_TIMEOUT(QGuiApplication::clipboard()->text().isEmpty(), 5000);
+        QCOMPARE(d.repository()->count(), 1); // the clear is not a copy
+        QCOMPARE(d.repository()->countSecrets(), 1);
+        // The user's own next copy is captured as usual.
+        emit d.control()->ingestRequested(QStringLiteral("my next copy"), {QStringLiteral("text/plain")});
+        QCOMPARE(d.repository()->count(), 2);
+    }
+
+    void aNewerCopyIsNotClearedEvenWhenTheCaptureIsLate()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        writeConfig("password_ask_note = false\npassword_clear_seconds = 1\n");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        QVERIFY(unlockWith(d, "master"));
+        pastePassword(d, QStringLiteral("hunter2-late"));
+        QGuiApplication::clipboard()->setText(QStringLiteral("copied right before the clear"));
+        // (the capture is told nothing: the clipboard itself decides)
+        QTest::qWait(1800);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("copied right before the clear"));
+    }
+
+    void passwordClearSecondsZeroLeavesItThere()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        writeConfig("password_ask_note = false\npassword_clear_seconds = 0\n");
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        QVERIFY(unlockWith(d, "master"));
+        pastePassword(d, QStringLiteral("hunter2-stays"));
+        QTest::qWait(1500);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("hunter2-stays"));
+    }
+
+    void aPendingPasswordIsClearedWhenTheDaemonQuits()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        writeConfig("password_ask_note = false\npassword_clear_seconds = 60\n");
+        {
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, VaultMode::Master));
+            QVERIFY(unlockWith(d, "master"));
+            pastePassword(d, QStringLiteral("hunter2-quit"));
+            QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("hunter2-quit"));
+        }
+        QVERIFY(QGuiApplication::clipboard()->text().isEmpty());
+    }
+
+    void quittingLeavesANewerCopyAlone()
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        writeConfig("password_ask_note = false\npassword_clear_seconds = 60\n");
+        {
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, VaultMode::Master));
+            QVERIFY(unlockWith(d, "master"));
+            pastePassword(d, QStringLiteral("hunter2-quit2"));
+            QGuiApplication::clipboard()->setText(QStringLiteral("my own copy"));
+        }
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("my own copy"));
     }
 
     void askingForANameAfterCopyingAPassword()

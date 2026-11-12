@@ -1,4 +1,5 @@
 add_library(clipitto_core STATIC
+    AutoForget.cpp AutoForget.h
     AutoGroup.cpp AutoGroup.h
     CapturePipeline.cpp CapturePipeline.h
     ClipFilter.cpp ClipFilter.h

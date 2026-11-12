@@ -23,7 +23,11 @@ how to enable). Never log clipboard contents. Master password never stored.
 - **DB**: row has `secret=1`, `content='Password'`; sealed blob in `clip_secrets`; FTS sees label/note/group only.
   "Mark as password" wipes the plain text (secure_delete + WAL checkpoint).
 - **Paste**: `ClipboardWriter` adds password-manager markers (so other managers/Windows history skip it);
-  cleared from the clipboard after `password_clear_seconds` (30) unless something else was copied.
+  cleared from the clipboard `password_clear_seconds` (2, 0-60) after the paste, only if the clipboard still holds it:
+  `ClipboardWriter::clearPassword()` -> Cleared / NothingPending (capture saw a newer copy) / Changed (Qt: not owned or
+  other content, by keyed hash in `ClipFilter::isOwnPassword`; macOS: `changeCount` token from `setConcealedText`) /
+  Unsupported (clear had no effect). GNOME extension cannot be read back. `ClipFilter::ownPasswordDone()` keeps the late
+  echo ignored after the clear. `Daemon::clearPastedPassword` runs from the timer, `aboutToQuit` and `~Daemon`.
 - **UI**: lock icon + note + ●●●●; Enter / Show password (10 s reveal) asks the master password; Windows Hello
   can unlock (wrapped private-key copy `vault.hello_wrapped`; Linux/mac: disabled with reason). `p[] ` search.
 - **Settings** (Passwords tab): keep_passwords, passwords_in_group (files into "Passwords" group),

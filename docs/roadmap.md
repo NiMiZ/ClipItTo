@@ -145,8 +145,11 @@ Items are numbered to carry on from the list above. Ones already listed there (q
 command line, undo, clean links, sync through a folder, smart paste keys per app, `app:` filter, code highlighting) are not repeated.
 
 ### Privacy and safety
-17. **Paste once.** *Details below.*
-18. **Auto-forget** (nice to have): copies that expire. *Details below.*
+17. **Paste once.** *Details below.* The clearing mechanism now exists (see item 18 and *Clipboard clearing* below): since the
+    password-clear work, `ClipboardWriter::clearPassword()` empties the clipboard only if it still holds our paste, per system, and
+    returns an explicit result (cleared, changed, nothing pending, unsupported). *Paste once* only has to call it, for any
+    copy rather than just password copies, with `paste_once_clear_seconds`.
+18. **DONE: Auto-forget:** copies that expire (`auto_forget`, Settings › Passwords › *Auto-forget*). *Details below.*
 19. **Password-field copies on Windows and macOS.** Some browsers set no password-manager marker when a password is copied from a
     field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
     (the source window's class or title when it is a browser password field, a copy made right after an autofill) and see what
@@ -222,3 +225,19 @@ Copies that remove themselves. Rules, like `password_rules`, in Settings › Pri
 - by **app** (needs item 21): copies from a chosen program are removed after N minutes.
 Pinned, starred and grouped copies are never removed. A removal leaves nothing in the log but a count. Open: whether a removal
 is shown (a toast) or silent, and whether the prune runs on a timer or when the popup opens.
+
+**Done (the time and pattern rules; by app is still open).** Up to 8 rules, none by default. Written `age 30d`, `age 1d picture`,
+`age 7d text`, `match 5m contains "Bearer "`, `match 10m token|key|card|secret`. Decisions: removals are silent (no toast); the log
+gets only a count at debug level; the prune runs at start, once a minute, when the popup opens and when the rules change, on the
+GUI thread in small steps (at most 100 copies deleted and 500 read per step, the rest on the next step) because the history has
+one connection. Deleted rows are removed like *Clear history* (secure delete, search index merged, log folded in). Pinned, starred,
+grouped and password copies are never matched, and a password copy's text is never read. A time rule counts from the copy's last
+use. **By app** waits for item 21 (the source app is stored for password copies only). Code: `src/core/AutoForget.*`; tests
+`tst_autoforget`, `tst_daemon`, `tst_settings`, `tst_config`, `tst_perf_data`.
+
+**Clipboard clearing (done for pasted passwords).** `password_clear_seconds` (default 2, 0 = off, 0-60) empties the clipboard that
+long after a password paste, only if the clipboard still holds it: Windows and X11/Wayland (Qt) read it back and clear only if
+it still holds the password (compared by hash), macOS compares the pasteboard's change count, and through the GNOME extension (which
+cannot be read back) a newer copy seen by the capture is the only check. A pending clear also runs when the program quits. The
+clear is never recorded as a copy. Not done: `wl-copy --clear` for the wl-paste backend (the repo has no `wl-copy` channel; writes
+there go through Qt), and the extension clearing on its own.

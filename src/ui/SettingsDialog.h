@@ -167,6 +167,17 @@ public:
     QList<QSpinBox*> ruleSpinBoxes(int row) const;
     QCheckBox* ruleEndBox(int row) const { return m_ruleRows.at(size_t(row)).end; }
     QPushButton* ruleRemoveButton(int row) const { return m_ruleRows.at(size_t(row)).remove; }
+    // Auto-forget rules (Passwords tab): one row per rule, a simple form (kind, amount, text or secret kind).
+    QWidget* forgetPanel() const { return m_forgetPanel; }
+    QPushButton* addForgetButton() const { return m_addForget; }
+    QLabel* forgetErrorLabel() const { return m_forgetError; }
+    int forgetRowCount() const { return int(m_forgetRows.size()); }
+    QComboBox* forgetTypeBox(int row) const { return m_forgetRows.at(size_t(row)).type; }
+    QSpinBox* forgetAmountBox(int row) const { return m_forgetRows.at(size_t(row)).amount; }
+    QComboBox* forgetScopeBox(int row) const { return m_forgetRows.at(size_t(row)).scope; }
+    QLineEdit* forgetTextEdit(int row) const { return m_forgetRows.at(size_t(row)).text; }
+    QComboBox* forgetSecretBox(int row) const { return m_forgetRows.at(size_t(row)).secret; }
+    QPushButton* forgetRemoveButton(int row) const { return m_forgetRows.at(size_t(row)).remove; }
     QDialogButtonBox* buttons() const { return m_buttons; }
     QTabWidget* tabs() const { return m_tabs; }
     QKeySequenceEdit* shortcutEdit() const { return m_shortcut; }
@@ -208,6 +219,10 @@ private:
     void createGroup(const QString& parentPath);
     void addRuleRow(const PasswordRule& rule);
     void removeRuleRow(QWidget* row);
+    void addForgetRow(const AutoForgetRule& rule);
+    void removeForgetRow(QWidget* row);
+    QList<AutoForgetRule> forgetValues() const; // what the rows say (valid or not)
+    void refreshForget(); // per-row controls, validation message, OK button, Add button
     QList<PasswordRule> ruleValues() const; // what the rows say (valid or not)
     void refreshRules(); // validation message, OK button, Add button, "Try it" result
     void updatePasswordPage(); // master password state, buttons
@@ -266,6 +281,21 @@ private:
         QPushButton* remove = nullptr;
         QLabel* title = nullptr;
     };
+    struct ForgetRow {
+        QWidget* row = nullptr;
+        QComboBox* type = nullptr; // Age / Contains / Secret
+        QSpinBox* amount = nullptr;
+        QLabel* unit = nullptr;
+        QComboBox* scope = nullptr; // Age: all / text / pictures
+        QLineEdit* text = nullptr; // Contains
+        QComboBox* secret = nullptr; // Secret: any / token / key / card
+        QPushButton* remove = nullptr;
+    };
+    QWidget* m_forgetPanel = nullptr;
+    QVBoxLayout* m_forgetLayout = nullptr;
+    std::vector<ForgetRow> m_forgetRows;
+    QPushButton* m_addForget = nullptr;
+    QLabel* m_forgetError = nullptr;
     QWidget* m_rulesPanel = nullptr;
     QVBoxLayout* m_rulesLayout = nullptr;
     std::vector<RuleRow> m_ruleRows;

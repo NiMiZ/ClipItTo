@@ -62,8 +62,12 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   On Windows, *Unlock with Windows Hello too* lets your face, fingerprint or PIN do it.
 - **Pasted marked, then cleared.** A password pasted back carries the password-manager markers,
   so other clipboard managers and Windows' clipboard history skip it too (not through the GNOME
-  extension, which can put only one format on the clipboard). It leaves the clipboard after
-  30 s (`password_clear_seconds`; 0 = never) unless you copied something else meanwhile.
+  extension, which can put only one format on the clipboard). It leaves the clipboard
+  2 s after the paste (`password_clear_seconds`; 0 = never, up to 60) but only if the clipboard still holds it:
+  something you copied meanwhile stays (Windows and X11/Wayland check that ClipItTo still owns the clipboard and
+  that it holds the password; macOS compares the pasteboard's change count; through the GNOME extension, which
+  cannot be read back, only a newer copy that ClipItTo saw counts). The clearing is not recorded as a copy, and
+  one still waiting when ClipItTo quits is done then. Earlier versions had 30 s as the default and an hour as the limit; a value over 60 in the file is reported and the default used.
 - **Searched with a keyword.** Type `p[] ` (the keyword and a space; Settings can change it):
   what follows shows as asterisks and searches inside your passwords while unlocked, or for a
   whole password while locked. Locked searching needs the system keyring, which keeps the key
@@ -113,6 +117,12 @@ the note "Matches your password rule". Rules extend the built-in detection; they
 sample in the *Try it* box to see which rule keeps it (the sample is only checked on screen, never saved or
 logged). Impossible rules (shortest above longest, counts above the longest length) are refused and OK stays
 disabled. Like the options above, rules need a master password or *Use without one…*.
+
+**Auto-forget and password copies.** The `auto_forget` rules (Settings › Passwords › *Auto-forget*, see
+[usage.md](usage.md)) never remove a password copy and never read one: a password copy is deleted only by you
+(*Delete*, *Clear history*, *Turn off…*). A secret-looking copy that is *not* a password copy (no master password,
+or `detect_secrets` off) is plain text and can be removed by a *Looks like a secret* rule after N minutes, which is a
+good use for it.
 
 **Choosing a master password.** The dialog lists the rules and ticks them as you type: at least 8
 characters with an uppercase letter, a lowercase letter and a digit; no form of "password", "admin" or

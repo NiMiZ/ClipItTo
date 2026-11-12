@@ -169,6 +169,24 @@ public:
     // The same for images: at most maxUnsaved unsaved images remain.
     qint64 pruneImages(int maxUnsaved);
 
+    // --- Auto-forget (AutoForget.h). Only unsaved (no pin, star or group), non-password copies are ever touched.
+    enum class ForgetKind { Any, Text, Picture };
+    struct ForgetCandidate {
+        qint64 id = 0;
+        QString hash; // content_hash: tells an edited copy from the one looked at before
+        QDateTime lastUsed;
+    };
+    // Unsaved, non-password text copies last used before `before`, oldest first (at most `limit`). No text is read.
+    std::vector<ForgetCandidate> forgetCandidates(const QDateTime& before, int limit);
+    // The text of such a candidate; empty when it is gone, filed or a password copy meanwhile.
+    QString forgetText(qint64 id);
+    // Deletes, in one transaction, at most `limit` of the unsaved non-password copies last used before `cutoff` of the
+    // given kind (oldest first), and the listed copies (if they are still unsaved and not passwords). `*more` says that
+    // the limit was reached, so there may be more to do. When nothing more is due: search index merged and the
+    // write-ahead log folded in, as clearHistory does, so nothing deleted is left in the file. Returns the number deleted.
+    qint64 forget(const std::vector<std::pair<QDateTime, ForgetKind>>& cuts, const std::vector<qint64>& ids, int limit,
+                  bool* more);
+
     // --- Groups: a tree of paths (see GroupPath.h). Parents of a group always exist.
     // Every group path, depth first: parents before children, siblings in the user's order
     // (moveGroup), then by name.
@@ -246,6 +264,7 @@ public:
 private:
     QString now(); // strictly increasing, so ordering by last_used never ties within a process
     std::vector<Entry> collect(Stmt& stmt);
+    bool m_scrubOwed = false; // forget() deleted in steps: the last one merges the index and folds the log
     bool checkpoint(); // WAL folded in and truncated; false if a reader kept it busy
     void scrub(); // after removing text: search index merged, WAL folded in
     void loadImageDetails(Entry& entry);

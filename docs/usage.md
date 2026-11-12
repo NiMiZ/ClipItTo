@@ -154,6 +154,21 @@ lower case, upper case, digits and symbols ("at least 2 digits", not "only 2 dig
 optionally *digits at the end*. Rules add to the detection above. The *Try it* box tests a sample
 (not saved or logged). Needs a master password or *Use without one…*, like the checkbox above.
 
+**Auto-forget:** Settings › Passwords › *Auto-forget* (`auto_forget`, up to 8 rules, none by default) makes copies
+remove themselves, quietly (no message; the log gets only a count). A rule is one of: *Older than N days* (since the
+copy was last used; any copy, text only or pictures only), *Text containing …* (any letter case, at least 3
+characters) removed N minutes after the copy, or *Looks like a secret* (an access token, a key, a card number, or
+any of them) removed N minutes after the copy. It runs at start, once a minute, when the popup opens and when you
+save the rules. Pinned, starred, grouped and password copies are never removed, and a password copy's text is never
+looked at. Matching by the program a copy came from is not possible yet. In the file the rules are strings:
+`auto_forget = ["age 30d", "age 1d picture", "match 5m contains \"Bearer \"", "match 10m token"]`. Removed copies are
+deleted for good, like *Clear history* (nothing is left in the history file).
+
+**A pasted password leaves the clipboard:** Settings › Passwords › *Clear a pasted password after* (`password_clear_seconds`,
+2 seconds by default, 0 = never, up to 60) empties the clipboard that long after you paste a password copy from
+ClipItTo, but only if the clipboard still holds that password: if you copied something else meanwhile it stays. The clear
+is not stored as a copy, and a clear still waiting when ClipItTo quits is done at once.
+
 **Backup** (Settings › Backup): *Export…* writes your copies (with notes, stars, pins, groups and
 pictures) and/or your settings to one JSON file; *Import…* adds a file's contents to what is here
 (copies already in the history are left alone). Tick *Copies* and/or *Settings* when exporting;

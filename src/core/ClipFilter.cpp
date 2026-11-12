@@ -114,6 +114,7 @@ ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mi
         }
         if (!text.isEmpty()) {
             m_ownPasswordHash.clear(); // the clipboard moved on
+            m_ownPasswordCleared = false;
         }
     }
     if (isSensitive(mimeTypes)) {
@@ -164,10 +165,16 @@ void ClipFilter::noteOwnWrite(const QString& text)
     m_hasOwn = true;
 }
 
+bool ClipFilter::isOwnPassword(const QString& text) const
+{
+    return !m_ownPasswordHash.isEmpty() && ownHash(text) == m_ownPasswordHash;
+}
+
 void ClipFilter::noteOwnPassword(const QString& text)
 {
     noteOwnWrite(text);
     m_ownPasswordHash = m_ownTextHash;
+    m_ownPasswordCleared = false;
 }
 
 void ClipFilter::noteOwnImage(const QString& pixelHash)

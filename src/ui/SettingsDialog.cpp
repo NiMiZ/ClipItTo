@@ -5,6 +5,7 @@
 #include "GroupPath.h"
 #include "Hotkey.h"
 #include "PasswordKeeper.h"
+#include "AutoForget.h"
 #include "PasswordRules.h"
 #include "PlatformKeys.h"
 #include "TextTransform.h"
@@ -615,13 +616,46 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_unlockMinutes->setSuffix(tr(" min"));
     m_unlockMinutes->setValue(config.passwordUnlockMinutes);
     passwordsForm->addRow(tr("An unlock lasts:"), m_unlockMinutes);
-    m_clearSeconds->setRange(0, 3600);
+    m_clearSeconds->setRange(0, 60);
     m_clearSeconds->setSuffix(tr(" s"));
     m_clearSeconds->setSpecialValueText(tr("Never"));
     m_clearSeconds->setValue(config.passwordClearSeconds);
-    m_clearSeconds->setToolTip(tr("A password you paste from ClipItTo is taken off the clipboard after this, "
-                                  "unless you copied something else meanwhile."));
+    m_clearSeconds->setToolTip(tr("A password you paste from ClipItTo is taken off the clipboard this long after "
+                                  "the paste, but only if the clipboard still holds that password: something you "
+                                  "copied meanwhile stays. Never = it stays until you copy something else."));
     passwordsForm->addRow(tr("Clear a pasted password after:"), m_clearSeconds);
+
+    // Auto-forget: copies that remove themselves. Pinned, starred, grouped and password copies are never touched.
+    m_forgetPanel = new QWidget(this);
+    auto* forgetOuter = new QVBoxLayout(m_forgetPanel);
+    forgetOuter->setContentsMargins(0, 0, 0, 0);
+    auto* forgetIntro = new QLabel(tr("Copies that remove themselves, quietly. Pinned, starred, grouped and password "
+                                      "copies are never removed. With no rules nothing is removed."),
+                                   m_forgetPanel);
+    forgetIntro->setWordWrap(true);
+    forgetOuter->addWidget(forgetIntro);
+    m_forgetLayout = new QVBoxLayout;
+    forgetOuter->addLayout(m_forgetLayout);
+    m_addForget = new QPushButton(tr("Add a rule"), m_forgetPanel);
+    m_addForget->setToolTip(tr("Up to %1 rules").arg(autoforget::kMaxRules));
+    connect(m_addForget, &QPushButton::clicked, this, [this] {
+        addForgetRow(AutoForgetRule());
+        refreshForget();
+    });
+    auto* forgetAdd = new QHBoxLayout;
+    forgetAdd->addWidget(m_addForget);
+    forgetAdd->addStretch(1);
+    forgetOuter->addLayout(forgetAdd);
+    m_forgetError = new QLabel(m_forgetPanel);
+    m_forgetError->setWordWrap(true);
+    m_forgetError->setStyleSheet(QStringLiteral("color: #c0392b;"));
+    m_forgetError->hide();
+    forgetOuter->addWidget(m_forgetError);
+    for (const AutoForgetRule& rule : config.autoForget) {
+        addForgetRow(rule);
+    }
+    refreshForget();
+    passwordsForm->addRow(tr("Auto-forget:"), m_forgetPanel);
     auto* helloRow = new QHBoxLayout;
     helloRow->addWidget(m_hello);
     auto* helloInfo = makeInfoButton(this);
@@ -869,6 +903,12 @@ Config SettingsDialog::config() const
     for (const PasswordRule& rule : ruleValues()) {
         if (passwordrules::validate(rule).isEmpty()) {
             c.passwordRules << rule;
+        }
+    }
+    c.autoForget.clear();
+    for (const AutoForgetRule& rule : forgetValues()) {
+        if (autoforget::validate(rule).isEmpty()) {
+            c.autoForget << rule;
         }
     }
     c.passwordsPerNote = m_passwordsPerNote->isChecked();
@@ -1163,7 +1203,7 @@ void SettingsDialog::refreshRules()
     m_ruleError->setEnabled(true);
     m_addRule->setEnabled(rules.size() < passwordrules::kMaxRules);
     if (QPushButton* ok = m_buttons->button(QDialogButtonBox::Ok)) {
-        ok->setEnabled(errors.isEmpty());
+        ok->setEnabled(errors.isEmpty() && (!m_forgetError || m_forgetError->text().isEmpty()));
     }
     // "Try it": which rule keeps the sample. Only the verdict is shown, never the text.
     const QString sample = m_ruleTry->text();
@@ -1187,6 +1227,128 @@ void SettingsDialog::refreshRules()
         }
         setNote(m_ruleTryResult, result.isEmpty() ? tr("Not kept by your rules (%1).").arg(reasons.join(QStringLiteral("; ")))
                                                   : result);
+    }
+}
+
+void SettingsDialog::addForgetRow(const AutoForgetRule& rule)
+{
+    if (int(m_forgetRows.size()) >= autoforget::kMaxRules) {
+        return;
+    }
+    ForgetRow r;
+    r.row = new QWidget(m_forgetPanel);
+    auto* h = new QHBoxLayout(r.row);
+    h->setContentsMargins(0, 2, 0, 2);
+    r.type = new QComboBox(r.row);
+    r.type->addItem(tr("Older than"), int(AutoForgetRule::Type::Age));
+    r.type->addItem(tr("Text containing"), int(AutoForgetRule::Type::Contains));
+    r.type->addItem(tr("Looks like a secret:"), int(AutoForgetRule::Type::Secret));
+    r.type->setCurrentIndex(int(rule.type));
+    r.amount = new QSpinBox(r.row);
+    r.amount->setRange(1, rule.type == AutoForgetRule::Type::Age ? autoforget::kMaxDays : autoforget::kMaxMinutes);
+    r.amount->setValue(rule.amount);
+    r.unit = new QLabel(r.row);
+    r.scope = new QComboBox(r.row);
+    r.scope->addItem(tr("any copy"), int(AutoForgetRule::Scope::Any));
+    r.scope->addItem(tr("text only"), int(AutoForgetRule::Scope::Text));
+    r.scope->addItem(tr("pictures only"), int(AutoForgetRule::Scope::Picture));
+    r.scope->setCurrentIndex(int(rule.scope));
+    r.text = new QLineEdit(rule.text, r.row);
+    r.text->setMaxLength(autoforget::kMaxTextLength);
+    r.text->setPlaceholderText(tr("text to look for, e.g. Bearer "));
+    r.text->setToolTip(tr("Letter case is ignored. Copies that contain this are removed after the time. At least "
+                          "%1 characters; no double quote.").arg(autoforget::kMinTextLength));
+    r.secret = new QComboBox(r.row);
+    r.secret->addItem(tr("token, key or card number"), int(AutoForgetRule::SecretKind::Any));
+    r.secret->addItem(tr("access token"), int(AutoForgetRule::SecretKind::Token));
+    r.secret->addItem(tr("key"), int(AutoForgetRule::SecretKind::Key));
+    r.secret->addItem(tr("card number"), int(AutoForgetRule::SecretKind::Card));
+    r.secret->setCurrentIndex(int(rule.secret));
+    r.remove = new QPushButton(tr("Remove"), r.row);
+    QWidget* rowWidget = r.row;
+    connect(r.remove, &QPushButton::clicked, this, [this, rowWidget] { removeForgetRow(rowWidget); });
+    connect(r.type, &QComboBox::currentIndexChanged, this, &SettingsDialog::refreshForget);
+    connect(r.amount, &QSpinBox::valueChanged, this, &SettingsDialog::refreshForget);
+    connect(r.scope, &QComboBox::currentIndexChanged, this, &SettingsDialog::refreshForget);
+    connect(r.text, &QLineEdit::textChanged, this, &SettingsDialog::refreshForget);
+    connect(r.secret, &QComboBox::currentIndexChanged, this, &SettingsDialog::refreshForget);
+    h->addWidget(r.type);
+    h->addWidget(r.text, 1);
+    h->addWidget(r.secret);
+    h->addWidget(r.amount);
+    h->addWidget(r.unit);
+    h->addWidget(r.scope);
+    h->addStretch(1);
+    h->addWidget(r.remove);
+    m_forgetLayout->addWidget(r.row);
+    m_forgetRows.push_back(r);
+}
+
+void SettingsDialog::removeForgetRow(QWidget* row)
+{
+    for (auto it = m_forgetRows.begin(); it != m_forgetRows.end(); ++it) {
+        if (it->row == row) {
+            m_forgetRows.erase(it);
+            m_forgetLayout->removeWidget(row);
+            row->hide();
+            row->deleteLater();
+            break;
+        }
+    }
+    refreshForget();
+}
+
+QList<AutoForgetRule> SettingsDialog::forgetValues() const
+{
+    QList<AutoForgetRule> rules;
+    for (const ForgetRow& r : m_forgetRows) {
+        AutoForgetRule rule;
+        rule.type = AutoForgetRule::Type(r.type->currentData().toInt());
+        rule.amount = r.amount->value();
+        if (rule.type == AutoForgetRule::Type::Age) {
+            rule.scope = AutoForgetRule::Scope(r.scope->currentData().toInt());
+        } else if (rule.type == AutoForgetRule::Type::Contains) {
+            rule.text = r.text->text();
+        } else {
+            rule.secret = AutoForgetRule::SecretKind(r.secret->currentData().toInt());
+        }
+        rules << rule;
+    }
+    return rules;
+}
+
+void SettingsDialog::refreshForget()
+{
+    if (!m_forgetPanel || !m_forgetError) {
+        return;
+    }
+    const QList<AutoForgetRule> rules = forgetValues();
+    QStringList errors;
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        ForgetRow& r = m_forgetRows[size_t(i)];
+        const auto type = rules.at(i).type;
+        const bool age = type == AutoForgetRule::Type::Age;
+        // A day count goes up to kMaxDays, a minute count to kMaxMinutes (the spin box follows the kind).
+        const int limit = age ? autoforget::kMaxDays : autoforget::kMaxMinutes;
+        if (r.amount->maximum() != limit) {
+            r.amount->setMaximum(limit);
+        }
+        r.unit->setText(age ? tr("days since last used") : tr("minutes after the copy"));
+        r.scope->setVisible(age);
+        r.text->setVisible(type == AutoForgetRule::Type::Contains);
+        r.secret->setVisible(type == AutoForgetRule::Type::Secret);
+        const QString why = autoforget::validate(rules.at(i));
+        if (!why.isEmpty()) {
+            errors << tr("Auto-forget rule %1: %2.").arg(i + 1).arg(why);
+        }
+    }
+    setNote(m_forgetError, errors.join(QLatin1Char(' ')));
+    m_forgetError->setEnabled(true);
+    m_addForget->setEnabled(rules.size() < autoforget::kMaxRules);
+    if (QPushButton* ok = m_buttons->button(QDialogButtonBox::Ok)) {
+        // Both editors can hold an error: OK waits for the password rules too.
+        const bool rulesFine = !m_ruleError || m_ruleError->text().isEmpty();
+        ok->setEnabled(errors.isEmpty() && rulesFine);
     }
 }
 
