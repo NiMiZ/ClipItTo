@@ -30,6 +30,7 @@
 #include <QTest>
 
 #include <functional>
+#include <QSet>
 #include <map>
 #include <set>
 
@@ -413,6 +414,186 @@ private slots:
         QVERIFY(!rows.contains(QStringLiteral("@Groups"))); // no groups and no favorites yet
         QVERIFY(rows.indexOf(QStringLiteral("beta")) < rows.indexOf(QStringLiteral("alpha"))); // newest first
         QVERIFY(!rows.filter(QStringLiteral("#")).join(QString()).contains(QLatin1String("PINNED"), Qt::CaseInsensitive));
+    }
+
+    void theFirstPopupListsTwentyCopiesLikeTheLabelSays()
+    {
+        QStringList copies;
+        for (int i = 0; i < 25; ++i) {
+            copies << QStringLiteral("copy %1").arg(i);
+        }
+        Env f({}, copies);
+        QVERIFY(f.show());
+        QCOMPARE(f.model()->rowCount(), 20); // Config{}.recentCount, nothing else listed
+        QCOMPARE(rowsOf(f.model()).first(), QStringLiteral("copy 24"));
+    }
+
+    void aFreshPopupSqueezesEveryCopyOntoOneLine()
+    {
+        Env f({}, {QStringLiteral("one\ntwo\nthree")});
+        QVERIFY(f.show());
+        const QModelIndex row = f.model()->index(0, 0);
+        QVERIFY(!row.data(HistoryModel::TitleRole).toString().contains(QLatin1Char('\n')));
+        QVERIFY(row.data(HistoryModel::PreviewRole).toString().isEmpty()); // preview_lines = 1: no further lines
+    }
+
+    void aFreshPopupStartsOnTheFirstPinnedCopy()
+    {
+        Env f({}, {QStringLiteral("old"), QStringLiteral("mid"), QStringLiteral("new")});
+        f.t.repo->setPinned(f.t.repo->search(QStringLiteral("old")).front().id, true);
+        f.popup->refresh();
+        QVERIFY(f.show());
+        QCOMPARE(f.popup->view()->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("old"));
+        QCOMPARE(rowsOf(f.model()), (QStringList{QStringLiteral("#Pinned"), QStringLiteral("old"), QStringLiteral("#Recent"),
+                                                 QStringLiteral("new"), QStringLiteral("mid")}));
+    }
+
+    void aFreshPopupSearchIgnoresCaseAndFindsPartsOfWords()
+    {
+        Env f({}, {QStringLiteral("Hello World"), QStringLiteral("other")});
+        QVERIFY(f.show());
+        QTest::keyClicks(f.popup->searchBar(), QStringLiteral("LO WOR"));
+        QTRY_COMPARE(rowsOf(f.model()), QStringList{QStringLiteral("Hello World")});
+    }
+
+    void aFreshPopupOpensNearThePointerAndOnTheScreen()
+    {
+        Env f;
+        f.popup->resize(200, 150);
+        QVERIFY(f.show());
+        const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
+        QVERIFY(area.contains(QRect(f.popup->pos(), f.popup->size()).topLeft()));
+        QVERIFY(area.contains(QRect(f.popup->pos(), f.popup->size()).bottomRight()));
+    }
+
+    void aFreshPopupClosesWhenAnotherWindowTakesTheFocus()
+    {
+        TestDb t;
+        PopupWindow popup(*t.repo, Config{}); // hide_on_focus_loss is on by default
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        QWidget other;
+        other.show();
+        other.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&other));
+        QTRY_VERIFY(!popup.isVisible());
+    }
+
+    // ===== Every Settings tab =================================================================
+
+    void everyConfigKeyHasAControlOrIsListedAsFileOnly()
+    {
+        // A key added to Config without a Settings control (and without being listed as file-only here) fails.
+        QSet<QString> keys;
+        for (const auto& [key, value] : keyValues(Config{}.toToml())) {
+            keys.insert(key);
+        }
+        QFile example(QStringLiteral(CLIPITTO_EXAMPLE_CONFIG));
+        QVERIFY(example.open(QIODevice::ReadOnly));
+        static const QRegularExpression keyLine(QStringLiteral("^([a-z_]+)\\s*="), QRegularExpression::MultilineOption);
+        auto it = keyLine.globalMatch(QString::fromUtf8(example.readAll()));
+        while (it.hasNext()) {
+            keys.insert(it.next().captured(1));
+        }
+        example.close();
+        QStringList unhandled;
+        for (const QString& key : keys) {
+            if (!controlChanges().count(key) && !fileOnlyKeys().count(key)) {
+                unhandled << key;
+            }
+        }
+        unhandled.sort();
+        QVERIFY2(unhandled.isEmpty(), qPrintable(QStringLiteral("no Settings control and not listed as file-only: ")
+                                                 + unhandled.join(QLatin1String(", "))));
+        // And the lists name no key that is gone.
+        for (const auto& [key, change] : controlChanges()) {
+            QVERIFY2(keys.contains(key), qPrintable(key));
+        }
+        for (const QString& key : fileOnlyKeys()) {
+            QVERIFY2(keys.contains(key), qPrintable(key));
+        }
+    }
+
+    void theExampleConfigDocumentsEveryKey()
+    {
+        QFile example(QStringLiteral(CLIPITTO_EXAMPLE_CONFIG));
+        QVERIFY(example.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(example.readAll());
+        example.close();
+        QStringList missing;
+        for (const auto& [key, value] : keyValues(Config{}.toToml())) {
+            if (!text.contains(QRegularExpression(QStringLiteral("^%1\\s*=").arg(key), QRegularExpression::MultilineOption))) {
+                missing << key;
+            }
+        }
+        QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("not in data/config.example.toml: ") + missing.join(QLatin1String(", "))));
+    }
+
+    void eachControlSavesAndReloads_data()
+    {
+        QTest::addColumn<QString>("key");
+        for (const auto& [key, change] : controlChanges()) {
+            QTest::newRow(qPrintable(key)) << key;
+        }
+    }
+
+    void eachControlSavesAndReloads()
+    {
+        QFETCH(QString, key);
+        DialogEnv env;
+        const QString file = path(QStringLiteral("cfg-%1.toml").arg(key));
+        auto first = env.open(Config{});
+        QVERIFY(first->config() == Config{});
+        controlChanges().at(key)(*first);
+        const Config changed = first->config();
+        QCOMPARE(changedKeys(Config{}, changed), QStringList{key}); // the control is bound to this key, and only it
+        QString error;
+        QVERIFY2(changed.save(file, &error), qPrintable(error));
+        first.reset();
+
+        // Reopened from the saved file: the control shows what was saved, and nothing else moved.
+        QStringList warnings;
+        const Config loaded = Config::load(file, &warnings);
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1String("; "))));
+        auto second = env.open(loaded);
+        QVERIFY(second->config() == changed);
+        QCOMPARE(changedKeys(Config{}, second->config()), QStringList{key});
+    }
+
+    void settingsWithoutAControlSurviveTheDialog()
+    {
+        const Config odd = fileOnlyConfig();
+        QCOMPARE(changedKeys(Config{}, odd).size(), 11); // every file-only key (but windows_hello) differs
+        DialogEnv env;
+        auto d = env.open(odd);
+        QVERIFY(d->config() == odd);
+        controlChanges().at("recent_count")(*d);
+        const Config c = d->config();
+        QCOMPARE(changedKeys(odd, c), QStringList{QStringLiteral("recent_count")});
+    }
+
+    void passwordControlsAreDisabledUntilThereIsAMasterPassword()
+    {
+        DialogEnv without(false);
+        auto off = without.open(Config{});
+        const QList<QWidget*> dependent = {off->keepPasswordsBox(), off->passwordsInGroupBox(), off->askNoteBox(),
+                                           off->detectSecretsBox(), off->detectPasswordsBox(), off->passwordsPerNoteBox(),
+                                           off->unlockMinutesBox(), off->clearSecondsBox(), off->keywordEdit(),
+                                           off->rulesPanel(), off->helloBox()};
+        for (QWidget* w : dependent) {
+            QVERIFY2(!w->isEnabled(), qPrintable(w->metaObject()->className()));
+        }
+        QVERIFY(off->setMasterButton()->isEnabled()); // the way out is offered
+        QVERIFY(off->masterStatus()->text().contains(QLatin1String("not kept"))); // and the state is said
+
+        DialogEnv with;
+        auto on = with.open(Config{});
+        for (QWidget* w : {static_cast<QWidget*>(on->keepPasswordsBox()), static_cast<QWidget*>(on->askNoteBox()),
+                           static_cast<QWidget*>(on->detectSecretsBox()), static_cast<QWidget*>(on->unlockMinutesBox()),
+                           static_cast<QWidget*>(on->keywordEdit()), static_cast<QWidget*>(on->rulesPanel())}) {
+            QVERIFY2(w->isEnabled(), qPrintable(w->metaObject()->className()));
+        }
+        QVERIFY(!on->helloBox()->isEnabled()); // no Windows Hello / Touch ID support here
     }
 };
 
