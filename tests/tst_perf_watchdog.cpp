@@ -52,12 +52,13 @@ private slots:
         qunsetenv("CI");
         qunsetenv("GITHUB_ACTIONS");
         qunsetenv("CLIPITTO_PERF_STRICT");
-        QCOMPARE(StallWatchdog::scaled(100), 100);
+        const int k = StallWatchdog::sanitizerBuild() ? 3 : 1; // a sanitizer build triples every budget
+        QCOMPARE(StallWatchdog::scaled(100), 100 * k);
         qputenv("CLIPITTO_PERF_STRICT", "1");
-        QCOMPARE(StallWatchdog::scaled(100), 50);
+        QCOMPARE(StallWatchdog::scaled(100), 50 * k);
         qunsetenv("CLIPITTO_PERF_STRICT");
         qputenv("CI", "true");
-        QCOMPARE(StallWatchdog::scaled(100), 500);
+        QCOMPARE(StallWatchdog::scaled(100), 500 * k);
         qunsetenv("CI");
     }
 };
