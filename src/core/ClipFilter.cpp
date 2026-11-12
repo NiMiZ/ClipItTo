@@ -164,6 +164,11 @@ void ClipFilter::noteOwnWrite(const QString& text)
     m_hasOwn = true;
 }
 
+bool ClipFilter::isOwnPassword(const QString& text) const
+{
+    return !m_ownPasswordHash.isEmpty() && ownHash(text) == m_ownPasswordHash;
+}
+
 void ClipFilter::noteOwnPassword(const QString& text)
 {
     noteOwnWrite(text);

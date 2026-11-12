@@ -206,6 +206,35 @@ public:
         out = rules;
     }
 
+    // Up to autoforget::kMaxRules strings in AutoForget.h's text form; bad ones are skipped with a warning (never
+    // quoting the rule: its text may be something the user wants forgotten).
+    void autoForget(const char* key, QList<AutoForgetRule>& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const toml::array* array = node->as_array();
+        if (!array) {
+            warn(QStringLiteral("%1: expected a list of rule strings").arg(QLatin1String(key)));
+            return;
+        }
+        QList<AutoForgetRule> rules;
+        for (const toml::node& item : *array) {
+            const auto value = item.value_exact<std::string>();
+            AutoForgetRule rule;
+            if (!value || !autoforget::parse(QString::fromStdString(*value), rule)) {
+                warn(QStringLiteral("%1: a rule is not like \"age 30d\" or \"match 5m token\"; skipped")
+                         .arg(QLatin1String(key)));
+            } else if (rules.size() >= autoforget::kMaxRules) {
+                warn(QStringLiteral("%1: only %2 rules are used").arg(QLatin1String(key)).arg(autoforget::kMaxRules));
+            } else {
+                rules << rule;
+            }
+        }
+        out = rules;
+    }
+
     void warnUnknownKeys()
     {
         for (const auto& [key, node] : m_table) {
@@ -293,9 +322,10 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("passwords_per_note", config.passwordsPerNote);
     r.boolean("password_ask_note", config.passwordAskNote);
     r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
-    r.integer("password_clear_seconds", config.passwordClearSeconds, 0, 3600);
+    r.integer("password_clear_seconds", config.passwordClearSeconds, 0, 60);
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
+    r.autoForget("auto_forget", config.autoForget);
     r.warnUnknownKeys();
     return config;
 }
@@ -351,6 +381,15 @@ std::string tomlRules(const QList<PasswordRule>& rules)
     return out + "]";
 }
 
+std::string tomlAutoForget(const QList<AutoForgetRule>& rules)
+{
+    std::string out = "[";
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        out += (i ? ", " : "") + tomlString(autoforget::format(rules.at(i)).toStdString());
+    }
+    return out + "]";
+}
+
 std::vector<Line> lines(const Config& c)
 {
     return {
@@ -399,7 +438,8 @@ std::vector<Line> lines(const Config& c)
         {"passwords_per_note", tomlBool(c.passwordsPerNote), "the same password under a different note is a separate copy"},
         {"password_ask_note", tomlBool(c.passwordAskNote), "after copying a new password, open ClipItTo to name it"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},
-        {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard; 0 = never"},
+        {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard this many seconds after the paste (0-60); 0 = never"},
+        {"auto_forget", tomlAutoForget(c.autoForget), "copies that remove themselves, up to 8 rules; none = nothing is removed"},
         {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},

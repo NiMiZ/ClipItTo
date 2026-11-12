@@ -80,13 +80,12 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     m_shortcutPool.setMaxThreadCount(1);
     m_clearPassword = new QTimer(this);
     m_clearPassword->setSingleShot(true);
-    connect(m_clearPassword, &QTimer::timeout, this, [this] {
-        // Only if nothing was copied since: never wipe what the user copied afterwards.
-        if (m_writer && m_pipeline && m_pipeline->filter().ownPasswordPending()) {
-            m_writer->clear();
-            m_pipeline->filter().forgetOwnPassword();
-        }
-    });
+    connect(m_clearPassword, &QTimer::timeout, this, &Daemon::clearPastedPassword);
+    m_forgetTimer = new QTimer(this);
+    m_forgetTimer->setInterval(m_options.autoForgetIntervalMs);
+    connect(m_forgetTimer, &QTimer::timeout, this, [this] { runAutoForget(); });
+    // Quitting with a pasted password still waiting: it leaves the clipboard now, not after the program is gone.
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &Daemon::clearPastedPassword);
     m_helloPool.setMaxThreadCount(1);
     m_translatePool.setMaxThreadCount(1);
     m_control->setParent(this);
@@ -103,8 +102,55 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     }
 }
 
+void Daemon::clearPastedPassword()
+{
+    m_clearPassword->stop();
+    if (!m_writer) {
+        return;
+    }
+    // Only if the clipboard still holds our paste: never wipe what the user copied afterwards. (Nothing about
+    // the text is logged: only what happened.)
+    switch (m_writer->clearPassword()) {
+    case ClipboardWriter::ClearResult::Cleared:
+        qCDebug(lcDaemon) << "pasted password taken off the clipboard";
+        break;
+    case ClipboardWriter::ClearResult::Changed:
+        qCDebug(lcDaemon) << "pasted password not cleared: the clipboard holds something else now";
+        break;
+    case ClipboardWriter::ClearResult::Unsupported:
+        qCWarning(lcDaemon) << "pasted password could not be taken off the clipboard on this system";
+        break;
+    case ClipboardWriter::ClearResult::NothingPending:
+        break;
+    }
+}
+
+qint64 Daemon::runAutoForget()
+{
+    if (!m_forgetter || !m_repo || m_converting || m_forgetter->rules().isEmpty()) {
+        return 0;
+    }
+    if (m_pipeline && m_pipeline->isPaused()) {
+        return 0; // the database belongs to a conversion
+    }
+    try {
+        const qint64 removed = m_forgetter->run();
+        if (removed > 0) {
+            qCDebug(lcDaemon) << "auto-forget removed" << removed << "copies"; // a count, never contents
+            if (m_popup) {
+                m_popup->historyChanged(); // silent: the list just follows
+            }
+        }
+        return removed;
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "auto-forget failed:" << e.what();
+        return 0;
+    }
+}
+
 Daemon::~Daemon()
 {
+    clearPastedPassword(); // quit before the timer: leave nothing behind
     debuglog::stop(); // closes the log file (it stays on disk until the setting is turned off)
     hello::cancelPending(); // a Windows Hello prompt left open must not hold up quitting
     // Picture decodes still running use Qt's image plugins: let them finish while Qt is up.
@@ -153,6 +199,10 @@ Daemon::StartResult Daemon::start(QString* error)
         m_repo->setSecretsPerNote(m_config.passwordsPerNote);
         m_repo->prune(m_config.maxHistory); // the limits may have been lowered since last run
         m_repo->pruneImages(m_config.maxImages);
+        m_forgetter = std::make_unique<autoforget::Pruner>(*m_repo, m_options.autoForgetClock);
+        m_forgetter->setRules(m_config.autoForget);
+        runAutoForget();
+        m_forgetTimer->start();
     } catch (const db::DbError& e) {
         m_repo.reset();
         m_db.reset();
@@ -225,6 +275,8 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_control, &ControlChannel::showRequested, m_popup.get(), &ui::PopupWindow::showPopup);
     connect(m_control, &ControlChannel::hideRequested, m_popup.get(), &ui::PopupWindow::hidePopup);
     connect(m_popup.get(), &ui::PopupWindow::visibilityChanged, this, &Daemon::onPopupVisibilityChanged);
+    // Before the list is read: what is due is gone when the popup shows.
+    connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [this] { runAutoForget(); });
     connect(m_popup.get(), &ui::PopupWindow::entryActivated, this, &Daemon::onEntryActivated);
     connect(m_popup.get(), &ui::PopupWindow::textActivated, this, &Daemon::onTextActivated);
     connect(m_popup.get(), &ui::PopupWindow::richActivated, this, &Daemon::onRichActivated);
@@ -1152,6 +1204,10 @@ void Daemon::reload(bool forceShortcut)
     }
     m_repo->setSecretsPerNote(m_config.passwordsPerNote);
     applyPasswordSettings();
+    if (m_forgetter && m_config.autoForget != previous.autoForget) {
+        m_forgetter->setRules(m_config.autoForget);
+        runAutoForget(); // new rules take effect at once
+    }
     if (m_config.theme != previous.theme) {
         ui::applyTheme(m_config.theme);
     }

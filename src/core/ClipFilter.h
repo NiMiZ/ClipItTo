@@ -32,6 +32,8 @@ public:
     // Our pasted password is still the last thing on the clipboard (nothing else was copied).
     bool ownPasswordPending() const { return !m_ownPasswordHash.isEmpty(); }
     void forgetOwnPassword() { m_ownPasswordHash.clear(); }
+    // Is `text` the password we pasted (compared by keyed hash; the password itself is not kept)?
+    bool isOwnPassword(const QString& text) const;
 
     // Call right before ClipItTo itself puts text on the clipboard: every echo of it that the
     // capture backend reports within ownWriteWindowMs is then ignored (Windows may report one

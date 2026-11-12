@@ -1348,6 +1348,58 @@ qint64 Repository::prune(int maxUnsaved)
     return m_db.changes();
 }
 
+std::vector<Repository::ForgetCandidate> Repository::forgetCandidates(const QDateTime& before, int limit)
+{
+    std::vector<ForgetCandidate> out;
+    Stmt s(m_db, "SELECT id, content_hash, last_used FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = 'text' "
+                 "AND last_used < ?1 ORDER BY last_used ASC LIMIT ?2");
+    s.bindText(1, before.toUTC().toString(Qt::ISODateWithMs)).bindInt(2, limit);
+    while (s.step()) {
+        out.push_back({s.colInt(0), s.colText(1), QDateTime::fromString(s.colText(2), Qt::ISODateWithMs)});
+    }
+    return out;
+}
+
+QString Repository::forgetText(qint64 id)
+{
+    Stmt s(m_db, "SELECT content FROM clips WHERE id = ?1 AND is_saved = 0 AND secret = 0 AND kind = 'text'");
+    s.bindInt(1, id);
+    return s.step() ? s.colText(0) : QString();
+}
+
+qint64 Repository::forget(const std::vector<std::pair<QDateTime, ForgetKind>>& cuts, const std::vector<qint64>& ids)
+{
+    qint64 deleted = 0;
+    {
+        Transaction tx(m_db);
+        for (const auto& [cutoff, kind] : cuts) {
+            const char* sql = kind == ForgetKind::Text
+                ? "DELETE FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = 'text' AND last_used < ?1"
+                : kind == ForgetKind::Picture
+                    ? "DELETE FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = 'image' AND last_used < ?1"
+                    : "DELETE FROM clips WHERE is_saved = 0 AND secret = 0 AND last_used < ?1";
+            Stmt s(m_db, sql);
+            s.bindText(1, cutoff.toUTC().toString(Qt::ISODateWithMs));
+            s.run();
+            deleted += m_db.changes();
+        }
+        if (!ids.empty()) {
+            Stmt s(m_db, "DELETE FROM clips WHERE id = ?1 AND is_saved = 0 AND secret = 0");
+            for (const qint64 id : ids) {
+                s.reset();
+                s.bindInt(1, id);
+                s.run();
+                deleted += m_db.changes();
+            }
+        }
+        tx.commit();
+    }
+    if (deleted > 0) {
+        scrub(); // freed pages were zeroed (secure_delete); the index and the log may still hold the text
+    }
+    return deleted;
+}
+
 qint64 Repository::pruneImages(int maxUnsaved)
 {
     Stmt s(m_db, R"(

@@ -27,8 +27,18 @@ public:
     // takes one format per write, so it can't carry both. (Without an integration on Wayland this needs focus, as
     // for every write; the popup still has it when a copy is chosen.)
     void setRich(const QString& text, const QString& html);
-    // Empties the clipboard (a pasted password's time is up).
-    void clear();
+    enum class ClearResult {
+        Cleared, // the clipboard was emptied
+        NothingPending, // no password of ours is waiting (none pasted, or a newer copy was captured since)
+        Changed, // the clipboard holds something else now (or we no longer own it): left alone
+        Unsupported, // the system did not let us empty it (a Wayland client without focus or helper)
+    };
+    // A pasted password's time is up: empties the clipboard, but only if it still holds that very paste. Never
+    // clears something newer. Per system: macOS compares the pasteboard's change count; Windows and X11/Wayland
+    // (Qt) need that we still own the clipboard and that it still holds the password (compared by hash); through
+    // the GNOME extension (which cannot be read back) a newer copy seen by the capture is the only check.
+    // The clearing itself is not recorded: an empty clipboard is never a copy.
+    ClearResult clearPassword();
     // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo.
     void setImage(const QByteArray& png, const QString& pixelHash);
 
@@ -36,6 +46,7 @@ private:
     QClipboard* m_clipboard;
     ClipFilter& m_filter;
     DesktopIntegration* m_integration;
+    long m_macChangeCount = -1; // the pasteboard's change count after our password paste (macOS), -1 = none
 };
 
 } // namespace clipitto

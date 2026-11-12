@@ -4,7 +4,7 @@
 
 namespace clipitto {
 
-void setConcealedText(const QString& text)
+long setConcealedText(const QString& text)
 {
     @autoreleasepool {
         NSString* const concealed = @"org.nspasteboard.ConcealedType";
@@ -15,6 +15,20 @@ void setConcealedText(const QString& text)
         if (![pasteboard setString:@"" forType:concealed]) {
             [pasteboard setData:[NSData dataWithBytes:" " length:1] forType:concealed];
         }
+        // Every write above changed the count; the last reading is what a later clear compares with.
+        return long([pasteboard changeCount]);
+    }
+}
+
+bool clearPasteboardIfUnchanged(long changeCount)
+{
+    @autoreleasepool {
+        NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+        if (long([pasteboard changeCount]) != changeCount) {
+            return false;
+        }
+        [pasteboard clearContents];
+        return true;
     }
 }
 

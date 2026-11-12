@@ -65,18 +65,49 @@ void ClipboardWriter::setRich(const QString& text, const QString& html)
     m_clipboard->setMimeData(data, QClipboard::Clipboard);
 }
 
-void ClipboardWriter::clear()
+ClipboardWriter::ClearResult ClipboardWriter::clearPassword()
 {
+    // A newer copy the capture has seen ends the wait (ClipFilter forgets the password then).
+    if (!m_filter.ownPasswordPending()) {
+        return ClearResult::NothingPending;
+    }
+    ClearResult result = ClearResult::Cleared;
+#if defined(__APPLE__)
+    if (m_macChangeCount >= 0) {
+        result = clearPasteboardIfUnchanged(m_macChangeCount) ? ClearResult::Cleared : ClearResult::Changed;
+        m_macChangeCount = -1;
+        m_filter.forgetOwnPassword();
+        return result;
+    }
+#endif
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboard(QString());
     } else {
-        m_clipboard->clear(QClipboard::Clipboard);
+        // Ownership first (X11, Wayland, Windows say whether the clipboard is still ours), then the content: a
+        // copy of ours that someone replaced with another text, a picture or files is not ours to empty.
+        const QString platform = QGuiApplication::platformName();
+        const bool ownershipKnown = platform == QLatin1String("windows") || platform == QLatin1String("xcb")
+            || platform.startsWith(QLatin1String("wayland"));
+        if (ownershipKnown && !m_clipboard->ownsClipboard()) {
+            result = ClearResult::Changed;
+        } else if (!m_filter.isOwnPassword(m_clipboard->text(QClipboard::Clipboard))) {
+            result = ClearResult::Changed;
+        } else {
+            m_clipboard->clear(QClipboard::Clipboard);
+            // Read back: some systems accept the call and do nothing.
+            if (m_filter.isOwnPassword(m_clipboard->text(QClipboard::Clipboard))) {
+                result = ClearResult::Unsupported;
+            }
+        }
     }
+    m_filter.forgetOwnPassword();
+    return result;
 }
 
 void ClipboardWriter::setPassword(const QString& text)
 {
     m_filter.noteOwnPassword(text);
+    m_macChangeCount = -1;
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboard(text);
         return;
@@ -85,7 +116,7 @@ void ClipboardWriter::setPassword(const QString& text)
     // The real pasteboard, marked the way macOS password managers mark theirs. (Other Qt
     // platforms on a Mac, like the offscreen one the tests use, keep their own clipboard.)
     if (QGuiApplication::platformName() == QLatin1String("cocoa")) {
-        setConcealedText(text);
+        m_macChangeCount = setConcealedText(text);
         return;
     }
 #endif
