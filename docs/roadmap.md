@@ -199,9 +199,10 @@ paste keys. A Ctrl+V the user presses later in another program is not seen. So t
 ClipItTo's paste (`paste_once_clear_seconds`, default 5), not at the next Ctrl+V.
 
 **Decisions to make first**
-1. *Stored or memory only?* Stored (like other copies, encrypted with the history if on) survives a restart but is on disk until
-   used. Memory only never touches the disk but is lost on exit. Suggestion: password copies and one-time codes stay memory only.
-2. *Passwords:* does *Paste once* on a password copy delete the sealed copy too? Suggestion: yes, after a confirmation the first time.
+1. **Decided: stored.** A *Paste once* copy is kept like any other copy (encrypted with the history if that is on) until it is used.
+   It survives a restart and is removed after its paste.
+2. **Decided: a password copy is never deleted without asking.** *Paste once* on a password copy asks before the sealed copy is
+   deleted, every time (it pastes first; then asks "Delete this password copy?"), and *No* keeps it.
 3. *If the paste did not land* (wrong window, paste keys blocked): delete only after the paste keys were sent; keep a short
    *Undo* in the popup for 10 seconds.
 4. *Clipboard clearing per system:* Windows (empty the clipboard with the same exclude-from-history markers the paste uses),
