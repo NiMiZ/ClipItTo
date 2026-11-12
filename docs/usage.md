@@ -8,6 +8,7 @@ Back to the [README](../README.md).
 | `↓` / `↑` | move the selection (it starts on the latest copy: `↓` next copy, `↑` the Groups row); `↑` on the top row returns to the search bar |
 | `Shift+Enter` | **Paste as…** a menu of changes to the text for this paste only: UPPER, lower, Title Case, trim, collapse spaces, one line, JSON pretty / minified, URL and Base64 encode / decode, and **keyboard layout** (below). Press the underlined letter. The stored copy is not changed |
 | `Enter` / click | copy the entry back to the clipboard and close (on a group: open/close it) |
+| `Ctrl+Shift+Enter` | **Paste once:** paste the selected copy and forget it, marked or not (see *Paste once* below) |
 | `→` / `←` | open / close a group; `→` in the empty search box opens **Groups** |
 | `Ctrl+S` / `Ctrl+P` | star / pin to the top (again to undo) |
 | `Ctrl+G` / `Ctrl+E` | assign group (on a group: rename) / edit the note and the text of a copy (see below) |
@@ -163,6 +164,28 @@ save the rules. Pinned, starred, grouped and password copies are never removed, 
 looked at. Matching by the program a copy came from is not possible yet. In the file the rules are strings:
 `auto_forget = ["age 30d", "age 1d picture", "match 5m contains \"Bearer \"", "match 10m token"]`. Removed copies are
 deleted for good, like *Clear history* (nothing is left in the history file).
+
+**Paste once.** For a one-time code, or a password you type into a stranger's form: a copy marked *Paste once* is removed
+from the history right after you paste it from ClipItTo, and taken off the system clipboard if it still holds it.
+- *Mark it* with *Paste once* in the right-click menu or the Shift+Enter menu (a toggle: choose it again to unmark); the
+  row then wears a small **once** tag. Or press `Ctrl+Shift+Enter` on any copy: it is pasted and forgotten in one go,
+  marked or not. Undo shortcut: `Ctrl+Shift+Z`.
+- A copy is stored like any other (encrypted with the history when that is on) and survives a restart until it is used.
+  It is never in a backup (export leaves it out, import ignores it) and never found by search once used, because it is deleted:
+  like *Clear history*, with nothing left in the history file.
+- It is deleted only after the paste keys were really sent. If they were not (*Paste on Enter* is off, the session cannot
+  type them, a key was blocked) the copy stays marked and the popup says so; the clipboard is left alone so you can paste by hand.
+  ClipItTo only knows its own paste: a Ctrl+V you press later does not count, so the clipboard is emptied a few seconds after
+  ClipItTo's paste (Settings › Passwords › *Clear a Paste once copy after*, `paste_once_clear_seconds`, 2 s by default, 0 = never,
+  up to 60), only if it still holds that paste; something you copied meanwhile stays. The clearing is not stored as a copy and
+  a clear still waiting when ClipItTo quits is done at once.
+- **Password copies:** it pastes first, then asks *Delete this password copy?* **every time**; *No* keeps it (and it is not
+  marked any more). A password copy is never deleted without that answer.
+- **Pinned and starred copies are not deleted:** the mark is just removed and the popup says so quietly. Copies in a group
+  (not starred) and pictures are deleted.
+- **Undo:** for 10 seconds after a deletion the popup shows *Pasted and forgotten* with an **Undo** button (or `Ctrl+Shift+Z`)
+  that puts the copy back as it was (text or picture, group, note, times; a password copy as its sealed copy), without the mark.
+- The *Paste as* transforms and *With formatting* do not use up a marked copy; only pasting the copy itself does.
 
 **A pasted password leaves the clipboard:** Settings › Passwords › *Clear a pasted password after* (`password_clear_seconds`,
 2 seconds by default, 0 = never, up to 60) empties the clipboard that long after you paste a password copy from

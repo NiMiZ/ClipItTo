@@ -3,7 +3,7 @@
 ## Storage (`src/core/db`)
 SQLite3 Multiple Ciphers (optional encryption, key in system keyring), WAL, `secure_delete`, FTS5
 trigram. Migrations `src/core/db/migrations/001..006_*.sql`; each new one must be added to
-`qt_add_resources` in `src/core/CMakeLists.txt` and `tst_migrator` expects the schema version (9 now).
+`qt_add_resources` in `src/core/CMakeLists.txt` and `tst_migrator` expects the schema version (10 now).
 - 006: `groups.hide_from_recent`, `clips.off_recent`, `meta(key,value)`.
 - 005: `clips.secret`, `clip_secrets(sealed)`, `vault`. 004: images (content = label).
 `Repository` (+ `Stmt`/`Db`/`Transaction` wrappers) is the only SQL user. Key methods:
@@ -13,6 +13,17 @@ trigram. Migrations `src/core/db/migrations/001..006_*.sql`; each new one must b
 `placeGroupLast(path)`, `setIgnoreCase/ignoreCase/textHash`, `setSecretsPerNote`, `hasSecret(match,note)`, `findSecrets`.
 
 - 009: auto grouping: `clips.auto_filed`, `auto_examples(group_name, examples)`, `auto_tokens(group_name, token hash, weight)`.
+
+- 010: `clips.paste_once` (Paste once, roadmap 17).
+
+## Paste once (`paste_once_clear_seconds`, roadmap 17)
+Flag `clips.paste_once`, `Entry::pasteOnce`, `HistoryModel::PasteOnceRole` ("once" tag in `HistoryDelegate`). Enter on a marked copy or
+Ctrl+Shift+Enter (`PopupWindow::onceActivated`) -> `Daemon::pasteEntry(entry, once)` writes it (text via `ClipboardWriter::setPassword`,
+pictures `setImage(..., once)`), `pasteIfWanted(done)` says whether the keys went out; only then `PopupWindow::consumePasteOnce(id)`:
+pinned/starred -> mark removed + flash; password copy -> `m_deletePassword` prompt every time; else `Repository::snapshot` +
+`forgetNow` (secure delete + checkpoint) and a 10 s Undo (`m_undo`, button, Ctrl+Shift+Z, `restore`). The clear timer is
+`Daemon::m_clearPassword` shared with passwords; `ClipboardWriter::clearPasted()` (picture pending state: `ClipFilter::ownImagePending`).
+Backup export skips once copies, import ignores `once` items. Tests: `tst_pasteonce`.
 
 ## Auto grouping (`AutoGroup.{h,cpp}`, roadmap 16, `auto_group`, off by default)
 Tokens (hashed words + URL host/domain/folder, path folders, command word) -> `Model` snapshot (`Repository::autoModel`,

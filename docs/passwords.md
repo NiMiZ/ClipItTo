@@ -68,6 +68,11 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   that it holds the password; macOS compares the pasteboard's change count; through the GNOME extension, which
   cannot be read back, only a newer copy that ClipItTo saw counts). The clearing is not recorded as a copy, and
   one still waiting when ClipItTo quits is done then. Earlier versions had 30 s as the default and an hour as the limit; a value over 60 in the file is reported and the default used.
+- **Paste once.** *Paste once* on a password copy (right-click menu, or `Ctrl+Shift+Enter`) pastes it, and only then asks
+  *Delete this password copy?* — every time, and *No* keeps it. No password copy is deleted without that answer (a pinned or
+  starred one is never deleted, so it is not asked). The password is taken off the clipboard after `paste_once_clear_seconds`
+  (2 s by default, own setting next to the one above) if the clipboard still holds it. After a deletion the popup offers an
+  Undo for 10 seconds, which puts the sealed copy back (never in clear). See the usage guide, *Paste once*.
 - **Searched with a keyword.** Type `p[] ` (the keyword and a space; Settings can change it):
   what follows shows as asterisks and searches inside your passwords while unlocked, or for a
   whole password while locked. Locked searching needs the system keyring, which keeps the key

@@ -30,6 +30,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | type | filter history |
 | `↑` / `↓`, `Enter` | move, copy the entry back and paste it into the window you came from |
 | `Shift+Enter` | paste as…: upper / lower case, JSON pretty, URL or Base64 encode, wrong keyboard layout (`xccv` → `סבבה`), and more |
+| `Ctrl+Shift+Enter` | paste once: paste the copy and forget it (see *Paste once* in the usage guide) |
 | `Ctrl+S` / `Ctrl+P` | star / pin |
 | `Ctrl+G` / `Ctrl+E` | set group / edit note and text |
 | `F2` | rename the group, or edit the note of the copy |
