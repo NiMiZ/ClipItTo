@@ -34,6 +34,15 @@ private slots:
         QCOMPARE(QFileInfo(clipitto::paths::databaseFile()).fileName(), QStringLiteral("history.db"));
     }
 
+    void theDataDirCanBeOverriddenSoATestNeverTouchesTheRealHistory()
+    {
+        QTemporaryDir data;
+        qputenv("CLIPITTO_DATA_DIR", QFile::encodeName(data.path()));
+        QCOMPARE(clipitto::paths::dataDir(), QDir::cleanPath(data.path()));
+        QCOMPARE(QDir::cleanPath(clipitto::paths::databaseFile()), QDir(data.path()).filePath(QStringLiteral("history.db")));
+        qunsetenv("CLIPITTO_DATA_DIR");
+    }
+
     void ensureParentDirCreatesNestedDirectories()
     {
         QTemporaryDir root;

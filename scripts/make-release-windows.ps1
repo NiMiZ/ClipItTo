@@ -17,6 +17,12 @@ if ($LASTEXITCODE) { throw 'build-windows.ps1 failed' }
 $stage = Join-Path $root 'build\windows-stage'
 
 # Smoke test the staged app, as CI does.
+# It must never open the real history or settings of the PC it runs on: its own data and config folders.
+$smoke = Join-Path ([IO.Path]::GetTempPath()) "clipitto-smoke-$([guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Force "$smoke\data", "$smoke\roaming" | Out-Null
+$savedAppData = $env:APPDATA
+$env:CLIPITTO_DATA_DIR = "$smoke\data"
+$env:APPDATA = "$smoke\roaming"
 $env:QT_QPA_PLATFORM = 'offscreen'
 $env:CLIPITTO_SERVER_NAME = 'clipitto-release'
 $daemon = Start-Process "$stage\bin\clipitto-daemon.exe" -PassThru
@@ -27,7 +33,9 @@ $status
 & "$stage\bin\clipitto.exe" --quit
 if (-not $daemon.WaitForExit(10000)) { $daemon.Kill(); throw 'the daemon did not quit' }
 if (-not ($status -match '^items: 1$')) { throw "unexpected status: $status" }
-Remove-Item Env:QT_QPA_PLATFORM, Env:CLIPITTO_SERVER_NAME
+Remove-Item Env:QT_QPA_PLATFORM, Env:CLIPITTO_SERVER_NAME, Env:CLIPITTO_DATA_DIR
+$env:APPDATA = $savedAppData
+Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
 
 $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 if (-not (Test-Path $iscc)) { $iscc = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe' }
