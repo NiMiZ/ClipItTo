@@ -42,7 +42,12 @@ public:
     // write more than once, the last after the native reader's retries), so pasting never
     // reorders the history by itself; latest_after_paste does that explicitly.
     void noteOwnWrite(const QString& text);
-    void noteOwnImage(const QString& pixelHash); // the same, for a picture
+    // The same, for a picture. With `pendingClear` (a Paste once picture) it is also ignored for as long as it is the
+    // last thing on the clipboard, however late its echo comes, and ownImagePending() says it may be cleared.
+    void noteOwnImage(const QString& pixelHash, bool pendingClear = false);
+    // A pasted Paste once picture is still the last thing the capture saw on the clipboard.
+    bool ownImagePending() const { return m_ownImageHeld && !m_ownImageCleared; }
+    void ownImageDone() { m_ownImageCleared = true; } // cleared, or given up on; its echo is still ignored
 
     void setMaxBytes(qint64 maxBytes) { m_maxBytes = maxBytes; }
     qint64 maxBytes() const { return m_maxBytes; }
@@ -79,6 +84,8 @@ private:
     QString m_ownImageHash;
     qint64 m_ownImageAtMs = 0;
     bool m_hasOwnImage = false;
+    mutable bool m_ownImageHeld = false; // a Paste once picture: until the clipboard holds something else
+    bool m_ownImageCleared = false;
 };
 
 } // namespace clipitto

@@ -80,6 +80,9 @@ password_unlock_minutes = 5 # how long an unlock lasts (1-240)
 password_clear_seconds = 2  # a password pasted from ClipItTo leaves the clipboard this many seconds
                             # after the paste (0-60), but only if the clipboard still holds it:
                             # something copied meanwhile stays; 0 = it stays. Also cleared at quit
+paste_once_clear_seconds = 2 # a "Paste once" copy leaves the clipboard this many seconds after its paste
+                            # (0-60), only if the clipboard still holds it; 0 = it stays. The copy itself
+                            # is removed from the history right after the paste. Also cleared at quit
 auto_forget = []            # copies that remove themselves, quietly (up to 8 rules; none = nothing is
                             # removed). Pinned, starred, grouped and password copies are never removed.
                             # ["age 30d", "age 1d picture", "age 7d text"]: older than that (last used)

@@ -117,6 +117,9 @@ ClipFilter::Verdict ClipFilter::check(const QString& text, const QStringList& mi
             m_ownPasswordCleared = false;
         }
     }
+    if (m_ownImageHeld && !text.trimmed().isEmpty()) {
+        m_ownImageHeld = false; // a text copy: the pasted picture is not what the clipboard holds any more
+    }
     if (isSensitive(mimeTypes)) {
         return Verdict::Sensitive;
     }
@@ -147,9 +150,10 @@ ClipFilter::Verdict ClipFilter::checkImage(const ImageClip& image, const QString
     if (image.png.size() > m_maxImageBytes) {
         return Verdict::TooLarge;
     }
-    if (image.pixelHash == m_ownImageHash && isOwnEcho(m_hasOwnImage, m_ownImageAtMs)) {
+    if (image.pixelHash == m_ownImageHash && (isOwnEcho(m_hasOwnImage, m_ownImageAtMs) || m_ownImageHeld)) {
         return Verdict::OwnWrite;
     }
+    m_ownImageHeld = false; // another picture
     return Verdict::Accept;
 }
 
@@ -177,8 +181,10 @@ void ClipFilter::noteOwnPassword(const QString& text)
     m_ownPasswordCleared = false;
 }
 
-void ClipFilter::noteOwnImage(const QString& pixelHash)
+void ClipFilter::noteOwnImage(const QString& pixelHash, bool pendingClear)
 {
+    m_ownImageHeld = pendingClear;
+    m_ownImageCleared = false;
     m_ownImageHash = pixelHash;
     m_ownImageAtMs = m_clock();
     m_hasOwnImage = true;

@@ -268,6 +268,26 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
                           QStringLiteral("★"));
         right -= w + kGap;
     }
+    // A copy marked "Paste once" wears a small "once" tag: it is forgotten after it is pasted.
+    if (index.data(HistoryModel::PasteOnceRole).toBool()) {
+        const QFont tagFont = scaledFont(option.font, 0.85);
+        const QFontMetrics tfm(tagFont);
+        const QString onceLabel = QObject::tr("once");
+        const int w = tfm.horizontalAdvance(onceLabel) + 12;
+        const QRect tag(right - w, content.top() + (fm.height() - tfm.height() - 2) / 2, w, tfm.height() + 2);
+        QColor tagBg = text;
+        tagBg.setAlphaF(0.22);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(tagBg);
+        painter->drawRoundedRect(tag, tag.height() / 2.0, tag.height() / 2.0);
+        painter->setFont(tagFont);
+        painter->setPen(text);
+        painter->drawText(tag, Qt::AlignCenter, onceLabel);
+        painter->restore();
+        right -= w + kGap;
+    }
     // Inside the group tree the group is already obvious from the position.
     const QString group = inTree ? QString() : index.data(HistoryModel::GroupRole).toString();
     if (!group.isEmpty()) {

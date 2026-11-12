@@ -323,6 +323,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("password_ask_note", config.passwordAskNote);
     r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
     r.integer("password_clear_seconds", config.passwordClearSeconds, 0, 60);
+    r.integer("paste_once_clear_seconds", config.pasteOnceClearSeconds, 0, 60);
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
     r.autoForget("auto_forget", config.autoForget);
@@ -439,6 +440,7 @@ std::vector<Line> lines(const Config& c)
         {"password_ask_note", tomlBool(c.passwordAskNote), "after copying a new password, open ClipItTo to name it"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},
         {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard this many seconds after the paste (0-60); 0 = never"},
+        {"paste_once_clear_seconds", std::to_string(c.pasteOnceClearSeconds), "a Paste once copy leaves the clipboard this many seconds after its paste (0-60); 0 = never"},
         {"auto_forget", tomlAutoForget(c.autoForget), "copies that remove themselves, up to 8 rules; none = nothing is removed"},
         {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),

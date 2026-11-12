@@ -19,7 +19,8 @@ public:
 
     // Without an integration on Wayland, this must run while one of our windows has focus.
     void setText(const QString& text);
-    // A password copy: the text with the markers password managers set, so other clipboard
+    // A password copy (or a Paste once text, which is handled the same way: it is taken off the clipboard again
+    // by clearPasted()): the text with the markers password managers set, so other clipboard
     // managers (and Windows' clipboard history) skip it too. Through the GNOME extension the
     // markers can't be added (the shell takes one format per write); the text goes alone.
     void setPassword(const QString& text);
@@ -38,14 +39,19 @@ public:
     // (Qt) read the clipboard back and clear it only if it still holds the password (compared by hash); through
     // the GNOME extension (which cannot be read back) a newer copy seen by the capture is the only check.
     // The clearing itself is not recorded: an empty clipboard is never a copy.
-    ClearResult clearPassword();
-    // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo.
-    void setImage(const QByteArray& png, const QString& pixelHash);
+    ClearResult clearPassword() { return clearPasted(); }
+    // The same for whatever was pasted last as a password or a Paste once copy (text or picture).
+    ClearResult clearPasted();
+    // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo. With `once` (a Paste once
+    // picture) clearPasted() takes it off the clipboard again, if the clipboard still holds that picture.
+    void setImage(const QByteArray& png, const QString& pixelHash, bool once = false);
 
 private:
     QClipboard* m_clipboard;
     ClipFilter& m_filter;
     DesktopIntegration* m_integration;
+    ClearResult clearPastedImage();
+    QByteArray m_pendingImage; // hash of the pixels of a pasted Paste once picture; empty = none
     long m_macChangeCount = -1; // the pasteboard's change count after our password paste (macOS), -1 = none
 };
 

@@ -30,7 +30,7 @@ namespace {
 #define CLIP_COLUMNS                                                                                   \
     "c.id, c.content, c.tag_or_note, c.group_name, c.is_favorite, c.created_at, c.last_used, c.pin_position, " \
     "c.kind, c.content_hash, c.secret, EXISTS (SELECT 1 FROM clip_rich r WHERE r.clip_id = c.id), " \
-    "c.auto_filed"
+    "c.auto_filed, c.paste_once"
 
 Entry readEntry(const Stmt& s)
 {
@@ -48,6 +48,7 @@ Entry readEntry(const Stmt& s)
     e.secret = s.colInt(10) != 0;
     e.rich = s.colInt(11) != 0;
     e.autoFiled = s.colInt(12) != 0;
+    e.pasteOnce = s.colInt(13) != 0;
     return e;
 }
 
@@ -1227,6 +1228,98 @@ void Repository::remove(qint64 id)
     m_remove->reset();
     m_remove->bindInt(1, id);
     m_remove->run();
+}
+
+void Repository::setPasteOnce(qint64 id, bool once)
+{
+    Stmt s(m_db, "UPDATE clips SET paste_once = ?2 WHERE id = ?1");
+    s.bindInt(1, id).bindInt(2, once ? 1 : 0).run();
+}
+
+std::optional<Repository::Removed> Repository::snapshot(qint64 id)
+{
+    const std::optional<Entry> entry = get(id);
+    if (!entry) {
+        return std::nullopt;
+    }
+    Removed r;
+    r.entry = *entry;
+    {
+        Stmt s(m_db, "SELECT off_recent FROM clips WHERE id = ?1");
+        s.bindInt(1, id);
+        r.offRecent = s.step() && s.colInt(0) != 0;
+    }
+    if (entry->image) {
+        Stmt s(m_db, "SELECT png, thumbnail FROM clip_images WHERE clip_id = ?1");
+        s.bindInt(1, id);
+        if (s.step()) {
+            r.png = s.colBlob(0);
+            r.thumbnail = s.colBlob(1);
+        }
+    }
+    if (entry->secret) {
+        r.sealed = sealedSecret(id);
+    }
+    r.html = richText(id);
+    return r;
+}
+
+bool Repository::forgetNow(qint64 id)
+{
+    bool deleted = false;
+    {
+        Transaction tx(m_db);
+        Stmt s(m_db, "DELETE FROM clips WHERE id = ?1");
+        s.bindInt(1, id).run();
+        deleted = m_db.changes() > 0;
+        m_db.exec("INSERT INTO clips_fts(clips_fts) VALUES ('optimize');");
+        tx.commit();
+    }
+    if (deleted) {
+        ++m_autoForgets; // what auto grouping cached about the copies is stale
+        m_autoModel.reset();
+    }
+    if (!checkpoint()) {
+        qWarning() << "copy forgotten, but the write-ahead log is still in use; it is folded in later";
+    }
+    return deleted;
+}
+
+qint64 Repository::restore(const Removed& removed)
+{
+    const Entry& e = removed.entry;
+    if (const auto same = findByHash(e.contentHash)) {
+        return *same;
+    }
+    Transaction tx(m_db);
+    Stmt ins(m_db, "INSERT INTO clips(content, content_hash, created_at, last_used, kind, secret) "
+                   "VALUES (?1, ?2, ?3, ?3, ?4, ?5) RETURNING id");
+    ins.bindText(1, e.content).bindText(2, e.contentHash).bindText(3, now());
+    ins.bindText(4, e.image ? QStringLiteral("image") : QStringLiteral("text")).bindInt(5, e.secret ? 1 : 0);
+    ins.step();
+    const qint64 id = ins.colInt(0);
+    ins.reset();
+    if (e.image) {
+        Stmt store(m_db, "INSERT INTO clip_images(clip_id, png, thumbnail, width, height) VALUES (?1, ?2, ?3, ?4, ?5)");
+        store.bindInt(1, id).bindBlob(2, removed.png).bindBlob(3, removed.thumbnail);
+        store.bindInt(4, e.imageWidth).bindInt(5, e.imageHeight);
+        store.run();
+    }
+    if (e.secret) {
+        Stmt store(m_db, "INSERT INTO clip_secrets(clip_id, sealed) VALUES (?1, ?2)");
+        store.bindInt(1, id).bindBlob(2, removed.sealed);
+        store.run();
+    }
+    if (!removed.html.isEmpty()) {
+        setRich(id, removed.html);
+    }
+    tx.commit();
+    restoreFiling(id, e.createdAt, e.lastUsed, e.note, e.group, e.favorite, removed.offRecent); // its own transaction
+    if (e.autoFiled) {
+        Stmt flag(m_db, "UPDATE clips SET auto_filed = 1 WHERE id = ?1");
+        flag.bindInt(1, id).run();
+    }
+    return id;
 }
 
 std::vector<Entry> Repository::allEntries()

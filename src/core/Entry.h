@@ -36,6 +36,9 @@ struct Entry {
     // Put in its group automatically (auto grouping), not by the user: shown with an "auto" tag.
     bool autoFiled = false;
 
+    // Marked "Paste once": removed from the history right after it is pasted from ClipItTo (shown with a "once" tag).
+    bool pasteOnce = false;
+
     bool pinned() const { return pinPosition >= 0; }
     // Saved items are immune to pruning and rank first in search.
     bool isSaved() const { return favorite || !group.isEmpty() || pinned(); }

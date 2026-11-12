@@ -302,7 +302,9 @@ void HistoryView::keyPressEvent(QKeyEvent* event)
         break;
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        if (event->modifiers() & Qt::ShiftModifier) {
+        if (mods == (Qt::ControlModifier | Qt::ShiftModifier)) {
+            emit pasteOnceRequested(current);
+        } else if (event->modifiers() & Qt::ShiftModifier) {
             emit pasteAsRequested(current);
         } else if (m_model && m_model->isExpandable(current)) {
             toggleExpanded(current);

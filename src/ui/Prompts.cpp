@@ -152,6 +152,17 @@ ConfirmPrompt defaultConfirmPrompt()
     };
 }
 
+ConfirmPrompt defaultDeletePasswordPrompt()
+{
+    return [](QWidget* parent, const QString& question) {
+        QMessageBox box(QMessageBox::Question, QStringLiteral("ClipItTo"), question,
+                        QMessageBox::Yes | QMessageBox::No, parent);
+        box.setDefaultButton(QMessageBox::No);
+        box.setEscapeButton(QMessageBox::No);
+        return box.exec() == QMessageBox::Yes;
+    };
+}
+
 QrView defaultQrView()
 {
     return [](QWidget* parent, const QString& text) {

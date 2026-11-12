@@ -192,6 +192,7 @@ public:
     QCheckBox* askNoteBox() const { return m_askNote; }
     QSpinBox* unlockMinutesBox() const { return m_unlockMinutes; }
     QSpinBox* clearSecondsBox() const { return m_clearSeconds; }
+    QSpinBox* pasteOnceClearSecondsBox() const { return m_pasteOnceClearSeconds; }
     QCheckBox* helloBox() const { return m_hello; }
     QLineEdit* keywordEdit() const { return m_keyword; }
     QLabel* masterStatus() const { return m_masterStatus; }
@@ -325,6 +326,7 @@ private:
     QCheckBox* m_askNote;
     QSpinBox* m_unlockMinutes;
     QSpinBox* m_clearSeconds;
+    QSpinBox* m_pasteOnceClearSeconds;
     QCheckBox* m_hello;
     QLineEdit* m_keyword;
     QLabel* m_masterStatus;
