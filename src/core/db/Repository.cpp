@@ -116,14 +116,22 @@ Repository::Repository(Db& db, Clock clock)
     // Recent shows every unfiled copy, and a filed one unless it was taken off Recent or its
     // group (Favorites, for a starred copy in none) is kept out of it. A copy in a group is
     // hidden by that group or any group above it.
-    m_recentAll = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE " IN_RECENT
+    // Written as two index-friendly parts: the newest unfiled copies (the (is_saved, last_used) index reads just
+    // those), and the filed ones (few) that Recent keeps. A single "is_saved = 0 OR ..." condition could not use an
+    // index and read and sorted the whole history on every refresh (50k copies: ~190 ms, on the GUI thread).
+    m_recentAll = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.id IN ("
+                                               "SELECT id FROM (SELECT id FROM clips WHERE is_saved = 0 ORDER BY last_used DESC, id DESC LIMIT ?1) "
+                                               "UNION ALL SELECT c.id FROM clips c WHERE c.is_saved = 1 AND " IN_RECENT ")"
                                                " ORDER BY c.last_used DESC, c.id DESC LIMIT ?1");
 
     m_recentUnsaved = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
         WHERE c.is_saved = 0
         ORDER BY c.last_used DESC, c.id DESC LIMIT ?1)");
 
-    m_recentUnpinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.pin_position IS NULL AND " IN_RECENT
+    m_recentUnpinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS " FROM clips c WHERE c.pin_position IS NULL AND c.id IN ("
+                                                    "SELECT id FROM (SELECT id FROM clips WHERE is_saved = 0 AND pin_position IS NULL "
+                                                    "ORDER BY last_used DESC, id DESC LIMIT ?1) "
+                                                    "UNION ALL SELECT c.id FROM clips c WHERE c.is_saved = 1 AND " IN_RECENT ")"
                                                     " ORDER BY c.last_used DESC, c.id DESC LIMIT ?1");
 
     m_pinned = std::make_unique<Stmt>(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
@@ -700,8 +708,8 @@ std::vector<Entry> Repository::pinned(int limit)
 std::vector<Entry> Repository::favorites()
 {
     Stmt s(m_db, "SELECT " CLIP_COLUMNS R"( FROM clips c
-        WHERE c.is_favorite = 1 AND (c.group_name IS NULL OR c.group_name = '')
-        ORDER BY c.last_used DESC, c.id DESC)");
+        WHERE c.is_saved = 1 AND c.is_favorite = 1 AND (c.group_name IS NULL OR c.group_name = '')
+        ORDER BY c.last_used DESC, c.id DESC)"); // is_saved = 1 (implied by the star) lets the index skip unfiled copies
     return collect(s);
 }
 
@@ -1245,13 +1253,21 @@ void Repository::restoreFiling(qint64 id, const QDateTime& created, const QDateT
     if (!path.isEmpty()) {
         createGroup(path);
     }
-    Stmt s(m_db, "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, "
-                 "is_favorite = ?6, off_recent = ?7 WHERE id = ?1");
+    // The columns the search index covers (note, group) are written only when there is something to write: an UPDATE
+    // that names them rewrites the row's entries in the index (trigger clips_au) even when the value is the same, and
+    // doing that for every copy of a restored backup made importing quadratic (3000 copies: 9 s, 4000: 12 s).
+    const QString noteText = note.trimmed();
+    const bool filed = !noteText.isEmpty() || !path.isEmpty();
+    Stmt s(m_db, filed ? "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, "
+                         "is_favorite = ?6, off_recent = ?7 WHERE id = ?1"
+                       : "UPDATE clips SET created_at = ?2, last_used = ?3, is_favorite = ?6, off_recent = ?7 WHERE id = ?1");
     s.bindInt(1, id);
     s.bindText(2, (created.isValid() ? created : lastUsed).toUTC().toString(Qt::ISODateWithMs));
     s.bindText(3, (lastUsed.isValid() ? lastUsed : created).toUTC().toString(Qt::ISODateWithMs));
-    s.bindTextOrNull(4, note.trimmed());
-    s.bindTextOrNull(5, path);
+    if (filed) {
+        s.bindTextOrNull(4, noteText);
+        s.bindTextOrNull(5, path);
+    }
     s.bindInt(6, favorite ? 1 : 0);
     s.bindInt(7, offRecent ? 1 : 0);
     s.run();
