@@ -152,4 +152,50 @@ QList<Piece> splitSentences(const QString& text)
     return out;
 }
 
+bool worthTranslating(const QString& piece)
+{
+    const QString t = piece.trimmed();
+    bool letter = false;
+    for (const QChar c : t) {
+        if (c.isLetter()) {
+            letter = true;
+            break;
+        }
+    }
+    if (!letter) {
+        return false; // numbers, "---", "12:30", "#4711"
+    }
+    // One token that is a web address or an e-mail address: the model would only mangle it.
+    if (!t.contains(QLatin1Char(' ')) && !t.contains(QLatin1Char('\t'))
+        && (t.contains(QStringLiteral("://")) || t.startsWith(QStringLiteral("www."), Qt::CaseInsensitive)
+            || (t.contains(QLatin1Char('@')) && t.contains(QLatin1Char('.'))))) {
+        return false;
+    }
+    return true;
+}
+
+QString assemble(const QList<Piece>& pieces, const QStringList& translated)
+{
+    QString out;
+    for (qsizetype i = 0; i < pieces.size(); ++i) {
+        const QString& original = pieces[i].text;
+        const QString mine = i < translated.size() ? translated[i] : QString();
+        if (mine.isEmpty()) {
+            out += original; // not translated (nothing to say, a number, a link): as it was
+        } else {
+            qsizetype lead = 0;
+            while (lead < original.size() && original[lead].isSpace()) {
+                ++lead;
+            }
+            qsizetype trail = 0;
+            while (trail < original.size() - lead && original[original.size() - 1 - trail].isSpace()) {
+                ++trail;
+            }
+            out += original.left(lead) + mine + original.right(trail); // indentation and end spaces stay
+        }
+        out += pieces[i].after;
+    }
+    return out;
+}
+
 } // namespace clipitto::translate
