@@ -59,6 +59,12 @@ struct Piece {
     QString after;
 };
 QList<Piece> splitSentences(const QString& text);
+// Whether a piece is worth sending to the model: it has a letter and is not a lone web or e-mail address. Numbers, IDs
+// such as "#4711" and "12:30" are kept as they are.
+bool worthTranslating(const QString& piece);
+// The pieces put back together: `translated[i]` replaces piece i (empty: the piece stays as it was), the whitespace at the
+// start and end of the piece (indentation) and the separators after it are kept, nothing is trimmed.
+QString assemble(const QList<Piece>& pieces, const QStringList& translated);
 
 // Translates `text` with `pack` (blocking, a second or two the first time while the model loads; keep it off
 // the GUI thread). nullopt with `error` when it can't, or when it takes longer than `timeoutSeconds` (1..10): the

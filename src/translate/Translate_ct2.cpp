@@ -57,6 +57,7 @@ int translationThreads()
 
 struct Loaded {
     QString packId;
+    qint64 stamp = 0; // size and time of model.bin: a pack installed again (a newer model) under the same id is loaded again
     std::unique_ptr<sentencepiece::SentencePieceProcessor> sp;
     std::unique_ptr<ctranslate2::Translator> translator;
 };
@@ -65,7 +66,9 @@ Loaded g_loaded;
 
 bool load(const Pack& pack, QString* error)
 {
-    if (g_loaded.packId == pack.id && g_loaded.translator) {
+    const QFileInfo modelFile(pack.path + QStringLiteral("/model/model.bin"));
+    const qint64 stamp = modelFile.size() ^ modelFile.lastModified().toMSecsSinceEpoch();
+    if (g_loaded.packId == pack.id && g_loaded.stamp == stamp && g_loaded.translator) {
         return true;
     }
     g_loaded = {};
@@ -92,6 +95,7 @@ bool load(const Pack& pack, QString* error)
     }
     g_loaded.sp = std::move(sp);
     g_loaded.packId = pack.id;
+    g_loaded.stamp = stamp;
     return true;
 }
 
@@ -149,7 +153,7 @@ std::optional<QString> translateNow(const Pack& pack, const QString& text, QStri
         std::vector<std::vector<std::string>> batch;
         std::vector<int> where; // index of the piece each batch entry came from
         for (int i = 0; i < pieces.size(); ++i) {
-            if (pieces[i].text.trimmed().isEmpty()) {
+            if (!worthTranslating(pieces[i].text)) {
                 continue;
             }
             std::vector<std::string> tokens;
@@ -230,13 +234,9 @@ std::optional<QString> translateNow(const Pack& pack, const QString& text, QStri
                 translated[where[shortIdx[r]]] = chosen;
             }
         }
-        QString out;
-        for (int i = 0; i < pieces.size(); ++i) {
-            out += translated[i].isEmpty() && pieces[i].text.trimmed().isEmpty() ? pieces[i].text : translated[i];
-            out += pieces[i].after;
-        }
+        const QString out = assemble(pieces, translated);
         logLine(QStringLiteral("done in %1 ms").arg(timer.elapsed()));
-        return out.trimmed();
+        return out;
     } catch (const std::exception& e) {
         logLine(QStringLiteral("failed after %1 ms: %2").arg(timer.elapsed()).arg(QString::fromUtf8(e.what())));
         if (error) {

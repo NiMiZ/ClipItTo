@@ -46,7 +46,13 @@ struct FakeTranslation {
         engine;
 };
 
+// Tests: a stand-in for the text recognition (Ocr.h), so that reading pictures can be tested in a build without an engine.
+struct FakeOcr {
+    std::function<std::optional<QString>(const QByteArray& png, const QStringList& languages, QString* error)> recognize;
+};
+
 struct DaemonOptions {
+    std::shared_ptr<FakeOcr> fakeOcr; // null: the platform's text recognition
     std::shared_ptr<FakeTranslation> fakeTranslation; // null: the real packs and engine
     QString configPath;
     QString databasePath;

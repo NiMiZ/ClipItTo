@@ -944,7 +944,7 @@ void Daemon::setUpTranslation()
 
 void Daemon::indexNextPicture()
 {
-    if (!m_config.indexPictures || !ocr::builtIn() || m_indexing || m_indexFailed || m_converting || !m_repo) {
+    if (!m_config.indexPictures || !(m_options.fakeOcr || ocr::builtIn()) || m_indexing || m_indexFailed || m_converting || !m_repo) {
         return;
     }
     qint64 id = 0;
@@ -969,11 +969,13 @@ void Daemon::indexNextPicture()
     }
     m_indexing = true;
     const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
+    const std::shared_ptr<FakeOcr> fakeOcr = m_options.fakeOcr;
     runOn<std::pair<QString, QString>>(
         &m_helloPool, this,
-        [png, languages] {
+        [png, languages, fakeOcr] {
             QString error;
-            const std::optional<QString> text = ocr::recognize(png, languages, &error);
+            const std::optional<QString> text = fakeOcr ? fakeOcr->recognize(png, languages, &error)
+                                                        : ocr::recognize(png, languages, &error);
             return text ? std::pair<QString, QString>(*text, QString())
                         : std::pair<QString, QString>(QString(), error.isEmpty() ? QStringLiteral("failed") : error);
         },
@@ -985,8 +987,11 @@ void Daemon::indexNextPicture()
                 m_indexFailed = true;
                 return;
             }
+            if (!m_config.indexPictures) {
+                return; // turned off while this one was read: record nothing (a "" would mean "read, nothing found")
+            }
             try {
-                m_repo->setPictureText(id, m_config.indexPictures ? result.first : QString());
+                m_repo->setPictureText(id, result.first);
             } catch (const db::DbError& e) {
                 qCWarning(lcDaemon) << "search inside pictures:" << e.what();
                 return;
@@ -1001,7 +1006,7 @@ void Daemon::setUpOcr()
     // installed, the data files) is found out when it is used, and said then. (Starting the engine here
     // ran Windows' WinRT at every start, and in every test.)
     QString why;
-    const bool builtIn = ocr::builtIn();
+    const bool builtIn = m_options.fakeOcr || ocr::builtIn();
     if (!builtIn) {
         ocr::available(&why);
     }
@@ -1018,11 +1023,13 @@ void Daemon::setUpOcr()
                 return;
             }
             const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
+            const std::shared_ptr<FakeOcr> fakeOcr = m_options.fakeOcr;
             runOn<std::pair<QString, QString>>(
                 &m_helloPool, this, // the one WinRT thread (see WindowsHello_win.cpp)
-                [png, languages] {
+                [png, languages, fakeOcr] {
                     QString error;
-                    const std::optional<QString> text = ocr::recognize(png, languages, &error);
+                    const std::optional<QString> text = fakeOcr ? fakeOcr->recognize(png, languages, &error)
+                                                                : ocr::recognize(png, languages, &error);
                     if (!text) {
                         return std::pair<QString, QString>(
                             QString(), error.isEmpty() ? QStringLiteral("Text recognition failed.") : error);

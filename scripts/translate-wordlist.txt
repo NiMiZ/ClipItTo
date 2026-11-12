@@ -1,0 +1,60 @@
+# Starter word list for scripts/translate-check.sh. One word or sentence per line; "#" lines and empty lines are skipped.
+# Add your own: the words that went wrong are the most useful ones. A line is translated with the first installed pack
+# that translates from its language (Hebrew letters -> Hebrew pack, Cyrillic -> Russian, Han -> Chinese, Latin -> English...).
+# Words below for which you have no pack are reported as NO PACK.
+
+# --- Hebrew: single words (the one that got stuck first: the first line) ---
+מכשול
+שלום
+תודה
+בית
+ספר
+מחשב
+לוח שנה
+עבודה
+חשבונית
+סיסמה
+אחריות
+# --- Hebrew: sentences, punctuation, numbers ---
+מה שלומך היום?
+אני צריך לשלוח את החשבונית עד יום חמישי.
+"זה לא מכשול," הוא אמר, "זו הזדמנות."
+הפגישה נקבעה ל-12:30 ביום ראשון, חדר 4711.
+שורה ראשונה
+שורה שנייה
+# --- Hebrew mixed with English ---
+אני משתמש ב-Docker וב-kubectl כל יום בעבודה.
+# --- Russian ---
+Привет
+Спасибо
+препятствие
+компьютер
+Как дела?
+Мне нужно отправить счёт до четверга.
+Встреча назначена на 12:30 в воскресенье, комната 4711.
+# --- Chinese ---
+你好
+谢谢
+障碍
+电脑
+你今天好吗？
+我需要在星期四之前发送发票。
+会议定在星期日 12:30，房间 4711。
+# --- English (needs an English -> X pack) ---
+hello
+obstacle
+pc enthusiast
+Thank you very much.
+Where is the nearest train station?
+The meeting is on Sunday at 12:30 in room 4711.
+Please read the instructions carefully before you begin.
+# --- Numbers, IDs, links, code: the check shows what the pack does with them (ClipItTo itself leaves these alone) ---
+4711
+2024-05-01
+https://example.com/a?b=1
+someone@example.com
+SELECT * FROM users WHERE id = 42;
+# --- One character, odd text ---
+א
+x
+...
