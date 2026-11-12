@@ -7,6 +7,7 @@
 // is not measured here; what is measured is that nothing in ClipItTo around the engine blocks the GUI thread.
 #include "ControlChannel.h"
 #include "Daemon.h"
+#include "PerfData.h"
 #include "PopupWindow.h"
 #include "SearchBar.h"
 #include "StallWatchdog.h"
@@ -344,6 +345,24 @@ private slots:
         r->popup()->translateAndPaste(QStringLiteral("zh-en"), QStringLiteral("text"));
         r.reset(); // waits for the run (<= 300 ms), then everything is gone
         QTest::qWait(50);
+    }
+
+    // Quitting while the engine is stuck: the translate pool is waited for, and its job waits for the guard, so
+    // quitting takes up to translate_timeout (1..10 s) longer; it is bounded by that limit and not longer.
+    void quittingWhileTheEngineIsStuckIsBoundedByTheLimit()
+    {
+        Rig r(1);
+        r.engine->hang = true;
+        r.engine->cooperative = false;
+        QVERIFY(r.show());
+        r.popup()->translateAndPaste(QStringLiteral("zh-en"), QStringLiteral("text"));
+        QTest::qWait(50);
+        QElapsedTimer t;
+        t.start();
+        r.daemon.reset();
+        perf::note("shutdown with a stuck engine, limit 1 s (ms)", QString::number(t.elapsed()));
+        QVERIFY2(t.elapsed() < 2500, "quitting waits longer than the translation limit");
+        r.engine->release = true;
     }
 
     // A very long text is refused at once (it could never finish inside the limit); the worker is not occupied.

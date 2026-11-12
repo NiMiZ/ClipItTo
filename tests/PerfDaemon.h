@@ -53,6 +53,9 @@ struct DaemonRig {
         if (start && daemon->start() != clipitto::Daemon::StartResult::Ok) {
             qFatal("the daemon did not start");
         }
+        if (start) {
+            daemon->popup()->setNotify([](QWidget*, const QString&) {}); // never a modal box in a test
+        }
     }
 
     clipitto::db::Repository& repo() const { return *daemon->repository(); }

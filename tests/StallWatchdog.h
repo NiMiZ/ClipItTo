@@ -52,6 +52,8 @@ public:
     }
 
     int budgetMs() const { return m_budgetMs; }
+    // When the longest stall ended, in ms since start (to place it next to what the test did).
+    qint64 maxStallEndedAtMs() const { return m_maxAt; }
 
     // The longest stall so far, in ms (the open gap since the last tick included).
     qint64 maxStallMs() const
@@ -104,7 +106,10 @@ private:
     void tick()
     {
         const qint64 now = m_clock.elapsed();
-        m_max = std::max(m_max, now - m_last - kTickMs);
+        if (now - m_last - kTickMs > m_max) {
+            m_max = now - m_last - kTickMs;
+            m_maxAt = now; // when the longest stall so far ended
+        }
         m_last = now;
     }
 
@@ -112,6 +117,7 @@ private:
     QElapsedTimer m_clock;
     qint64 m_last = 0;
     qint64 m_max = 0;
+    qint64 m_maxAt = 0;
     int m_budgetMs;
 };
 

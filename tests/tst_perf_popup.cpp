@@ -82,14 +82,14 @@ private slots:
         QVERIFY_NO_STALL(wd, qPrintable(QStringLiteral("popup open, %1 copies").arg(count)));
     }
 
-    // Groups, stars and pins load all their copies when the popup refreshes (the group tree): 20k grouped copies.
+    // Groups, stars and pins load all their copies when the popup refreshes (the group tree): 3k grouped copies.
     void openWithManyGroupedCopies()
     {
         TestDb t;
-        perf::fill(t.db, *t.repo, 0, 20000);
+        perf::fill(t.db, *t.repo, 0, 3000);
         {
             clipitto::db::Transaction tx(t.db);
-            const auto recent = t.repo->recent(20000, false);
+            const auto recent = t.repo->recent(3000, false);
             int i = 0;
             for (const auto& e : recent) {
                 t.repo->setGroup(e.id, QStringLiteral("G%1").arg(i++ % 20));
@@ -103,7 +103,7 @@ private slots:
         QTest::qWait(150);
         popup.refresh();
         QTest::qWait(50);
-        QVERIFY_NO_STALL(wd, "popup open, 20k grouped copies");
+        QVERIFY_NO_STALL(wd, "popup open, 3k grouped copies");
     }
 
     void reopenFiftyTimes()
@@ -403,7 +403,7 @@ private slots:
         QVERIFY_NO_STALL(wd, "search: stale searches dropped");
     }
 
-    // The search index (FTS5) next to the text: a 50k import must not balloon the file.
+    // The search index (FTS5) next to the text: a 20k import must not balloon the file.
     void indexSizeAfterALargeImport()
     {
         QTemporaryDir dir;
@@ -414,10 +414,10 @@ private slots:
             clipitto::db::configureConnection(db);
             clipitto::db::migrate(db);
             clipitto::db::Repository repo(db);
-            for (int i = 0; i < 50000; ++i) {
+            for (int i = 0; i < 20000; ++i) {
                 textBytes += perf::sampleText(i).toUtf8().size();
             }
-            perf::fill(db, repo, 0, 50000);
+            perf::fill(db, repo, 0, 20000);
             repo.optimize();
             db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
         }

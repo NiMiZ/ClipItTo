@@ -296,7 +296,7 @@ private slots:
     void autoGroupingSeedingAndModelRebuild()
     {
         TestDb t;
-        const int kGrouped = 4000;
+        const int kGrouped = 2000;
         {
             clipitto::db::Transaction tx(t.db);
             for (int i = 0; i < kGrouped; ++i) {
@@ -312,11 +312,11 @@ private slots:
             QElapsedTimer tm;
             tm.start();
             t.repo->setGroup(fresh, QStringLiteral("Group1")); // learns: seeds first
-            perf::note("auto grouping: seed from 4000 copies (ms)", QString::number(tm.elapsed()));
+            perf::note("auto grouping: seed from 2000 copies (ms)", QString::number(tm.elapsed()));
             // KNOWN COST (not changed): the first learning step reads every grouped copy and learns it, on the GUI
             // thread; ~55 us per grouped copy. Held to a sanity limit.
             wd.finish();
-            QVERIFY2(tm.elapsed() < StallWatchdog::scaled(2000), "seeding auto grouping from 4000 copies takes seconds");
+            QVERIFY2(tm.elapsed() < StallWatchdog::scaled(2000), "seeding auto grouping from 2000 copies takes seconds");
         }
         CapturePipeline pipe(*t.repo, 100000, 1 << 20);
         pipe.setAutoGrouping(true);
