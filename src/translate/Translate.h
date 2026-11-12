@@ -4,6 +4,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
+#include <functional>
 #include <optional>
 
 // Offline translation. Translation models ("language packs", one per direction: zh-en, en-zh, he-en, ...)
@@ -62,5 +64,21 @@ QList<Piece> splitSentences(const QString& text);
 // the GUI thread). nullopt with `error` when it can't, or when it takes longer than `timeoutSeconds` (1..10): the
 // answer then comes back at once and the stuck work is left to end by itself.
 std::optional<QString> translate(const Pack& pack, const QString& text, QString* error = nullptr, int timeoutSeconds = 5);
+
+// The most characters one translation takes. The model decodes a sentence at a time (a second or two for twenty long
+// ones on one thread), so a longer text can never finish inside the timeout, and its stuck work (it cannot be cancelled
+// in the middle of a sentence) would keep every later translation waiting. Longer texts are refused at once.
+constexpr qsizetype kMaxTranslateChars = 10000;
+
+// Runs `work` (the engine) on a thread of its own so that a run that never ends cannot hold the caller; the
+// caller gets its answer after `timeoutMs` and the stuck run is told to stop (`cancelled`), which it should check
+// between sentences. One run at a time in this process: a run that was left behind keeps the next one waiting
+// (up to `timeoutMs`), then it is refused with "Another translation is still running". `translate()` goes
+// through this; it is public so that tests can drive the same plumbing with a fake engine.
+using GuardedWork = std::function<std::optional<QString>(QString* error, const std::atomic<bool>& cancelled)>;
+enum class GuardOutcome { Done, Busy, TimedOut, StartFailed };
+std::optional<QString> runGuarded(GuardedWork work, QString* error, int timeoutMs, GuardOutcome* outcome = nullptr);
+// Whether a run (possibly one that was given up on) is still going.
+bool guardBusy();
 
 } // namespace clipitto::translate
