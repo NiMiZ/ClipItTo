@@ -269,14 +269,15 @@ Config fileOnlyConfig()
 struct DaemonEnv {
     QTemporaryDir dir;
     clipitto::DaemonOptions options;
+    QStringList messages; // before the daemon: the popup's hook points here until the daemon is gone
     std::unique_ptr<clipitto::Daemon> daemon;
-    QStringList messages;
 
     explicit DaemonEnv(const QByteArray& configFile = {}, bool writeConfig = false)
     {
         options.configPath = dir.filePath(QStringLiteral("config.toml"));
         options.databasePath = dir.filePath(QStringLiteral("data/history.db"));
         options.syntheticPaste = [](clipitto::PasteKeys) { return false; };
+        options.debugLogPath = dir.filePath(QStringLiteral("debug.log"));
         if (writeConfig) {
             writeFile(options.configPath, configFile);
         }
