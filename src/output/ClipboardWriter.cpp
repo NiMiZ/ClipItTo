@@ -35,6 +35,22 @@ QByteArray pictureHash(const QImage& image)
     return hash.result();
 }
 
+// The picture on the clipboard: Qt converts it where the platform clipboard says so (X11, Windows, macOS); a clipboard
+// that just holds the PNG we put there (the offscreen platform) is read from those bytes.
+QImage clipboardPicture(QClipboard* clipboard)
+{
+    QImage image = clipboard->image(QClipboard::Clipboard);
+    if (image.isNull()) {
+        if (const QMimeData* data = clipboard->mimeData(QClipboard::Clipboard)) {
+            const QByteArray png = data->data(QStringLiteral("image/png"));
+            if (!png.isEmpty()) {
+                image = QImage::fromData(png, "PNG");
+            }
+        }
+    }
+    return image;
+}
+
 } // namespace
 
 ClipboardWriter::ClipboardWriter(QClipboard* clipboard, ClipFilter& filter, DesktopIntegration* integration)
@@ -142,11 +158,11 @@ ClipboardWriter::ClearResult ClipboardWriter::clearPastedImage()
     ClearResult result = ClearResult::Cleared;
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboard(QString()); // cannot be read back: the capture's check above is all there is
-    } else if (pictureHash(m_clipboard->image(QClipboard::Clipboard)) != pasted) {
+    } else if (pictureHash(clipboardPicture(m_clipboard)) != pasted) {
         result = ClearResult::Changed; // something else is there now: not ours to empty
     } else {
         m_clipboard->clear(QClipboard::Clipboard);
-        if (pictureHash(m_clipboard->image(QClipboard::Clipboard)) == pasted) {
+        if (pictureHash(clipboardPicture(m_clipboard)) == pasted) {
             result = ClearResult::Unsupported; // the system accepted the call and did nothing
         }
     }

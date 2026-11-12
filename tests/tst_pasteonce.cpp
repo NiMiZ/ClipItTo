@@ -20,6 +20,8 @@
 #include <QAction>
 #include <QBuffer>
 #include <QClipboard>
+#include <QDir>
+#include <QMimeData>
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
@@ -69,6 +71,16 @@ QByteArray pngBytes(const QColor& color)
     buffer.open(QIODevice::WriteOnly);
     picture.save(&buffer, "PNG");
     return png;
+}
+
+QImage pictureOnClipboard()
+{
+    QClipboard* clip = QGuiApplication::clipboard();
+    QImage image = clip->image();
+    if (image.isNull() && clip->mimeData()) {
+        image = QImage::fromData(clip->mimeData()->data(QStringLiteral("image/png")), "PNG");
+    }
+    return image;
 }
 
 QAction* actionStartingWith(QMenu* menu, const QString& start)
@@ -176,16 +188,16 @@ class TestPasteOnce : public QObject {
         return e;
     }
 
+private slots:
     void init()
     {
         m_pasteWorks = true;
         m_pasteCalls = 0;
         QGuiApplication::clipboard()->clear();
-        QDir(m_dir.path()).removeRecursively();
+        QDir(m_dir.path()).removeRecursively(); // a fresh history file and config for each test
         QDir().mkpath(m_dir.path());
     }
 
-private slots:
     // ================= repository =================
     void aCopyIsNotOnceUntilMarked()
     {
@@ -717,9 +729,9 @@ private slots:
         d.repository()->setPasteOnce(e.id, true);
         e = *d.repository()->get(e.id);
         emit d.popup()->entryActivated(e);
-        QVERIFY(!QGuiApplication::clipboard()->image().isNull());
+        QVERIFY(!pictureOnClipboard().isNull());
         QTRY_VERIFY(!d.repository()->get(e.id));
-        QTRY_VERIFY_WITH_TIMEOUT(QGuiApplication::clipboard()->image().isNull(), 8000);
+        QTRY_VERIFY_WITH_TIMEOUT(pictureOnClipboard().isNull(), 8000);
         QCOMPARE(d.repository()->count(), qint64(0)); // the clear is not a copy
     }
 
