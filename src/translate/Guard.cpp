@@ -94,7 +94,7 @@ std::optional<QString> runGuarded(GuardedWork work, QString* error, int timeoutM
         shared->cancelled = true; // a run that checks between sentences ends soon and frees the next one
         setOutcome(GuardOutcome::TimedOut);
         if (error) {
-            *error = tr("The translation took longer than %1 seconds and was cancelled.").arg(timeoutMs / 1000);
+            *error = tr("The translation took longer than %1 seconds and was cancelled.").arg(std::max(1, timeoutMs / 1000));
         }
         return std::nullopt;
     }

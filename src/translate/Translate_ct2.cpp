@@ -10,13 +10,9 @@
 #include <QElapsedTimer>
 #include <QDateTime>
 #include <algorithm>
-#include <QThread>
 
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
+#include <cstddef>
 
 #include <ctranslate2/translator.h>
 #include <sentencepiece_processor.h>
