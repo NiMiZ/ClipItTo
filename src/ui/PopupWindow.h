@@ -275,6 +275,7 @@ private:
     QTimer* m_undoTimer;
     std::optional<db::Repository::Removed> m_undo;
     int m_onceAskDelayMs = 250;
+    bool m_askingDelete = false;
     Prompt m_groupPrompt;
     EditPrompt m_editPrompt;
     qint64 m_maxItemBytes = 1024 * 1024;

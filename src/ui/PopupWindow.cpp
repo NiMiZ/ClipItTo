@@ -774,6 +774,10 @@ void PopupWindow::consumePasteOnce(qint64 id)
             if (!now || !now->secret) {
                 return;
             }
+            if (m_askingDelete) {
+                return; // one question at a time
+            }
+            m_askingDelete = true;
             bool yes = false;
             {
                 ModalGuard guard(m_modalDepth);
@@ -781,6 +785,7 @@ void PopupWindow::consumePasteOnce(qint64 id)
                                                  ? tr("Delete this password copy?")
                                                  : tr("Delete this password copy?\n%1").arg(now->note));
             }
+            m_askingDelete = false;
             if (yes) {
                 forgetPasteOnce(id);
             } else {
@@ -836,7 +841,13 @@ void PopupWindow::showUndoNotice()
 void PopupWindow::endUndo()
 {
     m_undoTimer->stop();
-    m_undo.reset(); // the copy is gone for good, and not kept in memory either
+    if (m_undo) { // the copy is gone for good: its bytes are overwritten before they are freed
+        m_undo->entry.content.fill(QLatin1Char('\0'));
+        m_undo->png.fill('\0');
+        m_undo->thumbnail.fill('\0');
+        m_undo->html.fill(QLatin1Char('\0'));
+    }
+    m_undo.reset();
     m_undoButton->setVisible(false);
     m_footer->setText(m_footerHint);
 }
@@ -846,7 +857,7 @@ bool PopupWindow::undoPasteOnce()
     if (!m_undo) {
         return false;
     }
-    const db::Repository::Removed removed = std::move(*m_undo);
+    const db::Repository::Removed removed = *m_undo; // a copy: endUndo wipes the original
     endUndo();
     qint64 id = 0;
     try {
@@ -1249,6 +1260,7 @@ void PopupWindow::clearHistory(bool everything)
     if (isBusy()) {
         return;
     }
+    endUndo(); // nothing forgotten may come back after a clear
     qint64 count = 0;
     try {
         count = everything ? m_repo.count() : m_repo.countRecent();
@@ -1297,6 +1309,7 @@ void PopupWindow::remove(const QModelIndex& index, bool focusList)
     if (!e) {
         return;
     }
+    endUndo();
     const qint64 id = e->id;
     if (e->image) {
         QPixmapCache::remove(QStringLiteral("clipitto-thumb-") + e->contentHash); // see HistoryModel

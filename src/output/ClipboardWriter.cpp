@@ -92,6 +92,8 @@ void ClipboardWriter::setImage(const QByteArray& png, const QString& pixelHash, 
 
 void ClipboardWriter::setText(const QString& text)
 {
+    m_pendingImage.clear();
+    m_filter.ownImageDone();
     m_filter.noteOwnWrite(text);
     if (m_integration && m_integration->isAvailable()) {
         m_integration->setClipboard(text);
@@ -102,6 +104,8 @@ void ClipboardWriter::setText(const QString& text)
 
 void ClipboardWriter::setRich(const QString& text, const QString& html)
 {
+    m_pendingImage.clear();
+    m_filter.ownImageDone();
     m_filter.noteOwnWrite(text);
     auto* data = new QMimeData;
     data->setText(text); // for apps that take plain text only

@@ -490,13 +490,17 @@ void Daemon::pasteEntry(const Entry& entry, bool once)
     // (if it still holds it) a few seconds after that. Otherwise the copy stays, and so does the clipboard (the
     // user may paste by hand).
     const qint64 id = entry.id;
-    pasteIfWanted([this, id](bool sent) {
+    const bool secret = entry.secret;
+    pasteIfWanted([this, id, secret](bool sent) {
         if (!m_popup) {
             return;
         }
         if (!sent) {
             qCInfo(lcDaemon) << "paste once: the paste keys were not sent, the copy is kept";
             m_popup->flash(tr("Paste once: the copy was kept, because the paste keys could not be sent."));
+            if (secret && m_config.passwordClearSeconds > 0) {
+                m_clearPassword->start(m_config.passwordClearSeconds * 1000); // a password never lingers
+            }
             return;
         }
         if (m_config.pasteOnceClearSeconds > 0) {

@@ -194,7 +194,7 @@ private slots:
         m_pasteWorks = true;
         m_pasteCalls = 0;
         QGuiApplication::clipboard()->clear();
-        QDir(m_dir.path()).removeRecursively(); // a fresh history file and config for each test
+        QVERIFY(QDir(m_dir.path()).removeRecursively()); // a fresh history file and config for each test
         QDir().mkpath(m_dir.path());
     }
 
@@ -451,7 +451,8 @@ private slots:
         f.t.repo->setPasteOnce(id, true);
         f.popup->consumePasteOnce(id);
         QVERIFY(!f.t.repo->get(id));
-        QVERIFY(f.popup->undoButton()->isHidden() == false || !f.popup->isVisible()); // shown with the popup
+        f.popup->showPopup();
+        QVERIFY(f.popup->undoButton()->isVisible()); // shown with the popup
         f.popup->undoButton()->click();
         QVERIFY(!f.popup->undoPending());
         const auto back = f.t.repo->findByHash(f.t.repo->textHash(QStringLiteral("undo me")));
