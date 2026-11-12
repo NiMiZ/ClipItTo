@@ -10,6 +10,7 @@
 #include "Theme.h"
 #include "TestDb.h"
 #include "ControlChannel.h"
+#include "ImageClip.h"
 #include "db/Repository.h"
 
 #include <QApplication>
@@ -28,7 +29,13 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QBuffer>
+#include <QImage>
+#include <QMenu>
+#include <QScrollBar>
+#include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
 #include <QToolButton>
 
 #include <functional>
@@ -917,6 +924,385 @@ private slots:
             QCOMPARE(rows.indexOf(QStringLiteral("#Recent")), 4); // Groups row, #Pinned, two pins, #Recent
         }
         popup->hidePopup();
+    }
+
+    // ===== Keyboard ===========================================================================
+
+    void shiftEnterOpensThePasteAsMenuFromTheSearchBoxAndTheList_data()
+    {
+        QTest::addColumn<bool>("fromList");
+        QTest::newRow("search box") << false;
+        QTest::newRow("list") << true;
+    }
+
+    void shiftEnterOpensThePasteAsMenuFromTheSearchBoxAndTheList()
+    {
+        QFETCH(bool, fromList);
+        Env f({}, {QStringLiteral("hello world")});
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        QWidget* target = fromList ? static_cast<QWidget*>(f.popup->view()) : static_cast<QWidget*>(f.popup->searchBar());
+        if (fromList) {
+            f.popup->view()->setFocus();
+        }
+        QStringList items;
+        int tries = 0;
+        std::function<void()> look = [&] {
+            if (auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget())) {
+                for (const QAction* a : menu->actions()) {
+                    if (!a->isSeparator()) {
+                        items << a->text();
+                    }
+                }
+                menu->close();
+            } else if (++tries < 50) {
+                QTimer::singleShot(20, look);
+            }
+        };
+        QTimer::singleShot(20, look);
+        QTest::keyClick(target, Qt::Key_Return, Qt::ShiftModifier);
+        QVERIFY2(items.size() >= 5, "the Paste as menu lists the transforms");
+        QCOMPARE(activated.size(), 0); // looking at the menu pastes nothing
+        QVERIFY(f.popup->isVisible()); // and does not close the popup
+    }
+
+    void escapeClosesAtOnceWhateverIsOnScreen_data()
+    {
+        QTest::addColumn<int>("state");
+        QTest::newRow("a search with results") << 0;
+        QTest::newRow("a search with none") << 1;
+        QTest::newRow("the list has the focus") << 2;
+        QTest::newRow("the groups are open") << 3;
+    }
+
+    void escapeClosesAtOnceWhateverIsOnScreen()
+    {
+        QFETCH(int, state);
+        Env f({}, {QStringLiteral("alpha"), QStringLiteral("beta")});
+        f.t.repo->setGroup(f.t.repo->search(QStringLiteral("beta")).front().id, QStringLiteral("Work"));
+        f.popup->refresh();
+        QSignalSpy activated(f.popup.get(), &PopupWindow::entryActivated);
+        QVERIFY(f.show());
+        if (state == 0) {
+            QTest::keyClicks(f.popup->searchBar(), QStringLiteral("alp"));
+            QTRY_COMPARE(rowsOf(f.model()), QStringList{QStringLiteral("alpha")});
+        } else if (state == 1) {
+            QTest::keyClicks(f.popup->searchBar(), QStringLiteral("zzz"));
+            QTRY_VERIFY(rowsOf(f.model()).isEmpty());
+        } else if (state == 2) {
+            f.popup->view()->setFocus();
+        } else {
+            QTest::keyClick(f.popup->searchBar(), Qt::Key_Right); // opens the Groups row
+            QVERIFY(f.popup->view()->isExpanded(f.model()->groupsRoot()));
+        }
+        QWidget* focused = QApplication::focusWidget();
+        QVERIFY(focused);
+        QTest::keyClick(focused, Qt::Key_Escape);
+        QVERIFY(!f.popup->isVisible()); // one Esc closes: it does not first clear the search
+        QCOMPARE(activated.size(), 0);
+    }
+
+    void pageKeysHomeAndEndMoveThroughALongListAndStopOnCopies()
+    {
+        QStringList copies;
+        for (int i = 0; i < 60; ++i) {
+            copies << QStringLiteral("copy %1").arg(i);
+        }
+        Env f({}, copies);
+        f.popup->resize(400, 300);
+        QVERIFY(f.show());
+        f.popup->view()->setFocus();
+        auto* view = f.popup->view();
+        const auto onACopy = [&] { return f.model()->kindAt(view->currentIndex()) == HistoryModel::Kind::Entry; };
+        QVERIFY(onACopy());
+        const int start = view->currentIndex().row();
+        QTest::keyClick(view, Qt::Key_PageDown);
+        QVERIFY(onACopy());
+        const int afterPage = view->currentIndex().row();
+        QVERIFY2(afterPage > start + 2, "a page is more than a row");
+        QTest::keyClick(view, Qt::Key_PageDown);
+        QVERIFY(view->currentIndex().row() > afterPage);
+        QTest::keyClick(view, Qt::Key_PageUp);
+        QCOMPARE(view->currentIndex().row(), afterPage);
+        QTest::keyClick(view, Qt::Key_End);
+        QVERIFY(onACopy());
+        QCOMPARE(view->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("copy 40")); // 20 listed, newest first: the 20th is copy 40
+        QVERIFY(view->visualRect(view->currentIndex()).intersects(view->viewport()->rect())); // scrolled to it
+        QTest::keyClick(view, Qt::Key_Down); // nothing below
+        QCOMPARE(view->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("copy 40"));
+        QTest::keyClick(view, Qt::Key_Home);
+        QVERIFY(onACopy());
+        QCOMPARE(view->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("copy 59"));
+    }
+
+    void pinAndStarKeysMoveACopyBetweenTheSectionsAndBack()
+    {
+        Env f({}, {QStringLiteral("one"), QStringLiteral("two"), QStringLiteral("three")});
+        QVERIFY(f.show());
+        f.popup->view()->setFocus();
+        auto* view = f.popup->view();
+        QTest::keyClick(view, Qt::Key_Down); // "two"
+        QCOMPARE(view->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("two"));
+        QTest::keyClick(view, Qt::Key_P, Qt::ControlModifier);
+        QCOMPARE(rowsOf(f.model()), (QStringList{QStringLiteral("#Pinned"), QStringLiteral("two"), QStringLiteral("#Recent"),
+                                                  QStringLiteral("three"), QStringLiteral("one")}));
+        QTest::keyClick(view, Qt::Key_S, Qt::ControlModifier); // also star it: Favorites appears, the pin stays
+        const QModelIndex favorites = f.model()->findGroup(HistoryModel::favoritesPath());
+        QVERIFY(favorites.isValid());
+        QCOMPARE(f.model()->rowCount(favorites), 1);
+        QVERIFY(rowsOf(f.model()).contains(QStringLiteral("#Pinned")));
+        QTest::keyClick(view, Qt::Key_P, Qt::ControlModifier); // unpin
+        QVERIFY(!rowsOf(f.model()).contains(QStringLiteral("#Pinned")));
+        QTest::keyClick(view, Qt::Key_S, Qt::ControlModifier); // unstar
+        const QModelIndex emptied = f.model()->findGroup(HistoryModel::favoritesPath());
+        QVERIFY(!emptied.isValid() || f.model()->rowCount(emptied) == 0); // nothing starred, nothing listed
+        const Entry two = *f.t.repo->search(QStringLiteral("two")).begin();
+        QVERIFY(!two.pinned() && !two.favorite);
+    }
+
+    void searchFiltersFindWhatTheyName_data()
+    {
+        QTest::addColumn<QString>("query");
+        QTest::addColumn<QStringList>("expected");
+        QTest::newRow("img:") << "img:" << QStringList{QStringLiteral("Image 10×10")};
+        QTest::newRow("text:") << "text: thing" << QStringList{QStringLiteral("old thing"), QStringLiteral("noted thing"), QStringLiteral("grouped thing"), QStringLiteral("starred thing"), QStringLiteral("pinned thing")};
+        QTest::newRow("pin:") << "pin:" << QStringList{QStringLiteral("pinned thing")};
+        QTest::newRow("star:") << "star:" << QStringList{QStringLiteral("starred thing")};
+        QTest::newRow("group:") << "group:" << QStringList{QStringLiteral("grouped thing")};
+        QTest::newRow("group:work") << "group:work" << QStringList{QStringLiteral("grouped thing")};
+        QTest::newRow("note:") << "note:" << QStringList{QStringLiteral("noted thing")};
+        QTest::newRow("note:text") << "note:remember" << QStringList{QStringLiteral("noted thing")};
+        QTest::newRow("today:") << "today: thing" << QStringList{QStringLiteral("noted thing"), QStringLiteral("grouped thing"), QStringLiteral("starred thing"), QStringLiteral("pinned thing")};
+        QTest::newRow("since:3d") << "since:3d" << QStringList{QStringLiteral("noted thing"), QStringLiteral("grouped thing"), QStringLiteral("starred thing"), QStringLiteral("pinned thing"), QStringLiteral("Image 10×10")};
+        QTest::newRow("since:30d") << "since:30d old" << QStringList{QStringLiteral("old thing")};
+        QTest::newRow("combined") << "pin: img:" << QStringList{};
+    }
+
+    void searchFiltersFindWhatTheyName()
+    {
+        QFETCH(QString, query);
+        QFETCH(QStringList, expected);
+        TestDb t;
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        auto* repo = t.repo.get();
+        t.clock = now.addDays(-10);
+        repo->ingest(QStringLiteral("old thing"));
+        t.clock = now;
+        repo->setPinned(repo->ingest(QStringLiteral("pinned thing")).id, true);
+        repo->setFavorite(repo->ingest(QStringLiteral("starred thing")).id, true);
+        repo->setGroup(repo->ingest(QStringLiteral("grouped thing")).id, QStringLiteral("Work"));
+        const qint64 noted = repo->ingest(QStringLiteral("noted thing")).id;
+        repo->setNote(noted, QStringLiteral("remember this"));
+        QImage img(10, 10, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        QByteArray png;
+        QBuffer buffer(&png);
+        buffer.open(QIODevice::WriteOnly);
+        img.save(&buffer, "PNG");
+        clipitto::ImageClip clip;
+        clip.png = png;
+        clip.thumbnail = png;
+        clip.width = 10;
+        clip.height = 10;
+        clip.pixelHash = QStringLiteral("h");
+        repo->ingestImage(clip);
+
+        PopupWindow popup(*repo, Config{});
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowActive(&popup));
+        QTest::keyClicks(popup.searchBar(), query);
+        QStringList got;
+        QTRY_VERIFY_WITH_TIMEOUT((got = rowsOf(popup.model())).size() == expected.size() || query == QLatin1String("combined"), 5000);
+        QStringList sortedGot = got;
+        QStringList sortedExpected = expected;
+        sortedGot.sort();
+        sortedExpected.sort();
+        QCOMPARE(sortedGot, sortedExpected);
+    }
+
+    void ctrlCommaOpensSettingsFromTheListAndNotFromAPrompt()
+    {
+        Env f({}, {QStringLiteral("alpha")});
+        QSignalSpy requested(f.popup.get(), &PopupWindow::settingsRequested);
+        QVERIFY(f.show());
+        f.popup->view()->setFocus();
+        QTest::keyClick(f.popup->view(), Qt::Key_Comma, Qt::ControlModifier);
+        QCOMPARE(requested.size(), 1);
+        QTest::keyClick(f.popup->view(), Qt::Key_Comma); // without Ctrl a comma is text for the search box
+        QCOMPARE(requested.size(), 1);
+        QCOMPARE(f.popup->searchBar()->text(), QStringLiteral(","));
+    }
+
+    void deleteRemovesAPlainCopyAndOnlyHidesAStarredOneFromRecent()
+    {
+        Env f({}, {QStringLiteral("starred"), QStringLiteral("plain")});
+        f.t.repo->setFavorite(f.t.repo->search(QStringLiteral("starred")).front().id, true);
+        f.popup->refresh();
+        f.popup->setConfirmPrompt([](QWidget*, const QString&) { return true; });
+        QVERIFY(f.show());
+        f.popup->view()->setFocus();
+        QCOMPARE(f.popup->view()->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("plain"));
+        QTest::keyClick(f.popup->view(), Qt::Key_Delete);
+        QVERIFY(f.t.repo->search(QStringLiteral("plain")).empty()); // really gone
+        QCOMPARE(f.popup->view()->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("starred"));
+        QTest::keyClick(f.popup->view(), Qt::Key_Delete);
+        QVERIFY(!f.t.repo->search(QStringLiteral("starred")).empty()); // still in Favorites
+        QVERIFY(!rowsOf(f.model()).contains(QStringLiteral("starred"))); // but not in Recent any more
+    }
+
+    // ===== Rendering ==========================================================================
+
+    static int distinctColours(const QImage& image)
+    {
+        QSet<QRgb> seen;
+        for (int y = 0; y < image.height(); y += 2) {
+            for (int x = 0; x < image.width(); x += 2) {
+                seen.insert(image.pixel(x, y));
+            }
+        }
+        return int(seen.size());
+    }
+
+    void longTextRowsAreElidedAndSizedAndPaint()
+    {
+        Config cfg;
+        cfg.previewLines = 3;
+        const QString longLine = QString(5000, QLatin1Char('x')) + QStringLiteral(" end");
+        Env f(cfg, {longLine, QStringLiteral("line one\nline two\nline three\nline four\nline five"),
+                    QString(200000, QLatin1Char('y')), QStringLiteral("short")});
+        f.popup->resize(420, 400);
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        const int width = view->viewport()->width();
+        for (int r = 0; r < f.model()->rowCount(); ++r) {
+            const QModelIndex row = f.model()->index(r, 0);
+            const QSize hint = view->sizeHintForIndex(row);
+            QVERIFY2(hint.height() > 0 && hint.height() < 200, "a row is a few lines tall, never the whole text");
+            QVERIFY2(view->visualRect(row).width() <= width, "and never wider than the list");
+            QVERIFY(row.data(HistoryModel::TitleRole).toString().size() <= 400); // the model caps what it hands out
+        }
+        const QImage shot = f.popup->grab().toImage();
+        QVERIFY(!shot.isNull());
+        QVERIFY2(distinctColours(shot) > 4, "the popup is painted, not blank");
+    }
+
+    void emojiAndRightToLeftTextKeepTheirTextAndPaint()
+    {
+        const QString hebrew = QStringLiteral("שלום עולם, זה טקסט בעברית");
+        const QString emoji = QStringLiteral("party \U0001F389\U0001F680 time ❤️ \U0001F468‍\U0001F469‍\U0001F467");
+        const QString mixed = QStringLiteral("abc אבג 123 דה xyz");
+        Env f({}, {hebrew, emoji, mixed});
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        const QImage before = f.popup->grab().toImage();
+        QCOMPARE(rowsOf(f.model()), (QStringList{mixed, emoji, hebrew}));
+        for (int r = 0; r < f.model()->rowCount(); ++r) {
+            const QSize hint = view->sizeHintForIndex(f.model()->index(r, 0));
+            QVERIFY2(hint.height() > 10, qPrintable(QString::number(hint.height())));
+            QVERIFY(view->visualRect(f.model()->index(r, 0)).width() <= view->viewport()->width());
+        }
+        QVERIFY(distinctColours(before) > 4);
+        // Searching in Hebrew finds the Hebrew copy, and the emoji copy by its words.
+        f.popup->searchBar()->setText(QStringLiteral("עברית")); // QTest can only type ASCII
+        QTRY_COMPARE(rowsOf(f.model()), QStringList{hebrew});
+        QVERIFY(distinctColours(f.popup->grab().toImage()) > 4);
+    }
+
+    void switchingTheThemeRepaintsTheListLightOrDark()
+    {
+        Env f({}, {QStringLiteral("alpha"), QStringLiteral("beta")});
+        QVERIFY(f.show());
+        const auto brightness = [&](Theme theme) {
+            clipitto::ui::applyTheme(theme);
+            QTest::qWait(50);
+            const QImage shot = f.popup->grab().toImage();
+            qint64 sum = 0;
+            int n = 0;
+            for (int y = 0; y < shot.height(); y += 3) {
+                for (int x = 0; x < shot.width(); x += 3) {
+                    sum += qGray(shot.pixel(x, y));
+                    ++n;
+                }
+            }
+            return int(sum / qMax(1, n));
+        };
+        const int dark = brightness(Theme::Dark);
+        const int light = brightness(Theme::Light);
+        QVERIFY2(dark < 110, qPrintable(QString::number(dark)));
+        QVERIFY2(light > 150, qPrintable(QString::number(light)));
+        QVERIFY(distinctColours(f.popup->grab().toImage()) > 4); // not blank in either
+    }
+
+    // ===== Reopening ==========================================================================
+
+    void reopeningAfterUseStartsFromTheTopAgain_data()
+    {
+        QTest::addColumn<int>("how");
+        QTest::newRow("after Esc") << 0;
+        QTest::newRow("after choosing a copy") << 1;
+        QTest::newRow("after a search with no result") << 2;
+    }
+
+    void reopeningAfterUseStartsFromTheTopAgain()
+    {
+        QFETCH(int, how);
+        QStringList copies;
+        for (int i = 0; i < 40; ++i) {
+            copies << QStringLiteral("copy %1").arg(i, 2, 10, QLatin1Char('0'));
+        }
+        Env f({}, copies);
+        f.t.repo->setPinned(f.t.repo->search(QStringLiteral("copy 03")).front().id, true);
+        f.t.repo->setGroup(f.t.repo->search(QStringLiteral("copy 07")).front().id, QStringLiteral("Work"));
+        f.popup->resize(400, 260);
+        f.popup->refresh();
+        QVERIFY(f.show());
+        auto* view = f.popup->view();
+        const QString top = view->currentIndex().data(HistoryModel::TitleRole).toString();
+        QCOMPARE(top, QStringLiteral("copy 03")); // the first pinned copy
+
+        // Use it: open the groups, scroll to the bottom, then leave one of three ways.
+        view->setFocus();
+        QTest::keyClick(view, Qt::Key_End);
+        QVERIFY(view->verticalScrollBar()->value() > 0);
+        view->expand(f.model()->groupsRoot());
+        if (how == 0) {
+            QTest::keyClick(view, Qt::Key_Escape);
+        } else if (how == 1) {
+            QTest::keyClick(view, Qt::Key_Return);
+        } else {
+            QTest::keyClicks(f.popup->searchBar(), QStringLiteral("zzz"));
+            QTRY_VERIFY(rowsOf(f.model()).isEmpty());
+            QTest::keyClick(f.popup->searchBar(), Qt::Key_Escape);
+        }
+        QVERIFY(!f.popup->isVisible());
+
+        QVERIFY(f.show());
+        QVERIFY(f.popup->searchBar()->text().isEmpty());
+        QCOMPARE(f.popup->focusWidget(), f.popup->searchBar()); // typing goes to the search box
+        QVERIFY(!view->isExpanded(f.model()->groupsRoot()));
+        QTRY_COMPARE(view->verticalScrollBar()->value(), 0);
+        const QStringList rows = rowsOf(f.model());
+        QCOMPARE(rows.first(), QStringLiteral("@Groups"));
+        QVERIFY(rows.contains(QStringLiteral("#Pinned")));
+        QCOMPARE(view->currentIndex().data(HistoryModel::TitleRole).toString(), top);
+        // Pinned and the Groups row are on screen, not scrolled away.
+        const QRect port = view->viewport()->rect();
+        QVERIFY(port.intersects(view->visualRect(f.model()->groupsRoot())));
+        QVERIFY(port.intersects(view->visualRect(f.model()->index(rows.indexOf(QStringLiteral("#Pinned")), 0))));
+    }
+
+    void reopeningShowsCopiesMadeWhileItWasClosedAndForgetsTheSelection()
+    {
+        Env f({}, {QStringLiteral("alpha"), QStringLiteral("beta")});
+        QVERIFY(f.show());
+        f.popup->view()->setFocus();
+        QTest::keyClick(f.popup->view(), Qt::Key_Down); // onto the second copy
+        QTest::keyClick(f.popup->view(), Qt::Key_Escape);
+        f.t.repo->ingest(QStringLiteral("fresh"));
+        f.popup->historyChanged(); // what the daemon calls for a new copy, shown or not
+        QVERIFY(f.show());
+        QCOMPARE(rowsOf(f.model()).first(), QStringLiteral("fresh"));
+        QCOMPARE(f.popup->view()->currentIndex().data(HistoryModel::TitleRole).toString(), QStringLiteral("fresh"));
     }
 };
 
