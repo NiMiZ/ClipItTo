@@ -69,7 +69,7 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   **DONE on GNOME:** the extension places the popup and centers Settings over it (issue #40; still to be tried
   on a real GNOME session). KDE could do it through KWin scripting, wlroots compositors through layer-shell (corners
   and centre, not "near the pointer"). Elsewhere the setting does nothing and Settings says so.
-- **Optional:** normalize CRLF when deduplicating.
+- **DONE: normalize CRLF when deduplicating.** Copies are stored with LF line ends on every system.
 - **Open question:** "search doesn't find custom groups" was reported once and could not be reproduced.
 
 ## Ideas for productivity

@@ -122,8 +122,12 @@ void CapturePipeline::storeImage(const ImageClip& image)
     }
 }
 
-void CapturePipeline::process(const QString& text, const QStringList& mimeTypes, const QString& html)
+void CapturePipeline::process(const QString& rawText, const QStringList& mimeTypes, const QString& html)
 {
+    // Line ends are stored as LF, so the same text copied with CRLF and with LF is one entry. Windows and macOS already
+    // deliver LF; this makes Linux (Qt and wl-paste) the same.
+    QString text = rawText;
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
     // A key or token is never given a formatted version, whether it is kept as a password copy or not.
     const bool looksSecret = verdict == ClipFilter::Verdict::Accept
