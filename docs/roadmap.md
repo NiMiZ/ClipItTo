@@ -136,3 +136,89 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
       best one (no menu to pick another; move it yourself and it learns). Not done: the app a copy came from is not
       used, because ClipItTo does not keep it with a copy (only for password notes), so it would match nothing; and
       "Mark as password's group" teaches nothing, since password copies never do.
+
+## More ideas (researched November 2026)
+
+From a look at CopyQ, Ditto, Maccy, Klipper and Windows' own clipboard history, kept to what fits ClipItTo: nothing leaves the
+computer unless the user asks, no clipboard contents in logs, no new library without approval. Nothing here is promised or scheduled.
+Items are numbered to carry on from the list above. Ones already listed there (quick paste keys, snippets, paste queue, ignore apps,
+command line, undo, clean links, sync through a folder, smart paste keys per app, `app:` filter, code highlighting) are not repeated.
+
+### Privacy and safety
+17. **Paste once.** *Details below.*
+18. **Auto-forget** (nice to have): copies that expire. *Details below.*
+19. **Password-field copies on Windows and macOS.** Some browsers set no password-manager marker when a password is copied from a
+    field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
+    (the source window's class or title when it is a browser password field, a copy made right after an autofill) and see what
+    each platform really offers; do nothing that reads more of the clipboard than now.
+20. **Panic key.** One hotkey (and `clipitto --panic`) that clears the history and locks the passwords at once, with no question.
+    Open: should it also clear the system clipboard, and is it kept off by default so it cannot be hit by mistake.
+
+### Finding things
+21. **Source app and time on every row** (needed by the `app:` filter above and by auto grouping by app). ClipItTo stores the
+    source app only for password copies today. Open: one more column and its cost for 50,000 copies, privacy of the list of apps
+    (encrypted with the history), and platforms where the source cannot be found (Wayland outside GNOME).
+22. **Duplicate finder and "similar to this".** Copies that differ only by spaces, case or a trailing newline are shown together
+    with a way to keep one.
+23. **Saved searches.** Pin a query such as `group:work since:today` as a button in the popup.
+24. **Regex search** behind a prefix such as `re:` (Ditto offers it). Open: a time limit so a bad pattern cannot freeze the popup.
+
+### Pasting
+25. **More Paste as transforms:** camelCase, snake_case, kebab-case, slugify, remove duplicate lines, sort lines, number lines,
+    quote lines, wrap as a markdown link or code block. They extend `TextTransform` and the `paste_as_*` lists.
+26. **Unwrap hard line breaks** from PDFs and e-mails (join the lines of one paragraph, keep blank lines).
+
+### Between computers
+27. **Send a copy to another of your computers** on the local network, after pairing with a short code, encrypted, off by default
+    (Ditto has "Friends"). It would be the first network use by ClipItTo, so it needs its own decision and a clear setting.
+28. **Receive text from a phone** with a short-lived local page opened from a QR code. A bigger step than the QR code that
+    shows a copy; same network question as the item above.
+
+### Keeping the clipboard useful
+29. **Snapshots:** a named set of copies ("project X") that can be put back later, or pasted as a queue.
+30. **Thumbnails of copied picture files** and files copied on GNOME (the extension reads text only). Open items from previews.
+
+### Quality and trust
+31. **A self-test** (*Check this installation*): is the hotkey registered, is the keyring reachable, does capture see a test
+    copy, is the diagnostic log writable, does paste work into a test box. It would have shortened the name-box investigation.
+32. **A small log viewer** for the diagnostic log (Settings), with a button that copies it to the clipboard for sharing.
+33. **Longest GUI pause in `--status`** since the program started, so a stall report has a number.
+
+### Paste once (17): details
+**What it is.** A copy marked *Paste once* is removed from the history right after it has been pasted from ClipItTo, and the
+system clipboard is cleared if it still holds it. For one-time codes, a password typed into a stranger's form, or a private
+number that should not stay anywhere.
+
+**How a copy becomes one-time**
+- By hand: *Paste once* in the right-click and Shift+Enter menus (and a key, e.g. Ctrl+Shift+Enter, to paste and forget in one go).
+- Automatically (a setting, off by default): copies that match a pattern, such as a 6-digit code, or copies from chosen apps
+  (needs item 21). Same rule editor idea as `password_rules`.
+
+**What "pasted" means.** ClipItTo can only know about its own paste action, when it puts the text on the clipboard and sends the
+paste keys. A Ctrl+V the user presses later in another program is not seen. So the system clipboard is cleared a few seconds after
+ClipItTo's paste (`paste_once_clear_seconds`, default 5), not at the next Ctrl+V.
+
+**Decisions to make first**
+1. **Decided: stored.** A *Paste once* copy is kept like any other copy (encrypted with the history if that is on) until it is used.
+   It survives a restart and is removed after its paste.
+2. **Decided: a password copy is never deleted without asking.** *Paste once* on a password copy asks before the sealed copy is
+   deleted, every time (it pastes first; then asks "Delete this password copy?"), and *No* keeps it.
+3. *If the paste did not land* (wrong window, paste keys blocked): delete only after the paste keys were sent; keep a short
+   *Undo* in the popup for 10 seconds.
+4. *Clipboard clearing per system:* Windows (empty the clipboard with the same exclude-from-history markers the paste uses),
+   macOS (clear the pasteboard when it still holds our change count), X11 (take and empty the selection), Wayland/GNOME
+   (the extension clears it), wl-paste (`wl-copy --clear`). Never clear a clipboard that already holds something newer.
+5. *Backups and history search:* never in a backup; never found by search after use.
+6. *What the row shows:* a small *once* tag; the text is shown as for password copies when the setting says so.
+
+**Tests to write:** deleted after the paste, kept if the paste was cancelled, clipboard cleared only when unchanged, not in a
+backup, survives (or not) a restart as decided, and the auto rules.
+
+### Auto-forget (18): details (nice to have)
+Copies that remove themselves. Rules, like `password_rules`, in Settings › Privacy and in the config file (`auto_forget`):
+- by **time**: all copies older than N days (outside pinned and saved), or copies of a kind (pictures after 1 day);
+- by **pattern**: copies matching a pattern are removed after N minutes (e.g. text containing `Bearer ` after 5 minutes), reusing
+  the secret scanner's kinds (token, key, card number) as ready-made choices;
+- by **app** (needs item 21): copies from a chosen program are removed after N minutes.
+Pinned, starred and grouped copies are never removed. A removal leaves nothing in the log but a count. Open: whether a removal
+is shown (a toast) or silent, and whether the prune runs on a timer or when the popup opens.
