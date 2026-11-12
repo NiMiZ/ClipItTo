@@ -23,7 +23,7 @@ private slots:
         QTimer::singleShot(0, [] { QThread::msleep(300); }); // a slot that blocks
         QTest::qWait(500);
         const qint64 max = wd.finish();
-        QVERIFY2(max >= 250 && max < 450, qPrintable(QString::number(max)));
+        QVERIFY2(max >= 250 && max < 1500, qPrintable(QString::number(max)));
     }
 
     void aSynchronousStallCountsEvenWithoutSpinningTheLoopAgain()

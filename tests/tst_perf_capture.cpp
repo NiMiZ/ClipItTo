@@ -152,7 +152,7 @@ private slots:
         }
         perf::note("picture bytes", QString::number(png.size()));
         QVERIFY(png.size() > 15 * 1024 * 1024);
-        StallWatchdog wd;
+        StallWatchdog wd(300); // decoding a 16 MB PNG is a real cost; the limit is for a runaway, not a precise figure
         emit rig.daemon->control()->ingestImageRequested(png, QStringLiteral("image/png"), {QStringLiteral("image/png")});
         QTRY_COMPARE_WITH_TIMEOUT(rig.repo().countImages(), 1, 30000);
         QTest::qWait(100);
