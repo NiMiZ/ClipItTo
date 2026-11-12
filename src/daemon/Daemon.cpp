@@ -135,6 +135,10 @@ qint64 Daemon::runAutoForget()
     }
     try {
         const qint64 removed = m_forgetter->run();
+        if (m_forgetter->hasMore()) {
+            // A big backlog (a new rule on a long history) goes on in small steps, so the window never freezes.
+            QTimer::singleShot(100, this, [this] { runAutoForget(); });
+        }
         if (removed > 0) {
             qCDebug(lcDaemon) << "auto-forget removed" << removed << "copies"; // a count, never contents
             if (m_popup) {

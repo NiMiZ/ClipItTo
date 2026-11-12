@@ -330,10 +330,10 @@ private slots:
         QCOMPARE(r.pruner.run(), qint64(1));
     }
 
-    void aRunLooksAtABoundedNumberOfCopies()
+    void aRunRemovesABoundedNumberAndSaysThereIsMore()
     {
         Rig r;
-        const int n = Pruner::kScanRows + 100;
+        const int n = 2 * Pruner::kDeleteLimit + 50;
         {
             clipitto::db::Transaction tx(r.t.db);
             for (int i = 0; i < n; ++i) {
@@ -342,11 +342,39 @@ private slots:
             }
             tx.commit();
         }
+        r.pruner.setRules({contains(QStringLiteral("Bearer"), 1), age(1)});
+        r.now = kBase.addDays(5);
+        QCOMPARE(r.pruner.run(), qint64(Pruner::kDeleteLimit));
+        QVERIFY(r.pruner.hasMore());
+        QCOMPARE(r.pruner.run(), qint64(Pruner::kDeleteLimit));
+        QVERIFY(r.pruner.hasMore());
+        QCOMPARE(r.pruner.run(), qint64(50));
+        QVERIFY(!r.pruner.hasMore());
+        QCOMPARE(r.t.repo->count(), qint64(0));
+        QCOMPARE(r.pruner.run(), qint64(0));
+    }
+
+    void aRunReadsABoundedNumberOfCopies()
+    {
+        Rig r;
+        const int n = Pruner::kScanRows + 100;
+        {
+            clipitto::db::Transaction tx(r.t.db);
+            for (int i = 0; i < n; ++i) {
+                r.t.clock = kBase.addMSecs(i);
+                r.t.repo->ingest(QStringLiteral("line %1").arg(i));
+            }
+            r.t.clock = kBase.addMSecs(n); // the newest, so the last one the scan reaches
+            r.t.repo->ingest(QStringLiteral("the one with Bearer"));
+            tx.commit();
+        }
         r.pruner.setRules({contains(QStringLiteral("Bearer"), 1)});
         r.now = kBase.addDays(1);
-        QCOMPARE(r.pruner.run(), qint64(Pruner::kScanRows));
-        QCOMPARE(r.pruner.run(), qint64(100)); // the rest on the next run
-        QCOMPARE(r.t.repo->count(), qint64(0));
+        QCOMPARE(r.pruner.run(), qint64(0)); // the first run read only kScanRows copies
+        QVERIFY(r.pruner.hasMore());
+        QCOMPARE(r.pruner.run(), qint64(1)); // the next reached it (what was read before is remembered)
+        QVERIFY(!r.pruner.hasMore());
+        QCOMPARE(r.t.repo->count(), qint64(n));
     }
 
     void removedTextIsNotLeftInTheFile()

@@ -179,6 +179,7 @@ void Pruner::setRules(const QList<AutoForgetRule>& rules)
 
 qint64 Pruner::run()
 {
+    m_more = false;
     if (m_rules.isEmpty()) {
         return 0;
     }
@@ -208,6 +209,7 @@ qint64 Pruner::run()
             if (known != m_seen.constEnd() && known->hash == c.hash) {
                 entry = *known;
             } else if (budget <= 0 || rows <= 0) {
+                m_more = true;
                 continue; // not looked at yet: the next run does
             } else {
                 --rows;
@@ -233,7 +235,10 @@ qint64 Pruner::run()
     for (const qint64 id : ids) {
         m_seen.remove(id);
     }
-    return m_repo.forget(cuts, ids);
+    bool limited = false;
+    const qint64 removed = m_repo.forget(cuts, ids, kDeleteLimit, &limited);
+    m_more = m_more || limited;
+    return removed;
 }
 
 } // namespace clipitto::autoforget

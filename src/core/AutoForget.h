@@ -62,8 +62,9 @@ class Pruner {
 public:
     using Clock = std::function<QDateTime()>;
     static constexpr qint64 kScanBudgetBytes = 4 * 1024 * 1024;
-    static constexpr int kScanRows = 2000;
+    static constexpr int kScanRows = 500;
     static constexpr int kCandidateLimit = 50000;
+    static constexpr int kDeleteLimit = 100; // copies removed per run; a bigger backlog goes on in the next run
 
     explicit Pruner(db::Repository& repo, Clock clock = {});
 
@@ -73,6 +74,8 @@ public:
     // Removes what the rules say is due. Returns how many copies went (0 with no rules, without touching the database).
     // May throw db::DbError.
     qint64 run();
+    // The last run stopped at its limit: more may be due now, so run again soon (not in the same event loop turn).
+    bool hasMore() const { return m_more; }
 
 private:
     struct Seen {
@@ -83,6 +86,7 @@ private:
     Clock m_clock;
     QList<AutoForgetRule> m_rules;
     QHash<qint64, Seen> m_seen; // reset when the rules change
+    bool m_more = false;
 };
 
 } // namespace autoforget

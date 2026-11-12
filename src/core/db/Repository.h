@@ -180,10 +180,12 @@ public:
     std::vector<ForgetCandidate> forgetCandidates(const QDateTime& before, int limit);
     // The text of such a candidate; empty when it is gone, filed or a password copy meanwhile.
     QString forgetText(qint64 id);
-    // Deletes, in one transaction, the unsaved non-password copies last used before `cutoff` of the given kind, and
-    // the listed copies (if they are still unsaved and not passwords). Then, as clearHistory does: search index
-    // merged and the write-ahead log folded in, so nothing deleted is left in the file. Returns the number deleted.
-    qint64 forget(const std::vector<std::pair<QDateTime, ForgetKind>>& cuts, const std::vector<qint64>& ids);
+    // Deletes, in one transaction, at most `limit` of the unsaved non-password copies last used before `cutoff` of the
+    // given kind (oldest first), and the listed copies (if they are still unsaved and not passwords). `*more` says that
+    // the limit was reached, so there may be more to do. When nothing more is due: search index merged and the
+    // write-ahead log folded in, as clearHistory does, so nothing deleted is left in the file. Returns the number deleted.
+    qint64 forget(const std::vector<std::pair<QDateTime, ForgetKind>>& cuts, const std::vector<qint64>& ids, int limit,
+                  bool* more);
 
     // --- Groups: a tree of paths (see GroupPath.h). Parents of a group always exist.
     // Every group path, depth first: parents before children, siblings in the user's order

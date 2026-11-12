@@ -1367,25 +1367,42 @@ QString Repository::forgetText(qint64 id)
     return s.step() ? s.colText(0) : QString();
 }
 
-qint64 Repository::forget(const std::vector<std::pair<QDateTime, ForgetKind>>& cuts, const std::vector<qint64>& ids)
+qint64 Repository::forget(const std::vector<std::pair<QDateTime, ForgetKind>>& cuts, const std::vector<qint64>& ids,
+                          int limit, bool* more)
 {
     qint64 deleted = 0;
+    bool limited = false;
     {
         Transaction tx(m_db);
         for (const auto& [cutoff, kind] : cuts) {
+            if (deleted >= limit) {
+                limited = true;
+                break;
+            }
             const char* sql = kind == ForgetKind::Text
-                ? "DELETE FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = 'text' AND last_used < ?1"
+                ? "DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = 'text' "
+                  "AND last_used < ?1 ORDER BY last_used LIMIT ?2)"
                 : kind == ForgetKind::Picture
-                    ? "DELETE FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = 'image' AND last_used < ?1"
-                    : "DELETE FROM clips WHERE is_saved = 0 AND secret = 0 AND last_used < ?1";
+                    ? "DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE is_saved = 0 AND secret = 0 "
+                      "AND kind = 'image' AND last_used < ?1 ORDER BY last_used LIMIT ?2)"
+                    : "DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE is_saved = 0 AND secret = 0 "
+                      "AND last_used < ?1 ORDER BY last_used LIMIT ?2)";
             Stmt s(m_db, sql);
-            s.bindText(1, cutoff.toUTC().toString(Qt::ISODateWithMs));
+            s.bindText(1, cutoff.toUTC().toString(Qt::ISODateWithMs)).bindInt(2, limit - deleted);
             s.run();
-            deleted += m_db.changes();
+            const qint64 n = m_db.changes();
+            deleted += n;
+            if (deleted >= limit) {
+                limited = true; // the limit was reached: there may be more
+            }
         }
         if (!ids.empty()) {
             Stmt s(m_db, "DELETE FROM clips WHERE id = ?1 AND is_saved = 0 AND secret = 0");
             for (const qint64 id : ids) {
+                if (deleted >= limit) {
+                    limited = true;
+                    break;
+                }
                 s.reset();
                 s.bindInt(1, id);
                 s.run();
@@ -1394,7 +1411,10 @@ qint64 Repository::forget(const std::vector<std::pair<QDateTime, ForgetKind>>& c
         }
         tx.commit();
     }
-    if (deleted > 0) {
+    if (more) {
+        *more = limited;
+    }
+    if (deleted > 0 && !limited) {
         scrub(); // freed pages were zeroed (secure_delete); the index and the log may still hold the text
     }
     return deleted;
