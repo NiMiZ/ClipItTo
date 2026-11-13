@@ -26,6 +26,8 @@ public:
     void setClipboard(const QString& text) override;
     void setClipboardImage(const QByteArray& png) override;
     void paste(PasteKeys keys) override;
+    void rememberPasteTarget() override;
+    PasteTarget pasteTarget() const override { return m_target; }
 
 private:
     void call(const QString& method, const QVariantList& args = {}, const std::function<void()>& ifUnknown = {});
@@ -34,6 +36,8 @@ private:
     QDBusConnection m_bus;
     QDBusServiceWatcher* m_watcher;
     bool m_available = false;
+    PasteTarget m_target;
+    quint64 m_targetAsk = 0; // a late answer to an older question is dropped
 };
 
 } // namespace clipitto::ipc

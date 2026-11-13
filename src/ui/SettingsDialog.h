@@ -152,6 +152,15 @@ public:
     QCheckBox* startupBox() const { return m_startup; }
     QCheckBox* pasteBox() const { return m_paste; }
     QCheckBox* latestBox() const { return m_latest; }
+    // Paste keys per program (General tab): the switch and one row per rule "program = keys".
+    QCheckBox* pasteKeysPerAppBox() const { return m_pasteKeysPerApp; }
+    QWidget* pasteKeysPanel() const { return m_pasteKeysPanel; }
+    QPushButton* addPasteKeysButton() const { return m_addPasteKeys; }
+    QLabel* pasteKeysErrorLabel() const { return m_pasteKeysError; }
+    int pasteKeysRowCount() const { return int(m_pasteKeysRows.size()); }
+    QLineEdit* pasteKeysPatternEdit(int row) const { return m_pasteKeysRows.at(size_t(row)).pattern; }
+    QComboBox* pasteKeysChordBox(int row) const { return m_pasteKeysRows.at(size_t(row)).chord; }
+    QPushButton* pasteKeysRemoveButton(int row) const { return m_pasteKeysRows.at(size_t(row)).remove; }
     QCheckBox* ignoreCaseBox() const { return m_ignoreCase; }
     QCheckBox* passwordsPerNoteBox() const { return m_passwordsPerNote; }
     QCheckBox* detectSecretsBox() const { return m_detectSecrets; }
@@ -220,6 +229,11 @@ private:
     void createGroup(const QString& parentPath);
     void addRuleRow(const PasswordRule& rule);
     void removeRuleRow(QWidget* row);
+    void addPasteKeysRow(const PasteKeyRule& rule);
+    void removePasteKeysRow(QWidget* row);
+    QList<PasteKeyRule> pasteKeysValues() const; // what the rows say (valid or not)
+    void refreshPasteKeys(); // validation message, OK button, Add button
+    void updateOkButton(); // OK waits while any rule editor shows an error
     void addForgetRow(const AutoForgetRule& rule);
     void removeForgetRow(QWidget* row);
     QList<AutoForgetRule> forgetValues() const; // what the rows say (valid or not)
@@ -267,6 +281,7 @@ private:
     QCheckBox* m_startup;
     QCheckBox* m_paste;
     QCheckBox* m_latest;
+    QCheckBox* m_pasteKeysPerApp;
     QCheckBox* m_ignoreCase;
     QCheckBox* m_detectSecrets;
     QCheckBox* m_detectPasswords;
@@ -292,6 +307,17 @@ private:
         QComboBox* secret = nullptr; // Secret: any / token / key / card
         QPushButton* remove = nullptr;
     };
+    struct PasteKeysRow {
+        QWidget* row = nullptr;
+        QLineEdit* pattern = nullptr;
+        QComboBox* chord = nullptr;
+        QPushButton* remove = nullptr;
+    };
+    QWidget* m_pasteKeysPanel = nullptr;
+    QVBoxLayout* m_pasteKeysLayout = nullptr;
+    std::vector<PasteKeysRow> m_pasteKeysRows;
+    QPushButton* m_addPasteKeys = nullptr;
+    QLabel* m_pasteKeysError = nullptr;
     QWidget* m_forgetPanel = nullptr;
     QVBoxLayout* m_forgetLayout = nullptr;
     std::vector<ForgetRow> m_forgetRows;
