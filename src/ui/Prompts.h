@@ -60,6 +60,12 @@ struct MasterPasswordAnswer {
 using MasterPasswordPrompt = std::function<std::optional<MasterPasswordAnswer>(QWidget* parent, bool change)>;
 MasterPasswordPrompt defaultMasterPasswordPrompt();
 
+// The sync passphrase (Settings > Sync): two masked fields, OK once they match and it is long enough. It is not the
+// master password and is never stored. nullopt = cancelled. The caller wipes the text.
+inline constexpr int kMinSyncPassphrase = 10;
+using SyncPassphrasePrompt = std::function<std::optional<QString>(QWidget* parent, bool change)>;
+SyncPassphrasePrompt defaultSyncPassphrasePrompt();
+
 // Shows a copy's text as a QR code to scan with a phone (modal, closes with Esc). `text` is never logged.
 using QrView = std::function<void(QWidget* parent, const QString& text)>;
 QrView defaultQrView();

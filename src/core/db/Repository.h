@@ -238,6 +238,57 @@ public:
     // Puts the group last among its siblings (a restored group arriving after the existing ones).
     void placeGroupLast(const QString& path);
 
+    // --- Sync through a shared folder (Sync.h, docs/sync-design.md)
+    // While on, every copy that leaves the history (but a password copy or a Paste once copy) is remembered by its hash
+    // in sync_tombstones. remove(), clearRecent() and clearHistory() mark theirs as shared (written to the sync file).
+    void setSyncTracking(bool on);
+    bool syncTracking();
+    // The device's random id, made on first use and kept in the history file.
+    QString syncDeviceId();
+    struct SyncCopy {
+        qint64 id = 0;
+        QString hash; // content_hash
+        QString lastUsed;
+        QString metaChanged; // empty: never filed
+        bool image = false;
+    };
+    // The copies a sync file holds: every saved one, and the newest `maxUnsaved` others. Never a password copy or a
+    // Paste once copy; pictures only when `pictures`, and not above `maxPictureBytes` of PNG. Light: no contents.
+    std::vector<SyncCopy> syncExportList(int maxUnsaved, bool pictures, qint64 maxPictureBytes);
+    struct SyncItem {
+        Entry entry;
+        QString metaChanged;
+        bool offRecent = false;
+        QByteArray png; // a picture
+    };
+    std::optional<SyncItem> syncItem(qint64 id);
+    // What the last written sync file was made from (Collector::fingerprint), so an unchanged history is not written again.
+    QString syncFingerprint();
+    void setSyncFingerprint(const QString& fingerprint);
+    struct Tombstone {
+        QString hash;
+        QString deletedAt;
+    };
+    // Deletions the user made here that are younger than `since` (ISO time); not those whose copy is back and newer.
+    std::vector<Tombstone> syncSharedTombstones(const QString& since);
+    // When a copy with this hash left the history here (ISO time); empty when it did not.
+    QString syncTombstone(const QString& hash);
+    void syncPurgeTombstones(const QString& before);
+    // Runs `work` in one transaction in which the filing trigger stands still: what the merge writes (syncAdd,
+    // syncSetMeta) keeps the times it is given. Do not call ingestImage/restoreFiling inside (they open a transaction).
+    void syncBatch(const std::function<void()>& work);
+    // Adds a copy that is not here, with the times and filing of the other device (`image` only for a picture).
+    // Returns its id. The pin is not applied: call syncSetMeta.
+    qint64 syncAdd(const SyncItem& item, const ImageClip& image);
+    // Pin, star, group and note of a copy as one set, with the time of the change; the pin only if the cap allows.
+    void syncSetMeta(qint64 id, const QString& note, const QString& group, bool favorite, bool pinned,
+                     const QString& metaChanged);
+    // Deletes a copy (no scrub: call syncScrub() when a run is done). A local-only tombstone is left.
+    bool syncDelete(qint64 id);
+    void syncScrub(); // search index merged, log folded in: what was deleted is gone from the file
+    // The time of the oldest unsaved copy (empty: none) and how many there are, for the "would be pruned at once" rule.
+    std::pair<QString, qint64> syncOldestUnsaved(bool images);
+
     qint64 count();
     qint64 countUnsaved();
     qint64 countImages();

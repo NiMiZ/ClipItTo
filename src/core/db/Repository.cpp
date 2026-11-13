@@ -17,6 +17,8 @@ namespace clipitto::db {
 
 namespace {
 
+void setMeta(Db& db, const char* key, const QString& value);
+
 // Column order read by readEntry().
 // The condition for a copy (alias c) to be listed in Recent.
 #define IN_RECENT                                                                                      \
@@ -655,8 +657,10 @@ qint64 Repository::clearRecent()
         cleared = count.colInt(0);
         Stmt off(m_db, "UPDATE clips SET off_recent = 1 WHERE is_saved = 1 AND pin_position IS NULL");
         off.run();
+        setMeta(m_db, "sync_share_deletes", QStringLiteral("1"));
         Stmt del(m_db, "DELETE FROM clips WHERE is_saved = 0");
         del.run();
+        setMeta(m_db, "sync_share_deletes", QStringLiteral("0"));
         m_db.exec("INSERT INTO clips_fts(clips_fts) VALUES ('optimize');");
         tx.commit();
     }
@@ -1225,9 +1229,24 @@ std::optional<qint64> Repository::newestId()
 
 void Repository::remove(qint64 id)
 {
-    m_remove->reset();
-    m_remove->bindInt(1, id);
-    m_remove->run();
+    // A deletion the user asked for: with sync on it is written to the sync file (sync_share_deletes).
+    // A copy that looks like a secret leaves no hash behind (the hash of a short secret can be guessed back).
+    const auto doomed = get(id);
+    const bool secretLooking = doomed && !doomed->secret && !doomed->image && looksSecret(doomed->content);
+    setMeta(m_db, "sync_share_deletes", QStringLiteral("1"));
+    try {
+        m_remove->reset();
+        m_remove->bindInt(1, id);
+        m_remove->run();
+    } catch (...) {
+        setMeta(m_db, "sync_share_deletes", QStringLiteral("0"));
+        throw;
+    }
+    setMeta(m_db, "sync_share_deletes", QStringLiteral("0"));
+    if (secretLooking) {
+        Stmt forgetHash(m_db, "DELETE FROM sync_tombstones WHERE content_hash = ?1");
+        forgetHash.bindText(1, doomed->contentHash).run();
+    }
 }
 
 void Repository::setPasteOnce(qint64 id, bool once)
@@ -1397,9 +1416,11 @@ qint64 Repository::clearHistory(bool everything)
     qint64 deleted = 0;
     {
         Transaction tx(m_db);
+        setMeta(m_db, "sync_share_deletes", QStringLiteral("1"));
         Stmt s(m_db, everything ? "DELETE FROM clips" : "DELETE FROM clips WHERE is_saved = 0");
         s.run();
         deleted = m_db.changes();
+        setMeta(m_db, "sync_share_deletes", QStringLiteral("0"));
         if (everything) {
             // What was learned from the copies goes with them.
             m_db.exec("DELETE FROM auto_tokens");
@@ -1589,6 +1610,215 @@ qint64 Repository::countUnsaved()
     const qint64 n = m_countUnsaved->colInt(0);
     m_countUnsaved->reset();
     return n;
+}
+
+// --- Sync
+
+namespace {
+
+void setMeta(Db& db, const char* key, const QString& value)
+{
+    Stmt s(db, "INSERT INTO meta(key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    s.bindText(1, QString::fromLatin1(key)).bindText(2, value).run();
+}
+
+QString isoStamp(const QDateTime& time)
+{
+    return time.isValid() ? time.toUTC().toString(Qt::ISODateWithMs) : QString();
+}
+
+} // namespace
+
+void Repository::setSyncTracking(bool on)
+{
+    setMeta(m_db, "sync_on", on ? QStringLiteral("1") : QStringLiteral("0"));
+    if (!on) {
+        m_db.exec("DELETE FROM sync_tombstones"); // nothing of what was deleted is kept when sync is off
+    }
+}
+
+bool Repository::syncTracking()
+{
+    Stmt s(m_db, "SELECT value FROM meta WHERE key = 'sync_on'");
+    return s.step() && s.colText(0) == QLatin1String("1");
+}
+
+QString Repository::syncDeviceId()
+{
+    {
+        Stmt s(m_db, "SELECT value FROM meta WHERE key = 'sync_device_id'");
+        if (s.step() && !s.colText(0).isEmpty()) {
+            return s.colText(0);
+        }
+    }
+    const QString id = QString::fromLatin1(PasswordVault::randomBytes(16).toHex());
+    setMeta(m_db, "sync_device_id", id);
+    return id;
+}
+
+std::vector<Repository::SyncCopy> Repository::syncExportList(int maxUnsaved, bool pictures, qint64 maxPictureBytes)
+{
+    const char* eligible = "c.secret = 0 AND c.paste_once = 0 AND (c.kind = 'text' OR (?1 = 1 AND "
+                           "(SELECT length(png) FROM clip_images i WHERE i.clip_id = c.id) <= ?2))";
+    const QByteArray sql =
+        QByteArray("SELECT c.id, c.content_hash, c.last_used, coalesce(c.meta_changed, ''), c.kind FROM clips c WHERE ")
+        + eligible + " AND (c.is_saved = 1 OR c.id IN (SELECT c.id FROM clips c WHERE c.is_saved = 0 AND " + eligible
+        + " ORDER BY c.last_used DESC, c.id DESC LIMIT ?3)) ORDER BY c.id";
+    Stmt s(m_db, sql);
+    s.bindInt(1, pictures ? 1 : 0).bindInt(2, maxPictureBytes).bindInt(3, maxUnsaved);
+    std::vector<SyncCopy> out;
+    while (s.step()) {
+        out.push_back({s.colInt(0), s.colText(1), s.colText(2), s.colText(3), s.colText(4) == QLatin1String("image")});
+    }
+    return out;
+}
+
+std::optional<Repository::SyncItem> Repository::syncItem(qint64 id)
+{
+    auto e = get(id);
+    if (!e || e->secret || e->pasteOnce) {
+        return std::nullopt;
+    }
+    SyncItem item;
+    item.entry = *e;
+    Stmt s(m_db, "SELECT coalesce(meta_changed, ''), off_recent FROM clips WHERE id = ?1");
+    s.bindInt(1, id);
+    if (s.step()) {
+        item.metaChanged = s.colText(0);
+        item.offRecent = s.colInt(1) != 0;
+    }
+    if (e->image) {
+        item.png = imageData(id);
+    }
+    return item;
+}
+
+QString Repository::syncFingerprint()
+{
+    Stmt s(m_db, "SELECT value FROM meta WHERE key = 'sync_fingerprint'");
+    return s.step() ? s.colText(0) : QString();
+}
+
+void Repository::setSyncFingerprint(const QString& fingerprint)
+{
+    setMeta(m_db, "sync_fingerprint", fingerprint);
+}
+
+std::vector<Repository::Tombstone> Repository::syncSharedTombstones(const QString& since)
+{
+    Stmt s(m_db, "SELECT t.content_hash, t.deleted_at FROM sync_tombstones t WHERE t.shared = 1 AND t.deleted_at >= ?1 "
+                 "AND NOT EXISTS (SELECT 1 FROM clips c WHERE c.content_hash = t.content_hash AND c.last_used > t.deleted_at) "
+                 "ORDER BY t.content_hash");
+    s.bindText(1, since);
+    std::vector<Tombstone> out;
+    while (s.step()) {
+        out.push_back({s.colText(0), s.colText(1)});
+    }
+    return out;
+}
+
+QString Repository::syncTombstone(const QString& hash)
+{
+    Stmt s(m_db, "SELECT deleted_at FROM sync_tombstones WHERE content_hash = ?1");
+    s.bindText(1, hash);
+    return s.step() ? s.colText(0) : QString();
+}
+
+void Repository::syncPurgeTombstones(const QString& before)
+{
+    Stmt s(m_db, "DELETE FROM sync_tombstones WHERE deleted_at < ?1");
+    s.bindText(1, before).run();
+}
+
+void Repository::syncBatch(const std::function<void()>& work)
+{
+    Transaction tx(m_db);
+    setMeta(m_db, "sync_applying", QStringLiteral("1"));
+    work();
+    setMeta(m_db, "sync_applying", QStringLiteral("0"));
+    tx.commit();
+}
+
+qint64 Repository::syncAdd(const SyncItem& item, const ImageClip& image)
+{
+    const Entry& e = item.entry;
+    qint64 id = 0;
+    if (e.image) {
+        Stmt& s = *m_ingestImage;
+        s.reset();
+        s.bindText(1, image.label()).bindText(2, QStringLiteral("image:") + image.pixelHash).bindText(3, isoStamp(e.lastUsed));
+        s.step();
+        id = s.colInt(0);
+        s.run();
+        Stmt store(m_db, "INSERT OR IGNORE INTO clip_images(clip_id, png, thumbnail, width, height) VALUES (?1, ?2, ?3, ?4, ?5)");
+        store.bindInt(1, id).bindBlob(2, image.png).bindBlob(3, image.thumbnail);
+        store.bindInt(4, image.width).bindInt(5, image.height);
+        store.run();
+    } else {
+        Stmt& s = *m_ingest;
+        s.reset();
+        s.bindText(1, e.content).bindText(2, textHash(e.content)).bindText(3, isoStamp(e.lastUsed));
+        s.step();
+        id = s.colInt(0);
+        s.run();
+    }
+    const QString path = groups::normalize(e.group);
+    if (!path.isEmpty()) {
+        createGroup(path);
+    }
+    // The columns the search index covers are written only when there is something to write (see restoreFiling): an
+    // UPDATE that names them rewrites the row's index entries, which made a large merge slow.
+    const QString noteText = e.note.trimmed();
+    const bool filed = !noteText.isEmpty() || !path.isEmpty();
+    Stmt s(m_db, filed ? "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, is_favorite = ?6, "
+                         "off_recent = ?7, meta_changed = ?8 WHERE id = ?1"
+                       : "UPDATE clips SET created_at = ?2, last_used = ?3, is_favorite = ?6, off_recent = ?7, meta_changed = ?8 "
+                         "WHERE id = ?1");
+    s.bindInt(1, id).bindText(2, isoStamp(e.createdAt.isValid() ? e.createdAt : e.lastUsed)).bindText(3, isoStamp(e.lastUsed));
+    if (filed) {
+        s.bindTextOrNull(4, noteText).bindTextOrNull(5, path);
+    }
+    s.bindInt(6, e.favorite ? 1 : 0).bindInt(7, item.offRecent ? 1 : 0);
+    s.bindTextOrNull(8, item.metaChanged).run();
+    return id;
+}
+
+void Repository::syncSetMeta(qint64 id, const QString& note, const QString& group, bool favorite, bool pinned,
+                             const QString& metaChanged)
+{
+    const QString path = groups::normalize(group);
+    if (!path.isEmpty()) {
+        createGroup(path);
+    }
+    {
+        Stmt s(m_db, "UPDATE clips SET tag_or_note = ?2, group_name = ?3, is_favorite = ?4, meta_changed = ?5 WHERE id = ?1");
+        s.bindInt(1, id).bindTextOrNull(2, note.trimmed()).bindTextOrNull(3, path).bindInt(4, favorite ? 1 : 0);
+        s.bindTextOrNull(5, metaChanged).run();
+    }
+    const auto e = get(id);
+    if (e && e->pinned() != pinned) {
+        setPinned(id, pinned); // refused when the pin list is full; the trigger is off, so meta_changed stays
+    }
+}
+
+bool Repository::syncDelete(qint64 id)
+{
+    Stmt s(m_db, "DELETE FROM clips WHERE id = ?1");
+    s.bindInt(1, id).run();
+    return m_db.changes() > 0;
+}
+
+void Repository::syncScrub()
+{
+    scrub();
+}
+
+std::pair<QString, qint64> Repository::syncOldestUnsaved(bool images)
+{
+    Stmt s(m_db, "SELECT min(last_used), count(*) FROM clips WHERE is_saved = 0 AND secret = 0 AND kind = ?1");
+    s.bindText(1, images ? QStringLiteral("image") : QStringLiteral("text"));
+    s.step();
+    return {s.colText(0), s.colInt(1)};
 }
 
 void Repository::optimize()

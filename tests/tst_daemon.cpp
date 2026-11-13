@@ -13,6 +13,7 @@
 #include "PopupWindow.h"
 #include "SecretScan.h"
 #include "SearchBar.h"
+#include "SyncService.h"
 #include "SyntheticPaste.h"
 #include "db/Repository.h"
 
@@ -342,6 +343,48 @@ private slots:
         emit d.control()->ingestRequested(QStringLiteral("secret"), {QStringLiteral("x-kde-passwordManagerHint")});
         QCOMPARE(d.repository()->count(), 1);
         QCOMPARE(d.repository()->recent(1, false).front().content, QStringLiteral("from helper"));
+    }
+
+    // Roadmap 13: --sync (the control channel's syncRequested) runs one sync through the shared folder; the daemon wires
+    // the settings, the key store and the status line.
+    void syncRequestWritesTheDevicesFileAndStatusSaysSo()
+    {
+        QTemporaryDir share;
+        DaemonOptions o = options();
+        o.syncKeyStore = std::make_shared<FakeKeyStore>();
+        Daemon d(o, std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QCOMPARE(d.status().value(QStringLiteral("sync")).toString(), QStringLiteral("off"));
+        QVERIFY(!d.repository()->syncTracking());
+        Config c = d.config();
+        c.syncEnabled = true;
+        c.syncFolder = share.path();
+        c.syncDeviceName = QStringLiteral("Test PC");
+        QVERIFY(d.applySettings(c));
+        QVERIFY(d.repository()->syncTracking()); // deletions are remembered from now on
+        QVERIFY(d.status().value(QStringLiteral("sync")).toString().startsWith(QLatin1String("on")));
+
+        // No passphrase yet: nothing is written.
+        emit d.control()->syncRequested();
+        QVERIFY(QDir(share.path()).entryList({QStringLiteral("*.clipitto-sync")}).isEmpty());
+
+        d.sync()->setKdfCost({64, 1});
+        std::optional<QString> error;
+        d.sync()->setPassphrase(share.path(), QByteArray("a daemon test passphrase"), false,
+                                [&error](QString e, bool) { error = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(error.has_value(), 20000);
+        QVERIFY2(error->isEmpty(), qPrintable(*error));
+        emit d.control()->ingestRequested(QStringLiteral("shared text"), {QStringLiteral("text/plain")});
+        QSignalSpy done(d.sync(), &clipitto::SyncService::finished);
+        emit d.control()->syncRequested();
+        QTRY_VERIFY_WITH_TIMEOUT(!done.isEmpty() && !d.sync()->isRunning(), 20000);
+        QCOMPARE(QDir(share.path()).entryList({QStringLiteral("*.clipitto-sync")}).size(), 1);
+        QVERIFY2(d.status().value(QStringLiteral("sync")).toString().contains(QLatin1String("last sync")),
+                 qPrintable(d.status().value(QStringLiteral("sync")).toString()));
+        // Turned off again: tracking stops.
+        c.syncEnabled = false;
+        QVERIFY(d.applySettings(c));
+        QVERIFY(!d.repository()->syncTracking());
     }
 
     void markedCopiesAreKeptOnceAMasterPasswordIsSet()

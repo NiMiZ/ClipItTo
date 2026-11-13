@@ -41,6 +41,7 @@ signals:
     void ingestImageRequested(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void reloadRequested();
     void lockPasswordsRequested(); // clipitto --lock
+    void syncRequested(); // clipitto --sync: one sync run through the shared folder
     // clipitto --panic (or the panic shortcut's command): wipe the history, lock the passwords, empty the clipboard.
     // Connected directly, so the reply goes out after it is done.
     void panicRequested();

@@ -76,6 +76,11 @@ public:
     static QByteArray boxWithBackupKey(const QByteArray& key, const QByteArray& plain);
     static std::optional<QByteArray> unboxWithBackupKey(const QByteArray& key, const QByteArray& boxed);
 
+    // The sync files (Sync.h): a key from the sync passphrase (deriveBackupKey does that), and boxes with a context of
+    // their own, so a sync box can't be passed off as a backup box.
+    static QByteArray boxWithSyncKey(const QByteArray& key, const QByteArray& plain, const QByteArray& header);
+    static std::optional<QByteArray> unboxWithSyncKey(const QByteArray& key, const QByteArray& boxed, const QByteArray& header);
+
     PasswordVault() = default;
     ~PasswordVault();
     PasswordVault(const PasswordVault&) = delete;

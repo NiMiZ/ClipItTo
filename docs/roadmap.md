@@ -104,8 +104,13 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
 11. **Command line for scripts:** `clipitto --list`, `--get N`, `--add`, `--paste N`, JSON output, so
     other tools and shell scripts can use the history.
 12. **Undo delete / Clear** for a few seconds (a toast with "Undo") instead of only asking first.
-13. **Sync without a server:** export/import to a folder the user already syncs (Syncthing, Nextcloud),
-    encrypted with the master password, keeping the "no network from ClipItTo" promise.
+13. **DONE: Sync without a server** (Settings › Sync, off by default; [design](sync-design.md)): each PC writes one
+    encrypted file of its own into a folder the user already syncs (Syncthing, Nextcloud, OneDrive, a share) and merges the
+    others'. Not the master password: a separate sync passphrase (Argon2id; only the key is kept, in the keyring). The live
+    database is never put there. Text, pictures (size cap), pins, stars, groups, notes and deletions; never password copies,
+    secret-scanner copies or Paste once copies. `clipitto --sync` runs one sync. Left open: real sync programs on Windows
+    and macOS are untested ([untested.md](untested.md)); group order and Pinned order are not synced; no rich (HTML)
+    versions; an automatic merge of two groups made at the same time (needs the passphrase typed again on both PCs).
 14. **DONE: Copy with formatting** (Shift+Enter › *With formatting*; `keep_formatting`). Left open: RTF (Word's own flavour, not
     HTML) and backups carrying the formatted version. Original plan: today only plain text was kept, so a copy from Word, a web page or a mail loses
     its bold, links, colours and tables. Wanted: also keep the rich version (HTML / RTF) of a text copy, and
