@@ -2136,6 +2136,7 @@ private slots:
             QVERIFY(e.d->passwords()->isUnlocked());
         }
         { // open mode (no master password) never locks
+            init(); // a fresh history file: the one above has a master password
             ScreenLockEnv e;
             startScreenLockEnv(e, VaultMode::Open);
             QVERIFY(e.d->passwords()->isOpen());
@@ -2145,6 +2146,7 @@ private slots:
             QVERIFY(e.d->passwords()->reveal(e.secret.id).has_value());
         }
         { // no vault at all
+            init();
             ScreenLockEnv e;
             startScreenLockEnv(e, VaultMode::None);
             e.watcher->simulateLock();
@@ -2185,6 +2187,7 @@ private slots:
             QCOMPARE(lockLine(d), QStringLiteral("off"));
         }
         { // no watcher given at all
+            init();
             DaemonOptions o = options();
             o.matchKeyStore = std::make_shared<FakeKeyStore>();
             Daemon d(o, std::make_unique<FakeControl>());
