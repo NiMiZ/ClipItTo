@@ -596,6 +596,39 @@ void PopupWindow::refresh()
     refreshSelecting(selectionOf(m_view->currentIndex()), /*focusList=*/false);
 }
 
+void PopupWindow::panicReset(bool hide, bool keepBusy)
+{
+    ++m_resetEpoch;
+    // Boxes open over the popup (a confirmation, a translation window, the name box, Settings) are closed first, so
+    // nothing of the old history stays on screen.
+    const QList<QDialog*> dialogs = findChildren<QDialog*>();
+    for (QDialog* dialog : dialogs) {
+        if (dialog->isVisible()) {
+            dialog->reject();
+        }
+    }
+    endUndo();
+    m_revealTimer->stop();
+    m_model->clearRevealed();
+    if (m_search->isPasswordMode()) {
+        m_search->leavePasswordMode();
+    }
+    m_search->clear();
+    QPixmapCache::clear(); // no thumbnails of wiped pictures stay in memory
+    if (hide) {
+        hidePopup();
+    }
+    if (keepBusy && isBusy()) {
+        m_model->setContent({}); // the old rows leave memory now; the list is read when the conversion is over
+        return; // the file belongs to the conversion; the list is read when it is over
+    }
+    m_busyMessage.clear(); // a "Translating…" that will never be answered
+    m_controller->setSuspended(false);
+    m_search->setEnabled(true);
+    m_view->setEnabled(true);
+    refreshSelecting(std::nullopt, /*focusList=*/false);
+}
+
 int PopupWindow::execDialog(QDialog& dialog)
 {
     int result = 0;
@@ -1901,6 +1934,12 @@ void PopupWindow::translateWithTimeout(const QString& packId, const QString& tex
                                        std::function<void(const QString&, const QString&)> done)
 {
     auto finished = std::make_shared<bool>(false);
+    // A panic (panicReset) while it runs: whatever comes back, or the time-out, is dropped without a word.
+    done = [this, epoch = m_resetEpoch, done = std::move(done)](const QString& out, const QString& error) {
+        if (epoch == m_resetEpoch) {
+            done(out, error);
+        }
+    };
     QTimer::singleShot(m_translateTimeoutMs, this, [finished, done, this] {
         if (*finished) {
             return;

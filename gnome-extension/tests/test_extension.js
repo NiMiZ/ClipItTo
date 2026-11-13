@@ -6,7 +6,7 @@ import {CLIPBOARD, PRIMARY, makeWindow, resetState, state} from './stubs/state.j
 import GLib from 'gi://GLib';
 import Gio from './stubs/Gio.js';
 
-import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupMain, isPopupWindow, isSensitive, popupPlacement, sourceAppName} from './extension.js';
+import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupMain, isPopupWindow, isSensitive, popupPlacement, sourceAppName, focusedAppIds} from './extension.js';
 
 const NO_AUTO_START = 1;
 let passed = 0;
@@ -164,6 +164,24 @@ test('sourceAppName', () => {
     assertEq(sourceAppName(makeWindow({app: null, wmClass: 'firefox'})), 'firefox');
 });
 
+test('focusedAppIds names the program, never the title', () => {
+    assertEq(focusedAppIds(null), []);
+    const win = makeWindow({wmClass: 'Gnome-terminal', instance: 'gnome-terminal-server',
+        app: {get_id: () => 'org.gnome.Terminal.desktop'}});
+    assertEq(focusedAppIds(win), ['Gnome-terminal', 'gnome-terminal-server', 'org.gnome.Terminal']);
+    assertEq(focusedAppIds(makeWindow({wmClass: 'xterm', instance: 'xterm'})), ['xterm']);
+});
+
+test('FocusedApp answers with the program that had the focus, not the popup', () => {
+    const ext = enabled();
+    state.display.focus_window = makeWindow({wmClass: 'kitty', instance: 'kitty'});
+    assertEq(state.service.FocusedApp().deepUnpack(), [['kitty']]);
+    // The popup has the focus now: the answer is still the program before it.
+    state.display.focus_window = makeWindow({wmClass: 'io.github.nimiz.ClipItTo'});
+    assertEq(state.service.FocusedApp().deepUnpack(), [['kitty']]);
+    ext.disable();
+});
+
 test('a copied picture is sent as IngestImage', () => {
     const ext = enabled();
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
@@ -285,6 +303,9 @@ test('Paste types the requested shortcut', () => {
     state.keyEvents.length = 0;
     state.service.Paste('shift+insert');
     assertEq(state.keyEvents, [[0xffe1, 1], [0xff63, 1], [0xff63, 0], [0xffe1, 0]], 'shift+insert');
+    state.keyEvents.length = 0;
+    state.service.Paste('ctrl+shift+v');
+    assertEq(state.keyEvents, [[0xffe3, 1], [0xffe1, 1], [0x76, 1], [0x76, 0], [0xffe1, 0], [0xffe3, 0]], 'ctrl+shift+v');
     ext.disable();
 });
 

@@ -18,6 +18,7 @@ add_library(clipitto_core STATIC
     PasswordRules.cpp PasswordRules.h
     NumberText.cpp NumberText.h
     PasteAs.cpp PasteAs.h
+    PasteKeys.cpp PasteKeys.h
     TextTransform.cpp TextTransform.h
     SecretScan.cpp SecretScan.h
     SearchFilter.cpp SearchFilter.h

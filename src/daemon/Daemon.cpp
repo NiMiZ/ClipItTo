@@ -9,6 +9,7 @@
 #include "Hotkey.h"
 #include "LoginItem.h"
 #include "MacPaste.h"
+#include "PanicHotkey.h"
 #include "Notify.h"
 #include "SettingsDialog.h"
 #include "SyncService.h"
@@ -129,6 +130,62 @@ void Daemon::clearPastedPassword()
     }
 }
 
+// The panic key. Order matters: the passwords are locked first (their keys leave memory), then the clipboard is emptied
+// (so nothing the capture sees afterwards is the old content), then the history is wiped. Each step is tried even when
+// an earlier one failed. Only flags and a count are logged, never contents.
+Daemon::PanicResult Daemon::panic()
+{
+    PanicResult result;
+    ++m_panicEpoch; // answers still on their way (a translation, a text read from a picture, a decoded picture) are dropped
+    m_clearPassword->stop(); // a clear that was waiting has nothing left to do
+    if (m_passwords) {
+        m_passwords->lock();
+        result.locked = m_passwords->isSetUp() && !m_passwords->isUnlocked();
+    }
+    if (m_writer) {
+        result.clipboard = m_writer->clearAll();
+    }
+    if (m_pipeline) {
+        m_pipeline->discardPending(m_options.panicQuietMs);
+    }
+    if (m_converting) {
+        m_panicAfterConversion = true; // the file belongs to the conversion for now
+        result.deferred = true;
+    } else {
+        result.wiped = wipeHistory(&result.deleted);
+    }
+    if (m_popup) {
+        m_popup->panicReset(/*hide=*/true, /*keepBusy=*/m_converting); // hides, shows nothing: no list, no search text, no revealed password, no undo
+    }
+    qCInfo(lcDaemon) << "panic: history wiped" << result.wiped << "(" << result.deleted << "copies, deferred"
+                     << result.deferred << "), passwords locked" << result.locked << ", clipboard"
+                     << (result.clipboard == ClipboardWriter::ClearResult::Cleared ? "cleared" : "NOT cleared (unsupported here)");
+    if (result.clipboard == ClipboardWriter::ClearResult::Unsupported) {
+        qCWarning(lcDaemon) << "panic: the system clipboard could not be emptied on this system";
+    }
+    return result;
+}
+
+// The same database path as "Clear everything, also in groups" (Repository::clearHistory(true): every copy including
+// pinned, starred, grouped and password copies, rich text with them; learned auto-grouping data; the search index merged;
+// pages zeroed; the write-ahead log folded in), and the same ending (the popup forgets thumbnails and its undo buffer).
+bool Daemon::wipeHistory(qint64* deleted)
+{
+    if (!m_repo) {
+        return false;
+    }
+    try {
+        const qint64 n = m_repo->clearHistory(true);
+        if (deleted) {
+            *deleted = n;
+        }
+        return true;
+    } catch (const db::DbError& e) {
+        qCWarning(lcDaemon) << "panic: wiping the history failed:" << e.what();
+        return false;
+    }
+}
+
 qint64 Daemon::runAutoForget()
 {
     if (!m_forgetter || !m_repo || m_converting || m_forgetter->rules().isEmpty()) {
@@ -240,6 +297,7 @@ Daemon::StartResult Daemon::start(QString* error)
     m_control->setPasswordsWantedProvider([this] { return m_pipeline && m_pipeline->keepsPasswords(); });
     connect(m_passwords.get(), &PasswordKeeper::vaultChanged, this, &Daemon::applyPasswordSettings);
     connect(m_control, &ControlChannel::lockPasswordsRequested, m_passwords.get(), &PasswordKeeper::lock);
+    connect(m_control, &ControlChannel::panicRequested, this, [this] { panic(); });
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(),
             [this](const QString& text, const QStringList& mimeTypes, const QString& html) {
                 m_pipeline->process(text, mimeTypes, html);
@@ -257,10 +315,11 @@ Daemon::StartResult Daemon::start(QString* error)
                 }
                 m_decodingImage = true;
                 const QDateTime copiedAt = QDateTime::currentDateTimeUtc();
+                const quint64 epoch = m_panicEpoch;
                 capture::encodeImageDataAsync(data, mimeType, m_config.maxImageBytes, this,
-                                              [this, mimeTypes, copiedAt](std::optional<ImageClip> clip) {
+                                              [this, mimeTypes, copiedAt, epoch](std::optional<ImageClip> clip) {
                     m_decodingImage = false;
-                    if (clip && m_pipeline) {
+                    if (clip && m_pipeline && epoch == m_panicEpoch) { // not if a panic came while it was decoded
                         clip->copiedAt = copiedAt;
                         m_pipeline->processImage(*clip, mimeTypes);
                     }
@@ -299,7 +358,12 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_popup.get(), &ui::PopupWindow::richActivated, this, &Daemon::onRichActivated);
     connect(m_popup.get(), &ui::PopupWindow::textEdited, this, &Daemon::onTextEdited);
     m_popup->setMaxItemBytes(m_config.maxItemBytes);
-    connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
+    connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [this] {
+        rememberPasteTarget();
+        if (integrationAvailable()) {
+            m_integration->rememberPasteTarget();
+        }
+    });
     // popup_position = last: where the popup closed, kept next to the history across runs.
     const QString positionFile = QFileInfo(m_options.databasePath).dir().filePath(QStringLiteral("popup-position"));
     if (QFile file(positionFile); file.open(QIODevice::ReadOnly)) {
@@ -384,6 +448,7 @@ Daemon::StartResult Daemon::start(QString* error)
         });
     }
     applyDesktopShortcut();
+    applyPanicShortcut();
     return StartResult::Ok;
 }
 
@@ -610,10 +675,20 @@ void Daemon::pasteIfWanted(std::function<void(bool sent)> done)
     // Give the previously focused window time to get focus back after the popup hides.
     QTimer::singleShot(80, this, [this, done = std::move(done)] {
         bool sent = true;
+        const PasteTarget target = m_options.pasteTarget ? m_options.pasteTarget()
+                                   : integrationAvailable() ? m_integration->pasteTarget()
+                                                            : rememberedPasteTarget();
+        const pastekeys::Choice choice = pastekeys::choose(m_config.pasteKeys, m_config.pasteKeysPerApp,
+                                                           m_config.pasteKeysApps, target);
+        // Which rule decided, never the window or what is pasted.
+        qCDebug(lcDaemon).noquote() << "paste keys" << pastekeys::chordName(choice.keys)
+                                    << (choice.rule.isEmpty() ? QStringLiteral("(paste_keys)")
+                                        : choice.builtIn      ? QStringLiteral("(built-in rule %1)").arg(choice.rule)
+                                                              : QStringLiteral("(your rule %1)").arg(choice.rule));
         if (integrationAvailable()) {
-            m_integration->paste(m_config.pasteKeys); // a call over D-Bus with no answer: taken as sent
-        } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(m_config.pasteKeys)
-                                              : pasteWithSyntheticKeys(m_config.pasteKeys))) {
+            m_integration->paste(choice.keys); // a call over D-Bus with no answer: taken as sent
+        } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(choice.keys)
+                                              : pasteWithSyntheticKeys(choice.keys))) {
             qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
                                 "(needs the GNOME Shell extension on Wayland)";
             sent = false;
@@ -845,6 +920,15 @@ void Daemon::finishConversion(bool encrypted, const QString& error)
         qCWarning(lcDaemon).noquote() << "history encryption change failed:" << error;
         revertEncryptionSetting();
     }
+    if (m_panicAfterConversion) {
+        // A panic came during the conversion: what was held back is dropped, and the wipe happens now.
+        m_panicAfterConversion = false;
+        m_pipeline->discardPending(m_options.panicQuietMs);
+        qint64 deleted = 0;
+        const bool wiped = wipeHistory(&deleted);
+        qCInfo(lcDaemon) << "panic after the conversion: history wiped" << wiped << "(" << deleted << "copies)";
+        m_popup->panicReset(/*hide=*/false);
+    }
     m_pipeline->setPaused(false); // store what was copied meanwhile
     m_popup->setBusy(QString());
     emit encryptionFinished(error.isEmpty(), error);
@@ -931,15 +1015,68 @@ LoginItem Daemon::loginItem() const
                      QCoreApplication::applicationFilePath());
 }
 
-QString Daemon::cliCommand() const
+QString Daemon::cliCommand(const QString& option) const
 {
     // In an AppImage the binaries live in a mount that is gone after it quits: the shortcut
     // runs the AppImage itself, which hands --toggle to the CLI.
     if (const QString appImage = qEnvironmentVariable("APPIMAGE"); !appImage.isEmpty()) {
-        return QLatin1Char('"') + appImage + QStringLiteral("\" --toggle");
+        return QLatin1Char('"') + appImage + QStringLiteral("\" ") + option;
     }
     const QString local = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("clipitto"));
-    return (QFileInfo(local).isExecutable() ? local : QStringLiteral("clipitto")) + QStringLiteral(" --toggle");
+    return (QFileInfo(local).isExecutable() ? local : QStringLiteral("clipitto")) + QLatin1Char(' ') + option;
+}
+
+// The panic shortcut. Windows and macOS register it in-process (main.cpp, applyPanicHotkey); GNOME keeps it as a second
+// custom keyboard shortcut running `clipitto --panic`, removed again when the key is off; elsewhere the user binds the
+// command. The status line "panic_hotkey" exists only while the panic key is on.
+void Daemon::applyPanicShortcut()
+{
+    const QString key = QStringLiteral("panic_hotkey");
+    if (m_options.session.display == SessionEnv::Display::Windows || m_options.session.display == SessionEnv::Display::MacOS) {
+        emit panicShortcutApplied();
+        return;
+    }
+    if (!m_options.session.isGnome) {
+        if (m_config.panicKey) {
+            setStatusValue(key, QStringLiteral("not set automatically: bind \"clipitto --panic\" in your desktop's keyboard settings"));
+        } else {
+            removeStatusValue(key);
+        }
+        emit panicShortcutApplied();
+        return;
+    }
+    const PanicShortcut plan = panicShortcutFor(m_config);
+    const quint64 request = ++m_panicShortcutRequest;
+    auto* watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, request, plan, key, on = m_config.panicKey] {
+        const QString error = watcher->result();
+        watcher->deleteLater();
+        if (request != m_panicShortcutRequest) {
+            return; // a newer request is queued behind this one
+        }
+        if (!on) {
+            removeStatusValue(key);
+        } else if (!plan.problem.isEmpty()) {
+            setStatusValue(key, QStringLiteral("unavailable: ") + plan.problem);
+        } else if (!error.isEmpty()) {
+            qCWarning(lcDaemon).noquote() << "could not set the GNOME panic shortcut:" << error;
+            setStatusValue(key, QStringLiteral("not set: ") + error);
+        } else {
+            setStatusValue(key, plan.shortcut + QStringLiteral(" (GNOME)"));
+        }
+        emit panicShortcutApplied();
+    });
+    const QString program = m_options.gsettingsProgram;
+    const auto hotkey = plan.wanted ? parseHotkey(plan.shortcut) : std::nullopt;
+    watcher->setFuture(QtConcurrent::run(&m_shortcutPool, [accelerator = hotkey ? hotkey->gtkAccelerator : QString(),
+                                                           command = cliCommand(QStringLiteral("--panic")), program] {
+        QString error;
+        const bool ok = accelerator.isEmpty()
+            ? removeGnomeShortcut(&error, program) // off, or not usable: no binding stays behind
+            : applyGnomeShortcut(accelerator, command, &error, program, QStringLiteral("clipitto-panic"),
+                                 QStringLiteral("ClipItTo panic (wipes everything)"));
+        return ok ? QString() : (error.isEmpty() ? QStringLiteral("gsettings failed") : error);
+    }));
 }
 
 void Daemon::applyDesktopShortcut()
@@ -1056,6 +1193,7 @@ ui::TranslationSupport Daemon::translationSupport()
             done(QString(), tr("That language pack is not installed."));
             return;
         }
+        const quint64 epoch = m_panicEpoch;
         runOn<std::pair<QString, QString>>(
             &m_translatePool, this,
             [pack = *chosen, text, fake, seconds = m_config.translateTimeout] {
@@ -1073,7 +1211,12 @@ ui::TranslationSupport Daemon::translationSupport()
                 }
                 return std::pair<QString, QString>(*out, QString());
             },
-            [done = std::move(done)](std::pair<QString, QString> result) { done(result.first, result.second); });
+            [this, done = std::move(done), epoch](std::pair<QString, QString> result) {
+                if (epoch != m_panicEpoch) {
+                    return; // a panic came meanwhile: the translation is dropped
+                }
+                done(result.first, result.second);
+            });
     };
     support.install = [](const QString& file, QString* error) { return translate::PackStore().install(file, error); };
     support.remove = [](const QString& id) { return translate::PackStore().remove(id); };
@@ -1113,6 +1256,7 @@ void Daemon::indexNextPicture()
     m_indexing = true;
     const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
     const std::shared_ptr<FakeOcr> fakeOcr = m_options.fakeOcr;
+    const quint64 epoch = m_panicEpoch;
     runOn<std::pair<QString, QString>>(
         &m_helloPool, this,
         [png, languages, fakeOcr] {
@@ -1122,8 +1266,11 @@ void Daemon::indexNextPicture()
             return text ? std::pair<QString, QString>(*text, QString())
                         : std::pair<QString, QString>(QString(), error.isEmpty() ? QStringLiteral("failed") : error);
         },
-        [this, id, next](std::pair<QString, QString> result) {
+        [this, id, next, epoch](std::pair<QString, QString> result) {
             m_indexing = false;
+            if (epoch != m_panicEpoch) {
+                return; // a panic wiped the history meanwhile: nothing is recorded, nothing read next
+            }
             if (!result.second.isEmpty()) {
                 // Never the text itself in a log; the reason is the engine's message.
                 qCInfo(lcDaemon) << "search inside pictures stopped:" << result.second;
@@ -1167,6 +1314,7 @@ void Daemon::setUpOcr()
             }
             const QStringList languages = ocr::parseLanguages(m_config.ocrLanguages);
             const std::shared_ptr<FakeOcr> fakeOcr = m_options.fakeOcr;
+            const quint64 epoch = m_panicEpoch;
             runOn<std::pair<QString, QString>>(
                 &m_helloPool, this, // the one WinRT thread (see WindowsHello_win.cpp)
                 [png, languages, fakeOcr] {
@@ -1179,7 +1327,12 @@ void Daemon::setUpOcr()
                     }
                     return std::pair<QString, QString>(*text, QString());
                 },
-                [done = std::move(done)](std::pair<QString, QString> result) { done(result.first, result.second); });
+                [this, done = std::move(done), epoch](std::pair<QString, QString> result) {
+                    if (epoch != m_panicEpoch) {
+                        return; // a panic came meanwhile: the text read from the picture is dropped
+                    }
+                    done(result.first, result.second);
+                });
         },
         builtIn, why);
 }
@@ -1308,6 +1461,10 @@ void Daemon::reload(bool forceShortcut)
     m_popup->applyConfig(m_config);
     if (forceShortcut || m_config.hotkey != previous.hotkey) {
         applyDesktopShortcut();
+    }
+    if (forceShortcut || m_config.hotkey != previous.hotkey || m_config.panicKey != previous.panicKey
+        || m_config.panicHotkey != previous.panicHotkey) {
+        applyPanicShortcut();
     }
     if (m_config.encryptHistory != previous.encryptHistory) {
         setEncryption(m_config.encryptHistory);

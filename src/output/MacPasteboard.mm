@@ -32,4 +32,11 @@ bool clearPasteboardIfUnchanged(long changeCount)
     }
 }
 
+void clearPasteboard()
+{
+    @autoreleasepool {
+        [[NSPasteboard generalPasteboard] clearContents];
+    }
+}
+
 } // namespace clipitto

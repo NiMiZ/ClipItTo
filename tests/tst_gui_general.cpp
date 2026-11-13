@@ -219,6 +219,13 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"ignore_case", [](SettingsDialog& d) { toggle(d.ignoreCaseBox()); }},
         {"encrypt_history", [](SettingsDialog& d) { toggle(d.encryptBox()); }},
         {"paste_on_enter", [](SettingsDialog& d) { toggle(d.pasteBox()); }},
+        {"paste_keys_per_app", [](SettingsDialog& d) { toggle(d.pasteKeysPerAppBox()); }},
+        {"paste_keys_apps",
+         [](SettingsDialog& d) {
+             d.addPasteKeysButton()->click();
+             d.pasteKeysPatternEdit(0)->setText(QStringLiteral("myterm"));
+             d.pasteKeysChordBox(0)->setCurrentIndex(d.pasteKeysChordBox(0)->findData(int(clipitto::PasteKeys::ShiftInsert)));
+         }},
         {"latest_after_paste", [](SettingsDialog& d) { toggle(d.latestBox()); }},
         {"keep_passwords", [](SettingsDialog& d) { toggle(d.keepPasswordsBox()); }},
         {"passwords_in_group", [](SettingsDialog& d) { toggle(d.passwordsInGroupBox()); }},
@@ -239,6 +246,9 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"sync_pictures", [](SettingsDialog& d) { toggle(d.syncPicturesBox()); }},
         {"sync_picture_max_kb", [](SettingsDialog& d) { d.syncPictureKbBox()->setValue(512); }},
         {"sync_tombstone_days", [](SettingsDialog& d) { d.syncDaysBox()->setValue(11); }},
+        {"panic_key", [](SettingsDialog& d) { toggle(d.panicKeyBox()); }},
+        {"panic_hotkey",
+         [](SettingsDialog& d) { d.panicShortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_F10)); }},
     };
     return changes;
 }
@@ -383,6 +393,7 @@ private slots:
             {"recent_count", "20"},       {"preview_lines", "1"},        {"max_history", "1000"},
             {"max_images", "100"},        {"favorites_limit", "10"},     {"saved_cap", "15"},
             {"show_saved_on_top", "true"}, {"paste_on_enter", "true"},   {"latest_after_paste", "true"},
+            {"paste_keys_per_app", "true"}, {"paste_keys_apps", "[]"},
             {"paste_keys", "\"ctrl+v\""}, {"click_to_copy", "\"single\""}, {"hide_on_focus_loss", "true"},
             {"search_debounce_ms", "100"}, {"hotkey", "\"" CLIPITTO_DEFAULT_HOTKEY "\""},
             {"theme", "\"system\""},      {"popup_position", "\"cursor\""}, {"start_focus", "\"pinned\""},
@@ -393,6 +404,7 @@ private slots:
             {"password_clear_seconds", "2"}, {"paste_once_clear_seconds", "2"},
             {"sync_enabled", "false"},    {"sync_folder", "\"\""},     {"sync_max_copies", "2000"}, {"sync_pictures", "true"},
             {"sync_picture_max_kb", "2048"}, {"sync_tombstone_days", "30"}, {"password_search_keyword", "\"p[]\""}, {"backend", "\"auto\""},
+            {"panic_key", "false"},       {"panic_hotkey", "\"\""},
         };
         for (const auto& [key, expected] : rows) {
             QTest::newRow(key) << QString::fromLatin1(key) << QString::fromLatin1(expected);

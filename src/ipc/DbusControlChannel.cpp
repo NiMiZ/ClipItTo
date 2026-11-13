@@ -135,6 +135,11 @@ void DbusControlChannel::SyncNow()
     emit syncRequested();
 }
 
+void DbusControlChannel::Panic()
+{
+    emit panicRequested();
+}
+
 void DbusControlChannel::Quit()
 {
     emit quitRequested();

@@ -28,6 +28,12 @@
 namespace {
 
 constexpr int kCallTimeoutMs = 5000; // generous: the first call may start the daemon
+constexpr int kPanicTimeoutMs = 60000; // a big history is wiped (and the file scrubbed) before the daemon replies
+
+int timeoutFor(const QString& method)
+{
+    return method == QLatin1String("Panic") ? kPanicTimeoutMs : kCallTimeoutMs;
+}
 
 struct Result {
     bool ok = false;
@@ -53,7 +59,7 @@ Result send(const QString& method, const QVariantList& args)
                                                        QString::fromLatin1(clipitto::ipc::kObjectPath),
                                                        QString::fromLatin1(clipitto::ipc::kInterface), method);
     call.setArguments(args);
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, kCallTimeoutMs);
+    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, timeoutFor(method));
     if (reply.type() == QDBusMessage::ErrorMessage) {
         return {false, {}, reply.errorMessage()};
     }
@@ -77,7 +83,7 @@ Result send(const QString& method, const QVariantList& args)
     }
 #endif
     const auto reply = clipitto::localipc::call(clipitto::localipc::defaultServerName(),
-                                                {method, QJsonArray::fromVariantList(args)}, kCallTimeoutMs);
+                                                {method, QJsonArray::fromVariantList(args)}, timeoutFor(method));
     if (!reply.ok) {
         return {false, {}, reply.error};
     }
@@ -105,9 +111,11 @@ int main(int argc, char* argv[])
     const QCommandLineOption syncNow(QStringLiteral("sync"), QStringLiteral("Sync through the shared folder now."));
     const QCommandLineOption quit(QStringLiteral("quit"), QStringLiteral("Stop the daemon."));
     const QCommandLineOption lock(QStringLiteral("lock"), QStringLiteral("Lock the password copies now."));
+    const QCommandLineOption panic(QStringLiteral("panic"),
+                                   QStringLiteral("Wipe the history, lock the passwords and empty the clipboard, now, without asking."));
     const QCommandLineOption ingest(QStringLiteral("ingest"), QStringLiteral("Add <text> to the history."),
                                     QStringLiteral("text"));
-    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, ingest, syncNow};
+    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest, syncNow};
     parser.addOptions(actions);
     parser.process(app);
 
@@ -139,6 +147,8 @@ int main(int argc, char* argv[])
         method = QStringLiteral("LockPasswords");
     } else if (parser.isSet(syncNow)) {
         method = QStringLiteral("SyncNow");
+    } else if (parser.isSet(panic)) {
+        method = QStringLiteral("Panic");
     } else {
         method = QStringLiteral("Ingest");
         args << parser.value(ingest) << QStringList{QStringLiteral("text/plain")};
@@ -150,6 +160,9 @@ int main(int argc, char* argv[])
         return 1;
     }
     QTextStream out(stdout);
+    if (parser.isSet(panic)) {
+        out << "done\n"; // the daemon replies only after the wipe, the lock and the clipboard clear are over
+    }
     for (auto it = result.status.constBegin(); it != result.status.constEnd(); ++it) {
         out << it.key() << ": " << it.value().toString() << '\n';
     }

@@ -33,7 +33,17 @@ paste_on_enter = true       # choosing a copy (Enter or click) also pastes it in
 latest_after_paste = true   # a copy chosen in ClipItTo becomes the latest in the history,
                             # as if you had copied it again; false = it keeps its place.
                             # Starred, pinned and grouped copies always keep their place
-paste_keys = "ctrl+v"       # ctrl+v | shift+insert (terminals)
+paste_keys = "ctrl+v"       # ctrl+v | shift+insert; for programs no rule below names
+paste_keys_per_app = true   # type the keys the program you came from wants: well-known terminals
+                            # get ctrl+shift+v (Windows consoles shift+insert). Needs the platform to
+                            # name that program: Windows, X11, GNOME Wayland with the ClipItTo
+                            # extension. Not macOS (always Cmd+V) nor other Wayland desktops, where
+                            # paste_keys is used for every program
+paste_keys_apps = []        # your own rules, tried first, up to 16: ["program = keys"], e.g.
+                            # ["WindowsTerminal.exe = ctrl+shift+v", "Code = ctrl+shift+v"].
+                            # program: executable name (Windows), window class (X11) or app id,
+                            # any letter case, "*" matches any text. keys: ctrl+v | shift+insert |
+                            # ctrl+shift+v
 click_to_copy = "single"    # single | double
 hide_on_focus_loss = true
 search_debounce_ms = 100
@@ -107,3 +117,9 @@ sync_tombstone_days = 30    # how long a deletion is announced to the other PCs 
 windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks
+panic_key = false           # PANIC KEY, off by default. true = the shortcut below works. Pressing it wipes the
+                            # history (like "Clear everything, also in groups"), locks the passwords and empties
+                            # the system clipboard, at once and WITHOUT asking. `clipitto --panic` always works
+panic_hotkey = ""           # the panic shortcut, e.g. "Ctrl+Alt+Shift+Delete"; empty = none. It must differ from
+                            # `hotkey`. Windows/macOS: ClipItTo registers it. GNOME: a second custom shortcut
+                            # (removed again when the key is off). Other desktops: bind "clipitto --panic" yourself

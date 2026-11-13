@@ -46,6 +46,9 @@ const SHELL_IFACE_XML = `
     <method name="Paste">
       <arg name="keys" type="s" direction="in"/>
     </method>
+    <method name="FocusedApp">
+      <arg name="ids" type="as" direction="out"/>
+    </method>
   </interface>
 </node>`;
 
@@ -96,6 +99,17 @@ export function sourceAppName(win) {
         return '';
     const name = Shell.WindowTracker.get_default().get_window_app(win)?.get_name?.() ?? win.get_wm_class?.() ?? '';
     return name.trim().slice(0, 64);
+}
+
+// What names the program of a window, for the daemon's per-app paste keys: its WM_CLASS (class and instance;
+// on Wayland the app id) and the desktop id of its app. Never the title. Empty when there is no window.
+export function focusedAppIds(win) {
+    if (!win)
+        return [];
+    const ids = [win.get_wm_class?.(), win.get_wm_class_instance?.(),
+        Shell.WindowTracker.get_default().get_window_app(win)?.get_id?.()?.replace(/\.desktop$/, '')]
+        .map(id => (id ?? '').trim().slice(0, 128));
+    return [...new Set(ids.filter(id => id !== ''))];
 }
 
 // Where the popup goes (its top-left, in screen coordinates), mirroring PopupWindow::placeOnScreen
@@ -162,6 +176,7 @@ export default class ClipItToExtension extends Extension {
                     St.Clipboard.get_default().set_content(St.ClipboardType.CLIPBOARD, mimeType, new GLib.Bytes(data));
             },
             Paste: keys => this._paste(keys),
+            FocusedApp: () => new GLib.Variant('(as)', [this._focusedApp()]),
         });
         this._dbus.export(Gio.DBus.session, SHELL_PATH);
         // Owning the name is how the daemon learns the extension is running.
@@ -186,6 +201,7 @@ export default class ClipItToExtension extends Extension {
         this._dbus.unexport();
 
         this._virtualKeyboard = null;
+        this._lastFocused = null;
         this._dbus = null;
         this._selection = null;
         this._settings = null;
@@ -391,14 +407,27 @@ export default class ClipItToExtension extends Extension {
         });
     }
 
+    // The program that has the focus, which the paste will go to: asked by the daemon just before it shows
+    // the popup. While the popup itself has the focus, the last other one.
+    _focusedApp() {
+        const win = global.display.focus_window;
+        if (win && isPopupWindow(win))
+            return this._lastFocused ?? [];
+        // Nothing focused (empty desktop, overview): unknown, never an older answer.
+        this._lastFocused = win ? focusedAppIds(win) : null;
+        return this._lastFocused ?? [];
+    }
+
     _paste(keys) {
         if (!this._virtualKeyboard) {
             const seat = Clutter.get_default_backend().get_default_seat();
             this._virtualKeyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         }
-        const combo = keys === 'shift+insert'
-            ? [Clutter.KEY_Shift_L, Clutter.KEY_Insert]
-            : [Clutter.KEY_Control_L, Clutter.KEY_v];
+        let combo = [Clutter.KEY_Control_L, Clutter.KEY_v];
+        if (keys === 'shift+insert')
+            combo = [Clutter.KEY_Shift_L, Clutter.KEY_Insert];
+        else if (keys === 'ctrl+shift+v')
+            combo = [Clutter.KEY_Control_L, Clutter.KEY_Shift_L, Clutter.KEY_v];
         const time = GLib.get_monotonic_time();
         for (const key of combo)
             this._virtualKeyboard.notify_keyval(time, key, Clutter.KeyState.PRESSED);

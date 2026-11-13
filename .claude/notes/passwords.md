@@ -74,3 +74,13 @@ No auto-lock on screen lock yet. GNOME extension can put only one format on the 
 Not yet hands-on verified: Windows Hello prompt, real KeePass/Bitwarden source-app names, macOS Keychain.
 Code: `src/core/{PasswordVault,PasswordKeeper,CapturePipeline,ClipFilter}.cpp`, `src/daemon/WindowsHello_*.cpp`.
 Tests: `tst_vault`, `tst_repository`, `tst_pipeline`/popup/search tests, `tst_backup`.
+
+## Panic key (roadmap 20, `panic_key` off by default, `panic_hotkey`, `clipitto --panic`)
+`Daemon::panic()`: `++m_panicEpoch` (drops late translation / OCR / picture-decode answers), stop `m_clearPassword`, `PasswordKeeper::lock`
+(open mode cannot lock), `ClipboardWriter::clearAll()` (unconditional; Unsupported where refused), `CapturePipeline::discardPending(quietMs)`,
+then `Repository::clearHistory(true)` (the same call as Clear everything; deferred to `finishConversion` while `m_converting`), then
+`PopupWindow::panicReset` (hide, close boxes, drop undo/reveals/search text/busy; its `m_resetEpoch` drops late translations).
+Vault and master password stay; groups stay. Shortcut: `PanicHotkey.h` (`panicShortcutFor`, `applyPanicHotkey`, tested with a fake hotkey);
+Windows/mac `GlobalHotkey(nullptr, 2)` in main.cpp; GNOME second custom shortcut `clipitto-panic` (`applyPanicShortcut`, removed when off);
+status key `panic_hotkey` exists only while the key is on. CLI/D-Bus/socket `Panic` ignore the setting. Backup import keeps the local
+panic settings. Tests: `tst_panic`, `tst_passwordclear` (clearAll), `tst_picturetranslation` (late results).

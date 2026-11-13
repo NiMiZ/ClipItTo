@@ -7,6 +7,7 @@
 #include "PasswordKeeper.h"
 #include "AutoForget.h"
 #include "PasswordRules.h"
+#include "PasteKeys.h"
 #include "PlatformKeys.h"
 #include "TextTransform.h"
 #include "db/Repository.h"
@@ -148,6 +149,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_startup(new QCheckBox(tr("Start ClipItTo when I sign in"), this))
     , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
     , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
+    , m_pasteKeysPerApp(new QCheckBox(tr("Choose the paste keys by the program (Ctrl+Shift+V in terminals)"), this))
     , m_ignoreCase(new QCheckBox(tr("Ignore letter case (ABC = abc)"), this))
     , m_detectSecrets(new QCheckBox(tr("Keep copies that look like secrets as password copies"), this))
     , m_detectPasswords(new QCheckBox(tr("Keep copies that look like generated passwords as password copies"), this))
@@ -317,6 +319,52 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_latest->setChecked(config.latestAfterPaste);
     m_latest->setToolTip(tr("As if you had copied it again. Off: it keeps its place in Recent."));
     form->addRow(QString(), m_latest);
+
+    // Paste keys per program (roadmap 8): terminals do not paste with Ctrl+V.
+    m_pasteKeysPerApp->setChecked(config.pasteKeysPerApp);
+    m_pasteKeysPerApp->setToolTip(
+        tr("ClipItTo types the paste keys into the program you came from. Well-known terminals get Ctrl+Shift+V "
+           "(Shift+Insert in Windows consoles); every other program gets the keys of paste_keys in the config file "
+           "(Ctrl+V). Your own rules below come first."));
+    form->addRow(QString(), m_pasteKeysPerApp);
+    m_pasteKeysPanel = new QWidget(this);
+    auto* pasteKeysOuter = new QVBoxLayout(m_pasteKeysPanel);
+    pasteKeysOuter->setContentsMargins(0, 0, 0, 0);
+    auto* pasteKeysIntro = new QLabel(
+        tr("Your own rules, tried before the built-in terminals. The program is its executable name (Windows), "
+           "window class (X11) or app id; letter case does not matter, <b>*</b> matches any text. "
+           "<b>Works on:</b> Windows, X11 and GNOME Wayland with the ClipItTo extension (log out and back in once "
+           "after updating it). <b>Does not work on:</b> macOS (always ⌘V) and other Wayland desktops: there "
+           "the keys of paste_keys are used for every program."),
+        m_pasteKeysPanel);
+    pasteKeysIntro->setWordWrap(true);
+    pasteKeysIntro->setTextFormat(Qt::RichText);
+    pasteKeysOuter->addWidget(pasteKeysIntro);
+    m_pasteKeysLayout = new QVBoxLayout;
+    pasteKeysOuter->addLayout(m_pasteKeysLayout);
+    m_addPasteKeys = new QPushButton(tr("Add a program"), m_pasteKeysPanel);
+    m_addPasteKeys->setAutoDefault(false);
+    m_addPasteKeys->setToolTip(tr("Up to %1 programs").arg(pastekeys::kMaxRules));
+    connect(m_addPasteKeys, &QPushButton::clicked, this, [this] {
+        addPasteKeysRow(PasteKeyRule());
+        refreshPasteKeys();
+    });
+    auto* pasteKeysAdd = new QHBoxLayout;
+    pasteKeysAdd->addWidget(m_addPasteKeys);
+    pasteKeysAdd->addStretch(1);
+    pasteKeysOuter->addLayout(pasteKeysAdd);
+    m_pasteKeysError = new QLabel(m_pasteKeysPanel);
+    m_pasteKeysError->setWordWrap(true);
+    m_pasteKeysError->setStyleSheet(QStringLiteral("color: #c0392b;"));
+    m_pasteKeysError->hide();
+    pasteKeysOuter->addWidget(m_pasteKeysError);
+    for (const PasteKeyRule& rule : config.pasteKeysApps) {
+        addPasteKeysRow(rule);
+    }
+    m_pasteKeysPanel->setEnabled(config.pasteKeysPerApp);
+    connect(m_pasteKeysPerApp, &QCheckBox::toggled, m_pasteKeysPanel, &QWidget::setEnabled);
+    connect(m_pasteKeysPerApp, &QCheckBox::toggled, this, [this] { updateOkButton(); });
+    form->addRow(tr("Programs:"), m_pasteKeysPanel);
 
     m_position->addItem(tr("Near the mouse pointer"), int(PopupPosition::Cursor));
     m_position->addItem(tr("Center of the screen"), int(PopupPosition::Center));
@@ -640,6 +688,55 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                            "if the clipboard still holds it. Never = it stays on the clipboard until "
                                            "you copy something else."));
     passwordsForm->addRow(tr("Clear a Paste once copy after:"), m_pasteOnceClearSeconds);
+
+    // Panic key: off by default. The shortcut wipes everything at once, with no question.
+    m_shortcutsEditable = shortcut.editable;
+    m_panicHotkey = config.panicHotkey;
+    m_panicKey = new QCheckBox(tr("Panic key: wipe everything without asking"), this);
+    m_panicKey->setChecked(config.panicKey);
+    const QString panicHelp = tr("Pressing the panic shortcut deletes the whole history (also pinned, starred, grouped and "
+                                 "password copies, like \"Clear everything, also in groups\"), locks the password copies "
+                                 "and empties the system clipboard, at once and WITHOUT asking. It cannot be undone. Your "
+                                 "groups, settings and master password stay. Off by default. The command "
+                                 "\"clipitto --panic\" does the same and works whatever this box says.");
+    m_panicKey->setToolTip(panicHelp);
+    passwordsForm->addRow(QString(), m_panicKey);
+    auto* panicRow = new QHBoxLayout;
+    m_panicShortcut = new QKeySequenceEdit(this);
+    m_panicShortcut->setKeySequence(sequenceFor(m_panicHotkey));
+    m_panicShortcut->setToolTip(panicHelp);
+    auto* panicNone = new QPushButton(tr("None"), this);
+    panicNone->setToolTip(tr("Remove the panic shortcut"));
+    panicRow->addWidget(m_panicShortcut, 1);
+    panicRow->addWidget(panicNone);
+    passwordsForm->addRow(tr("Panic shortcut:"), panicRow);
+    m_panicStatus = new QLabel(this);
+    m_panicStatus->setWordWrap(true);
+    m_panicStatus->setEnabled(false); // dim
+    passwordsForm->addRow(QString(), m_panicStatus);
+    const auto syncPanic = [this] {
+        const bool on = m_panicKey->isChecked() && m_shortcutsEditable;
+        m_panicShortcut->setEnabled(on);
+        if (!m_shortcutsEditable) {
+            setNote(m_panicStatus, tr("Bind \"clipitto --panic\" to a shortcut in your desktop's keyboard settings."));
+        } else if (m_panicKey->isChecked() && m_panicHotkey.isEmpty()) {
+            setNote(m_panicStatus, tr("Panic key is on, but no shortcut is set: choose one."));
+        } else if (m_panicKey->isChecked()) {
+            setNote(m_panicStatus, tr("Wipes everything without asking: %1").arg(m_panicHotkey));
+        } else {
+            setNote(m_panicStatus, QString());
+        }
+    };
+    connect(m_panicKey, &QCheckBox::toggled, this, syncPanic);
+    connect(panicNone, &QPushButton::clicked, this, [this, syncPanic] {
+        m_panicHotkey.clear();
+        QSignalBlocker block(m_panicShortcut);
+        m_panicShortcut->clear();
+        syncPanic();
+    });
+    connect(m_panicShortcut, &QKeySequenceEdit::keySequenceChanged, this, [this] { onPanicShortcutEdited(); });
+    panicNone->setEnabled(m_shortcutsEditable);
+    syncPanic();
 
     // Auto-forget: copies that remove themselves. Pinned, starred, grouped and password copies are never touched.
     m_forgetPanel = new QWidget(this);
@@ -1020,6 +1117,13 @@ Config SettingsDialog::config() const
     c.encryptHistory = m_encrypt->isChecked();
     c.pasteOnEnter = m_paste->isChecked();
     c.latestAfterPaste = m_latest->isChecked();
+    c.pasteKeysPerApp = m_pasteKeysPerApp->isChecked();
+    c.pasteKeysApps.clear();
+    for (const PasteKeyRule& rule : pasteKeysValues()) {
+        if (pastekeys::validate(rule).isEmpty()) {
+            c.pasteKeysApps << rule;
+        }
+    }
     c.ignoreCase = m_ignoreCase->isChecked();
     c.detectSecrets = m_detectSecrets->isChecked();
     c.detectPasswords = m_detectPasswords->isChecked();
@@ -1042,6 +1146,8 @@ Config SettingsDialog::config() const
     c.passwordUnlockMinutes = m_unlockMinutes->value();
     c.passwordClearSeconds = m_clearSeconds->value();
     c.pasteOnceClearSeconds = m_pasteOnceClearSeconds->value();
+    c.panicKey = m_panicKey->isChecked();
+    c.panicHotkey = m_panicHotkey;
     c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
     c.syncEnabled = m_syncEnabled->isChecked();
     c.syncFolder = m_syncFolder->text().trimmed();
@@ -1296,6 +1402,8 @@ void SettingsDialog::finishImport(const QString& path, const backup::Info& info,
         Config merged = *report->settings;
         const Config mine = config();
         merged.hotkey = mine.hotkey;
+        merged.panicKey = mine.panicKey; // a file never turns the panic key on
+        merged.panicHotkey = mine.panicHotkey;
         merged.backend = mine.backend;
         merged.encryptHistory = mine.encryptHistory;
         merged.windowsHello = mine.windowsHello;
@@ -1429,9 +1537,7 @@ void SettingsDialog::refreshRules()
     setNote(m_ruleError, errors.join(QLatin1Char(' ')));
     m_ruleError->setEnabled(true);
     m_addRule->setEnabled(rules.size() < passwordrules::kMaxRules);
-    if (QPushButton* ok = m_buttons->button(QDialogButtonBox::Ok)) {
-        ok->setEnabled(errors.isEmpty() && (!m_forgetError || m_forgetError->text().isEmpty()));
-    }
+    updateOkButton();
     // "Try it": which rule keeps the sample. Only the verdict is shown, never the text.
     const QString sample = m_ruleTry->text();
     if (sample.isEmpty()) {
@@ -1572,11 +1678,98 @@ void SettingsDialog::refreshForget()
     setNote(m_forgetError, errors.join(QLatin1Char(' ')));
     m_forgetError->setEnabled(true);
     m_addForget->setEnabled(rules.size() < autoforget::kMaxRules);
-    if (QPushButton* ok = m_buttons->button(QDialogButtonBox::Ok)) {
-        // Both editors can hold an error: OK waits for the password rules too.
-        const bool rulesFine = !m_ruleError || m_ruleError->text().isEmpty();
-        ok->setEnabled(errors.isEmpty() && rulesFine);
+    updateOkButton();
+}
+
+void SettingsDialog::updateOkButton()
+{
+    // Each editor can hold an error: OK waits for all of them.
+    bool fine = true;
+    for (const QLabel* error : {m_ruleError, m_forgetError, m_pasteKeysError}) {
+        // The paste keys rules are not saved while their switch is off: their errors do not count then.
+        const bool ignored = error == m_pasteKeysError && m_pasteKeysPerApp && !m_pasteKeysPerApp->isChecked();
+        fine = fine && (ignored || !error || error->text().isEmpty());
     }
+    if (QPushButton* ok = m_buttons ? m_buttons->button(QDialogButtonBox::Ok) : nullptr) {
+        ok->setEnabled(fine);
+    }
+}
+
+void SettingsDialog::addPasteKeysRow(const PasteKeyRule& rule)
+{
+    if (int(m_pasteKeysRows.size()) >= pastekeys::kMaxRules) {
+        return;
+    }
+    PasteKeysRow r;
+    r.row = new QWidget(m_pasteKeysPanel);
+    auto* h = new QHBoxLayout(r.row);
+    h->setContentsMargins(0, 2, 0, 2);
+    r.pattern = new QLineEdit(rule.pattern, r.row);
+    r.pattern->setMaxLength(pastekeys::kMaxPatternLength);
+    r.pattern->setPlaceholderText(tr("program, e.g. WindowsTerminal.exe, XTerm or org.gnome.Terminal"));
+    r.pattern->setToolTip(tr("The executable name (Windows), the window class (X11) or the app id (GNOME). Letter "
+                             "case and a trailing .exe do not matter; * matches any text."));
+    r.chord = new QComboBox(r.row);
+    for (const PasteKeys keys : {PasteKeys::CtrlV, PasteKeys::ShiftInsert, PasteKeys::CtrlShiftV}) {
+        r.chord->addItem(pastekeys::chordName(keys), int(keys));
+    }
+    r.chord->setCurrentIndex(r.chord->findData(int(rule.keys)));
+    r.remove = new QPushButton(tr("Remove"), r.row);
+    r.remove->setAutoDefault(false);
+    QWidget* rowWidget = r.row;
+    connect(r.remove, &QPushButton::clicked, this, [this, rowWidget] { removePasteKeysRow(rowWidget); });
+    connect(r.pattern, &QLineEdit::textChanged, this, &SettingsDialog::refreshPasteKeys);
+    connect(r.chord, &QComboBox::currentIndexChanged, this, &SettingsDialog::refreshPasteKeys);
+    h->addWidget(r.pattern, 1);
+    h->addWidget(r.chord);
+    h->addWidget(r.remove);
+    m_pasteKeysLayout->addWidget(r.row);
+    m_pasteKeysRows.push_back(r);
+}
+
+void SettingsDialog::removePasteKeysRow(QWidget* row)
+{
+    for (auto it = m_pasteKeysRows.begin(); it != m_pasteKeysRows.end(); ++it) {
+        if (it->row == row) {
+            m_pasteKeysRows.erase(it);
+            m_pasteKeysLayout->removeWidget(row);
+            row->hide();
+            row->deleteLater();
+            break;
+        }
+    }
+    refreshPasteKeys();
+}
+
+QList<PasteKeyRule> SettingsDialog::pasteKeysValues() const
+{
+    QList<PasteKeyRule> rules;
+    for (const PasteKeysRow& r : m_pasteKeysRows) {
+        PasteKeyRule rule;
+        rule.pattern = r.pattern->text().trimmed();
+        rule.keys = PasteKeys(r.chord->currentData().toInt());
+        rules << rule;
+    }
+    return rules;
+}
+
+void SettingsDialog::refreshPasteKeys()
+{
+    if (!m_pasteKeysPanel || !m_pasteKeysError) {
+        return;
+    }
+    const QList<PasteKeyRule> rules = pasteKeysValues();
+    QStringList errors;
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        const QString why = pastekeys::validate(rules.at(i));
+        if (!why.isEmpty()) {
+            errors << tr("Program %1: %2.").arg(i + 1).arg(why);
+        }
+    }
+    setNote(m_pasteKeysError, errors.join(QLatin1Char(' ')));
+    m_pasteKeysError->setEnabled(true);
+    m_addPasteKeys->setEnabled(rules.size() < pastekeys::kMaxRules);
+    updateOkButton();
 }
 
 void SettingsDialog::updatePasswordDependents()
@@ -1858,7 +2051,12 @@ void SettingsDialog::onShortcutEdited()
         m_shortcut->setKeySequence(first);
     }
     const auto parsed = parseHotkey(swapMacModifiers(first.toString(QKeySequence::PortableText), /*toQt=*/false));
-    if (parsed) {
+    if (parsed && !m_panicHotkey.isEmpty() && parsed->canonical == m_panicHotkey) {
+        QSignalBlocker block(m_shortcut);
+        m_shortcut->setKeySequence(sequenceFor(m_hotkey));
+        setNote(m_shortcutStatus, tr("%1 is the panic shortcut: choose another one. Keeping %2.")
+                                      .arg(parsed->canonical, m_hotkey));
+    } else if (parsed) {
         m_hotkey = parsed->canonical;
         setNote(m_shortcutStatus, tr("Opens the popup: %1").arg(m_hotkey));
     } else {
@@ -1871,6 +2069,38 @@ void SettingsDialog::onShortcutEdited()
                                      "F-key or ` - = [ ] ; ' , . /. Keeping %3.")
                                       .arg(first.toString(QKeySequence::NativeText), modifiers, m_hotkey));
     }
+}
+
+void SettingsDialog::onPanicShortcutEdited()
+{
+    const QKeySequence sequence = m_panicShortcut->keySequence();
+    if (sequence.isEmpty()) {
+        return;
+    }
+    const QKeySequence first(sequence[0]);
+    if (sequence.count() > 1) {
+        QSignalBlocker block(m_panicShortcut);
+        m_panicShortcut->setKeySequence(first);
+    }
+    const auto parsed = parseHotkey(swapMacModifiers(first.toString(QKeySequence::PortableText), /*toQt=*/false));
+    const auto popup = parseHotkey(m_hotkey);
+    QString note;
+    if (!parsed) {
+        note = tr("%1 can't be used as a shortcut. Keeping %2.").arg(first.toString(QKeySequence::NativeText),
+                                                                    m_panicHotkey.isEmpty() ? tr("none") : m_panicHotkey);
+    } else if (popup && popup->canonical == parsed->canonical) {
+        note = tr("%1 already opens the popup: choose another shortcut for the panic key. Keeping %2.")
+                   .arg(parsed->canonical, m_panicHotkey.isEmpty() ? tr("none") : m_panicHotkey);
+    }
+    if (!note.isEmpty()) {
+        QSignalBlocker block(m_panicShortcut);
+        m_panicShortcut->setKeySequence(sequenceFor(m_panicHotkey));
+        setNote(m_panicStatus, note);
+        return;
+    }
+    m_panicHotkey = parsed->canonical;
+    setNote(m_panicStatus, m_panicKey->isChecked() ? tr("Wipes everything without asking: %1").arg(m_panicHotkey)
+                                                   : tr("Saved, but the panic key is off."));
 }
 
 QString SettingsDialog::selectedGroup() const

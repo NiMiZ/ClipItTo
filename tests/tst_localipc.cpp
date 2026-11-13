@@ -159,6 +159,19 @@ private slots:
         QTRY_COMPARE(quit.size(), 1);
     }
 
+    void panicBecomesASignalAndTheCliPrintsDone()
+    {
+        LocalControlChannel channel(m_name);
+        QVERIFY(channel.start() == ControlChannel::StartResult::Ok);
+        QSignalSpy panic(&channel, &ControlChannel::panicRequested);
+        QVERIFY(call({QStringLiteral("Panic"), {}}).ok);
+        QCOMPARE(panic.size(), 1);
+        const auto [code, output] = runCli({QStringLiteral("--panic")});
+        QVERIFY2(code == 0, qPrintable(output));
+        QCOMPARE(output.trimmed(), QStringLiteral("done"));
+        QCOMPARE(panic.size(), 2);
+    }
+
     void cliReportsAMissingDaemon()
     {
         const auto [code, output] = runCli({QStringLiteral("--toggle")});

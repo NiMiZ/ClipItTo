@@ -8,6 +8,7 @@ shift
 case "$cmd" in
 get) f=$(file "$1.$2"); if [ -e "$f" ]; then cat "$f"; else echo "@as []"; fi ;;
 set) printf '%s\n' "$3" > "$(file "$1.$2")" ;;
+reset) rm -f "$(file "$1.$2")" ;;
 reset-recursively) rm -f "$(file "$1")".* ;;
 *) echo "fake gsettings: unsupported $cmd" >&2; exit 2 ;;
 esac

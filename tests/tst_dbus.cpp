@@ -30,12 +30,18 @@ class FakeShellExtension : public QObject {
 
 public:
     QStringList calls;
+    QStringList focused;
 
 public slots:
     Q_SCRIPTABLE void ActivateWindow() { calls << QStringLiteral("ActivateWindow"); }
     Q_SCRIPTABLE void ActivateWindowAt(const QString& position) { calls << QStringLiteral("ActivateWindowAt:") + position; }
     Q_SCRIPTABLE void SetClipboard(const QString& text) { calls << QStringLiteral("SetClipboard:") + text; }
     Q_SCRIPTABLE void Paste(const QString& keys) { calls << QStringLiteral("Paste:") + keys; }
+    Q_SCRIPTABLE QStringList FocusedApp()
+    {
+        calls << QStringLiteral("FocusedApp");
+        return focused;
+    }
     Q_SCRIPTABLE void SetClipboardContent(const QByteArray& data, const QString& mimeType)
     {
         calls << QStringLiteral("SetClipboardContent:%1:%2").arg(mimeType).arg(data.size());
@@ -238,15 +244,32 @@ private slots:
         integration.activatePopup(clipitto::PopupPosition::TopLeft);
         integration.setClipboard(QStringLiteral("from history"));
         integration.paste(clipitto::PasteKeys::CtrlV);
+        integration.paste(clipitto::PasteKeys::CtrlShiftV);
         integration.setClipboardImage(QByteArray(10, 'p'));
         QTRY_COMPARE(extension.calls, (QStringList{QStringLiteral("ActivateWindow"),
                                                     QStringLiteral("ActivateWindowAt:top-left"),
                                                     QStringLiteral("SetClipboard:from history"),
                                                     QStringLiteral("Paste:ctrl+v"),
+                                                    QStringLiteral("Paste:ctrl+shift+v"),
                                                     QStringLiteral("SetClipboardContent:image/png:10")}));
+
+        // Which program has the focus: asked of the extension, names only; nothing is known before the answer.
+        extension.calls.clear();
+        extension.focused = {QStringLiteral("konsole"), QStringLiteral("org.kde.konsole"), QString()};
+        integration.rememberPasteTarget();
+        QVERIFY(integration.pasteTarget() == clipitto::PasteTarget::unknown());
+        QTRY_VERIFY(integration.pasteTarget().state == clipitto::PasteTarget::State::Known);
+        QCOMPARE(integration.pasteTarget().ids, (QStringList{QStringLiteral("konsole"), QStringLiteral("org.kde.konsole")}));
+        QCOMPARE(extension.calls, QStringList{QStringLiteral("FocusedApp")});
+        extension.focused = {};
+        integration.rememberPasteTarget();
+        QTRY_VERIFY(integration.pasteTarget() == clipitto::PasteTarget::unknown()); // a window nobody can name
+        QVERIFY(!integration.pasteTarget().ids.contains(QLatin1String("konsole"))); // never the previous answer
 
         shell.unregisterService(QString::fromLatin1(clipitto::ipc::kShellServiceName));
         QTRY_VERIFY(!integration.isAvailable());
+        integration.rememberPasteTarget();
+        QVERIFY(integration.pasteTarget() == clipitto::PasteTarget::unsupported());
         QCOMPARE(availability.size(), 2);
         QDBusConnection::disconnectFromBus(QStringLiteral("shell"));
     }
@@ -270,6 +293,16 @@ private slots:
         const auto [code, output] = runCli({QStringLiteral("--ingest"), QStringLiteral("via cli")});
         QVERIFY2(code == 0, qPrintable(output));
         QCOMPARE(m_daemon->repository()->recent(1, false).front().content, QStringLiteral("via cli"));
+    }
+
+    void panicMethodAndCliWipeTheHistoryWhateverTheSettingSays()
+    {
+        QVERIFY(!m_daemon->config().panicKey); // the setting only gates the shortcut
+        QCOMPARE(call(QStringLiteral("Panic")).type(), QDBusMessage::ReplyMessage);
+        const auto [code, output] = runCli({QStringLiteral("--panic")});
+        QVERIFY2(code == 0, qPrintable(output));
+        QCOMPARE(output.trimmed(), QStringLiteral("done"));
+        QCOMPARE(m_daemon->repository()->count(), qint64(0));
     }
 
     void cliRejectsZeroOrMultipleActions()

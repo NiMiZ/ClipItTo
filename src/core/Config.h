@@ -2,6 +2,7 @@
 
 #include "AutoForget.h"
 #include "PasswordRules.h"
+#include "PasteKeys.h"
 
 #include <QList>
 #include <QString>
@@ -13,7 +14,6 @@
 
 namespace clipitto {
 
-enum class PasteKeys { CtrlV, ShiftInsert };
 enum class ClickMode { Single, Double };
 enum class BackendChoice { Auto, GnomeExt, WlPaste, QtClipboard };
 enum class Theme { System, Light, Dark };
@@ -50,7 +50,9 @@ struct Config {
     bool capturePrimary = false;
     bool pasteOnEnter = true; // choosing a copy also pastes it into the window you came from
     bool latestAfterPaste = true; // a chosen copy becomes the latest in the history, as if copied
-    PasteKeys pasteKeys = PasteKeys::CtrlV;
+    PasteKeys pasteKeys = PasteKeys::CtrlV; // ctrl+v | shift+insert, for every program no rule names
+    bool pasteKeysPerApp = true; // the keys follow the program that gets the paste (terminals: ctrl+shift+v)
+    QList<PasteKeyRule> pasteKeysApps; // your own "program = keys" rules (up to 16), tried before the built-in terminals
     ClickMode clickToCopy = ClickMode::Single;
     bool hideOnFocusLoss = true;
     int searchDebounceMs = 100;
@@ -87,6 +89,10 @@ struct Config {
     int syncTombstoneDays = 30; // a deletion is announced this long
     bool windowsHello = false; // Windows: unlock with Windows Hello too
     QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
+    // Panic key (roadmap 20): one shortcut that wipes the history, locks the passwords and empties the system clipboard,
+    // with no question. Off by default; `panicKey` only gates the shortcut (`clipitto --panic` always works).
+    bool panicKey = false;
+    QString panicHotkey; // empty = none; same spelling as `hotkey`
 
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)
     // and never fail: the affected values keep their defaults.

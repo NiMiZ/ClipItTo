@@ -65,6 +65,12 @@ public:
     void historyChanged();
     // Re-reads everything (e.g. after groups changed in the settings), keeping the selection.
     void refresh();
+    // After the history was wiped without asking (the panic key): hides the popup (with `hide`), closes any box that is
+    // open over it, forgets the search text, revealed passwords, thumbnails and the Paste once undo buffer, shows the
+    // (now empty) list, and makes every translation or text reading that was started before it be ignored when it
+    // answers, with no message.
+    // `keepBusy`: the history is being converted (setBusy), which must stay on screen until that is over.
+    void panicReset(bool hide = true, bool keepBusy = false);
 
     // Runs a dialog on top of the popup without the popup hiding on focus loss.
     int execDialog(QDialog& dialog);
@@ -286,6 +292,7 @@ private:
     QrView m_qrView;
     Notify m_notify;
     TextViewer m_viewText;
+    quint64 m_resetEpoch = 0; // counts panicReset() calls: answers of work started before one are dropped
     int m_translateTimeoutMs = 30000;
     PasswordPrompt m_passwordPrompt;
     NamePrompt m_namePrompt;

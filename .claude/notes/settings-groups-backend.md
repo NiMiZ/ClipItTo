@@ -85,3 +85,13 @@ bound to Settings controls (tst_gui_general). `clipitto --sync` = ControlChannel
 Presets: debug, asan, deb, release, windows, macos, macos-release. CI jobs: linux ASan -Werror, .deb, windows
 MSVC, macos, appimage, snap, install checks, release (tags only). Lambdas with QVERIFY must have explicit
 return type (MSVC/clang). Stacked PRs: a PR stacked on a branch that already merged lands in the dead branch.
+
+## Paste keys per program (`PasteKeys.{h,cpp}`, roadmap 8, `paste_keys_per_app` on, `paste_keys_apps` up to 16)
+`pastekeys::choose(global, perApp, userRules, PasteTarget)`: user rules, then `builtInRules()` (terminals; Windows consoles
+shift+insert), then `paste_keys`. `PasteTarget` is Unsupported / Unknown / Known(ids): ids are names only (exe base name +
+window class on Windows `SyntheticPaste.cpp`; WM_CLASS instance+class on X11, unsupported on a Wayland session; GNOME
+extension `FocusedApp` D-Bus method -> `GnomeShellIntegration::pasteTarget`; macOS unsupported, always Cmd+V; KDE/wlroots
+unsupported). Remembered at popup `aboutToShow` (`rememberPasteTarget()` + `DesktopIntegration::rememberPasteTarget`), used in
+`Daemon::pasteIfWanted` (`DaemonOptions::pasteTarget` is the test hook next to `syntheticPaste`). Debug log: the matched rule only.
+`paste_keys` itself stays ctrl+v | shift+insert; ctrl+shift+v is for rules. Settings: General tab editor; `updateOkButton()` is
+shared by the three rule editors (password, auto-forget, paste keys). Tests: `tst_pastekeys`, plus config/settings/daemon/dbus.

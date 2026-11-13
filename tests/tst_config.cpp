@@ -215,6 +215,55 @@ private slots:
         QCOMPARE(more.size(), 1);
     }
 
+    void pasteKeysPerAppRules()
+    {
+        // On by default, with no rules of your own: the built-in terminals do the work.
+        QVERIFY(Config{}.pasteKeysPerApp);
+        QVERIFY(Config{}.pasteKeysApps.isEmpty());
+        QVERIFY(Config{}.pasteKeys == PasteKeys::CtrlV);
+
+        Config c;
+        c.pasteKeysPerApp = false;
+        c.pasteKeysApps = {{QStringLiteral("WindowsTerminal.exe"), PasteKeys::CtrlShiftV},
+                           {QStringLiteral("org.gnome.*"), PasteKeys::ShiftInsert},
+                           {QStringLiteral("notepad"), PasteKeys::CtrlV}};
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        QVERIFY(Config::fromToml(c.mergeInto("paste_keys_apps = []  # mine\nrecent_count = 7\n")) == c);
+
+        // The file is a list of "program = keys" strings.
+        QStringList none;
+        const Config fromFile = Config::fromToml("paste_keys_per_app = false\npaste_keys_apps = [\"WindowsTerminal.exe = ctrl+shift+v\", "
+                                                 "\" org.gnome.* =  Shift+Insert\", \"notepad=ctrl+v\"]",
+                                                 &none);
+        QVERIFY(none.isEmpty());
+        QVERIFY(fromFile == c);
+
+        // Bad rules are skipped with one warning each; more than sixteen: the rest is dropped with a warning.
+        QStringList warnings;
+        const Config bad = Config::fromToml("paste_keys_apps = [\"xterm\", \"xterm = ctrl+c\", \" = ctrl+v\", 7, \"kitty = ctrl+v\"]", &warnings);
+        QCOMPARE(bad.pasteKeysApps.size(), 1);
+        QCOMPARE(bad.pasteKeysApps.front().pattern, QStringLiteral("kitty"));
+        QCOMPARE(warnings.size(), 4);
+        QStringList many;
+        QString seventeen = QStringLiteral("paste_keys_apps = [");
+        for (int i = 0; i < 17; ++i) {
+            seventeen += QStringLiteral("\"app%1 = ctrl+v\",").arg(i);
+        }
+        seventeen += QLatin1Char(']');
+        QCOMPARE(Config::fromToml(seventeen.toStdString(), &many).pasteKeysApps.size(), clipitto::pastekeys::kMaxRules);
+        QCOMPARE(many.size(), 1);
+        QStringList notList;
+        QVERIFY(Config::fromToml("paste_keys_apps = 5", &notList).pasteKeysApps.isEmpty());
+        QCOMPARE(notList.size(), 1);
+        QStringList notBool;
+        QVERIFY(Config::fromToml("paste_keys_per_app = \"yes\"", &notBool).pasteKeysPerApp);
+        QCOMPARE(notBool.size(), 1);
+        // paste_keys itself stays a choice of two: ctrl+shift+v is for the per-program rules.
+        QStringList global;
+        QVERIFY(Config::fromToml("paste_keys = \"ctrl+shift+v\"", &global).pasteKeys == PasteKeys::CtrlV);
+        QCOMPARE(global.size(), 1);
+    }
+
     void autoForgetRules()
     {
         QVERIFY(Config{}.autoForget.isEmpty()); // nothing happens by default
@@ -275,6 +324,48 @@ private slots:
         Config c;
         c.pasteOnceClearSeconds = 17;
         QCOMPARE(Config::fromToml(c.toToml()).pasteOnceClearSeconds, 17);
+    }
+
+    void panicKeyIsOffByDefaultAndRoundTrips()
+    {
+        QVERIFY(!Config{}.panicKey);
+        QVERIFY(Config{}.panicHotkey.isEmpty());
+        QStringList warnings;
+        const Config none = Config::fromToml("", &warnings);
+        QVERIFY(!none.panicKey && none.panicHotkey.isEmpty() && warnings.isEmpty());
+        Config c;
+        c.panicKey = true;
+        c.panicHotkey = QStringLiteral("Ctrl+Alt+Shift+Delete");
+        const Config back = Config::fromToml(c.toToml(), &warnings);
+        QVERIFY(back.panicKey);
+        QCOMPARE(back.panicHotkey, QStringLiteral("Ctrl+Alt+Shift+Delete"));
+        QVERIFY(warnings.isEmpty());
+        // Spelled loosely, kept canonical; empty means none (no warning).
+        QCOMPARE(Config::fromToml("panic_hotkey = \"ctrl+alt+shift+delete\"").panicHotkey, QStringLiteral("Ctrl+Alt+Shift+Delete"));
+        QVERIFY(Config::fromToml("panic_hotkey = \"\"", &warnings).panicHotkey.isEmpty());
+        QVERIFY(warnings.isEmpty());
+    }
+
+    void panicKeyWarnsOnBadValues()
+    {
+        QStringList warnings;
+        Config c = Config::fromToml("panic_hotkey = \"Delete\"\npanic_key = \"yes\"", &warnings); // no modifier; not a bool
+        QVERIFY(c.panicHotkey.isEmpty());
+        QVERIFY(!c.panicKey);
+        QCOMPARE(warnings.size(), 2);
+        warnings.clear();
+        c = Config::fromToml("panic_hotkey = 5", &warnings);
+        QVERIFY(c.panicHotkey.isEmpty());
+        QCOMPARE(warnings.size(), 1);
+        // Saving into an existing file keeps its comments and writes the keys in place.
+        Config on;
+        on.panicKey = true;
+        on.panicHotkey = QStringLiteral("Ctrl+Alt+Shift+F12");
+        const std::string merged = on.mergeInto("# mine\npanic_key = false # my comment\n");
+        QVERIFY(merged.find("# mine") != std::string::npos);
+        QVERIFY(merged.find("panic_key = true") != std::string::npos);
+        QVERIFY(merged.find("# my comment") != std::string::npos);
+        QVERIFY(merged.find("panic_hotkey = \"Ctrl+Alt+Shift+F12\"") != std::string::npos);
     }
 
     void passwordClearSecondsRange()

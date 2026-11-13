@@ -3,6 +3,7 @@
 #include "ClipFilter.h"
 #include "PasswordRules.h"
 
+#include <QElapsedTimer>
 #include <QObject>
 
 namespace clipitto {
@@ -53,6 +54,11 @@ public:
     void setPaused(bool paused);
     bool isPaused() const { return m_paused; }
 
+    // The panic key: drops what waits in memory while the pipeline is paused (overwritten first), and ignores whatever
+    // is captured during the next `quietMs` milliseconds, so a copy that was already on its way (a queued call from a
+    // capture helper) cannot put back what was just wiped. The clipboard itself is emptied by the caller.
+    void discardPending(int quietMs);
+
 public slots:
     // `html`: the copy's formatted version when the backend has it; kept only if it has formatting (RichText.h).
     void process(const QString& text, const QStringList& mimeTypes, const QString& html = QString());
@@ -90,6 +96,9 @@ private:
     int m_maxHistory;
     int m_maxImages = 100;
     bool m_paused = false;
+    QElapsedTimer m_quiet; // running: captures are ignored until m_quietMs have passed (discardPending)
+    qint64 m_quietMs = 0;
+    bool inQuietPeriod();
     QList<Text> m_waiting;
     QList<ImageClip> m_waitingImages; // a few at most: pictures are big
     QList<SealedCopy> m_waitingSecrets; // sealed already: never held in clear

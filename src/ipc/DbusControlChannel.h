@@ -32,6 +32,7 @@ public slots: // D-Bus methods
     void ReloadConfig();
     void LockPasswords();
     void SyncNow();
+    void Panic();
     void Quit();
     QVariantMap Status();
     bool WantsPasswords();

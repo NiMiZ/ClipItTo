@@ -119,6 +119,24 @@ always the first group (up to 10 copies; Settings allows up to 20). A starred co
 is listed first in that group, up to 10 per group. Moving a starred copy into a group, or out
 of one, takes its star along; ClipItTo tells you when the target is full.
 
+**Paste keys per program.** ClipItTo pastes by typing keys into the program you came from, and terminals do not
+paste with Ctrl+V. With *Choose the paste keys by the program* (Settings › General, `paste_keys_per_app`, on by default) it
+looks at which program had the focus when the popup opened and types **Ctrl+Shift+V** for the well-known terminals
+(Windows Terminal, GNOME Terminal, Konsole, xterm, Alacritty, kitty, WezTerm, Tilix, Terminator, foot, Ghostty, and more),
+**Shift+Insert** for Windows consoles (cmd, PowerShell in the classic console, mintty), and `paste_keys` (Ctrl+V unless you
+changed it) for everything else. *Programs* in the same place lists your own rules, up to 16, tried before the built-in
+ones: a program name, which is its executable name (Windows, `.exe` optional), its window class (X11, `WM_CLASS`) or its
+app id (GNOME), in any letter case with `*` for any text, and one of `ctrl+v`, `shift+insert`, `ctrl+shift+v`. In the
+config file: `paste_keys_apps = ["Code = ctrl+shift+v", "xterm = shift+insert"]`. A rule can also turn a terminal back to
+`ctrl+v`. To find a program's name on X11 run `xprop WM_CLASS` and click its window. ClipItTo only reads these names
+(never a window title) and, with the diagnostic log on, writes which rule decided, not the program.
+Where it works: **Windows** (executable name and window class), **X11** (`WM_CLASS`), **GNOME Wayland** with the ClipItTo
+extension (log out and back in once after updating it; an older extension cannot say, then `paste_keys` is used).
+Where it cannot: **macOS** always pastes with Cmd+V (terminals included, so there is nothing to choose), and **other Wayland
+desktops** (KDE, wlroots) let no program ask which window has the focus; there `paste_keys` is used for every program and
+auto-paste itself needs the GNOME extension anyway. Program names are matched whole (`xterm` does not match `xterm-256color`), a program can name its own window class, and the names in the config file are not secret. A terminal inside another program (VS Code's) is the program: add a
+rule for it.
+
 **Pinned** (`Ctrl+P`): up to 10 copies listed at the top, above *Recent*, in the order you
 pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are never pruned.
 
@@ -147,7 +165,7 @@ text. *Keep copies that look like generated passwords as password copies* (Passw
 `detect_passwords`, off by default; needs a master password or *Use without one…*) keeps a
 single-line copy of 8 to 64 characters without spaces that mixes three of lower case, upper case,
 digits and symbols as a password copy. It is a guess by shape and will take some ordinary copies
-(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md).
+(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md). A copy from an actual password field is not detected by where it came from: browsers set no marker for it, and the focus-based signals of Windows and macOS are not reliable (see [password-field-research.md](password-field-research.md)).
 
 **Your own password rules:** Settings › Passwords › *Password rules* (`password_rules`, up to 5)
 keeps a copy as a password copy when it fits a rule you define: a length range, minimum counts of
@@ -259,6 +277,31 @@ OneDrive, Dropbox or a network share already carries between them. The design an
 ones only leave Recent and stay in their groups; pinned ones stay pinned. Its menu (the arrow)
 also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups
 empty. Both ask first and can't be undone.
+
+**Panic key** (off by default; Settings › Passwords › *Panic key*, or `panic_key` and `panic_hotkey` in the config file):
+one shortcut that, at once and **without asking**, (1) deletes the whole history, (2) locks the password copies and (3) empties the
+system clipboard. It cannot be undone, so it does nothing until you turn it on and choose a shortcut (not the one that opens the
+popup). `clipitto --panic` does the same from a terminal or a script, prints `done` when it is over, and works whatever the setting
+says (the setting only gates the shortcut).
+*What it deletes:* exactly what *Clear everything, also in groups* deletes: every copy, including pinned, starred, grouped and
+password copies, pictures and the formatted versions; what auto grouping learned; the search index of them; the space they used is
+overwritten and the database's log folded in, so nothing is left in the file. A pending Paste once *Undo* and a clear still waiting
+on the clipboard are dropped too. *What stays:* your groups (now empty), your settings, the *Passwords* vault itself and the master
+password: the vault is only **locked**, and the master password unlocks it again (there are no password copies left in it). In the
+"no master password" mode there is nothing to lock, and its password copies are deleted with the rest. *The clipboard* is emptied
+whatever it holds (text, a picture, files, something another program copied, a password); on X11 the primary selection too. Where a
+system does not let ClipItTo empty it (Wayland without the GNOME extension or focus), the log says so, in words only, never the
+contents. After a panic the popup (if open) closes and shows an empty history; whatever was being translated or read from a picture
+is thrown away when it finishes; copies that were already on their way are ignored for half a second; `--status` shows nothing
+special and no notification or log line has any content in it. If the history is being encrypted at that moment, the clipboard is
+emptied and the passwords locked at once, and the history is wiped as soon as the conversion is over.
+*Shortcut:* Windows and macOS register it themselves; on GNOME ClipItTo adds a second custom shortcut ("ClipItTo panic") running
+`clipitto --panic` and removes it when the key is turned off; on other desktops bind `clipitto --panic` yourself in the keyboard
+settings. A shortcut another program already owns is reported like the main one (`clipitto --status`, line `panic_hotkey`). Importing
+a backup never changes the panic settings. Limits: Windows' own clipboard history (Win+V) and cloud clipboard are not
+ClipItTo's to empty; any program in your session that may call `clipitto --panic` (D-Bus or the local socket, the same trust as
+`--quit` and `--lock`) can trigger it; `done` means the daemon ran the steps, so check `clipitto --status` / the log if the clipboard
+matters on Wayland without the GNOME extension; on a very large history the wipe takes a moment, during which ClipItTo does not respond.
 
 **Text from a picture:** select a picture and press Shift+Enter (or right-click it › *Paste as*) for its choices: *Paste text from picture* first, *Text from picture, changed* (on one line, trimmed, collapsed spaces, upper / lower / Title case), and *Paste the picture*. *Paste text from picture* reads the text in it and puts it
 on the clipboard and into the window you came from. It runs on your computer only, with no network or cloud
