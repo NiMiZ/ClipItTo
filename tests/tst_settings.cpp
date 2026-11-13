@@ -699,6 +699,41 @@ private slots:
         QVERIFY(again.askNoteBox()->isChecked());
     }
 
+    void thePanicKeyIsOffByDefaultAndItsShortcutNeedsTheBox()
+    {
+        TestDb t;
+        SettingsDialog d(Config{}, *t.repo, ShortcutSupport{});
+        QVERIFY(!d.panicKeyBox()->isChecked());
+        QVERIFY(!d.panicShortcutEdit()->isEnabled()); // nothing to set while it is off
+        QVERIFY(d.panicKeyBox()->toolTip().contains(QLatin1String("WITHOUT asking")));
+        QVERIFY(!d.config().panicKey);
+        QVERIFY(d.config().panicHotkey.isEmpty());
+        d.panicKeyBox()->setChecked(true);
+        QVERIFY(d.panicShortcutEdit()->isEnabled());
+        QVERIFY(d.panicShortcutStatus()->isVisibleTo(&d) || !d.panicShortcutStatus()->text().isEmpty()); // "no shortcut set"
+        d.panicShortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_F12));
+        QCOMPARE(d.config().panicHotkey, QStringLiteral("Ctrl+Alt+Shift+F12"));
+        QVERIFY(d.config().panicKey);
+        // The popup's own shortcut is refused, and the old one kept.
+        d.panicShortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_V));
+        QCOMPARE(d.config().panicHotkey, QStringLiteral("Ctrl+Alt+Shift+F12"));
+        QVERIFY(d.panicShortcutStatus()->text().contains(QLatin1String("already opens the popup")));
+        // And the other way round.
+        d.shortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_F12));
+        QCOMPARE(d.config().hotkey, Config{}.hotkey);
+    }
+
+    void aSessionThatCannotSetShortcutsTellsToBindTheCommand()
+    {
+        TestDb t;
+        ShortcutSupport support;
+        support.editable = false;
+        SettingsDialog d(Config{}, *t.repo, support);
+        d.panicKeyBox()->setChecked(true);
+        QVERIFY(!d.panicShortcutEdit()->isEnabled());
+        QVERIFY(d.panicShortcutStatus()->text().contains(QLatin1String("clipitto --panic")));
+    }
+
     void passwordSettingsAreReturned()
     {
         TestDb t;
