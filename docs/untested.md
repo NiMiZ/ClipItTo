@@ -8,6 +8,7 @@ the real clipboard where it can. These need a person at the machine. Tick them o
 | Touch ID (macOS) | turn it on, lock, unlock with a fingerprint, cancel the prompt, *Forgot it…* reset | a Mac with Touch ID |
 | macOS `.dmg` | first launch (Open Anyway), menu-bar icon, ⌘⌥V shortcut, auto-paste with the Accessibility permission, Keychain prompts after an update, start at login | a Mac |
 | Windows Hello | turn it on, unlock with face/fingerprint/PIN, cancel, *Forgot it…* reset | Windows with Hello set up |
+| Password-field copies | with the real browsers (Chrome, Edge, Firefox, Safari) and extensions (Bitwarden, 1Password), copy a revealed password and use an extension's copy button; list the formats/types on the clipboard and see whether any marker exists, and whether UI Automation `IsPassword` (Inspect.exe) or `IsSecureEventInputEnabled` would have told. KeeWeb's `net.antelle.keeweb` is from other managers' lists, not seen here | Windows, macOS |
 | Source app of a password copy | the note is the real app's name for KeePass, KeePassXC, Bitwarden, 1Password | Windows, X11, GNOME |
 | Copy with formatting | copy from Word, a web page and a mail, then *Shift+Enter › With formatting* into Word / a mail editor; the plain paste stays plain | Windows (HTML Format), macOS (public.html), GNOME extension, KDE / wlroots (wl-paste), X11 |
 | Copied files | copy files in Windows Explorer and in Finder: the row shows the file names, pasting gives the paths | Windows, macOS |
