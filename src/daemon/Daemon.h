@@ -6,6 +6,7 @@
 #include "ControlChannel.h"
 #include "DesktopIntegration.h"
 #include "Entry.h"
+#include "ClipboardWriter.h"
 #include "KeyStore.h"
 #include "PasswordKeeper.h"
 #include "SessionEnv.h"
@@ -71,6 +72,7 @@ struct DaemonOptions {
     std::function<bool(const QString&, const QString&)> notify;
     bool verbose = false; // --verbose: debug lines and the log file for the whole run, whatever the debug_log setting says
     QString debugLogPath; // the diagnostic log file; empty: paths::debugLogFile() (tests set one)
+    int panicQuietMs = 500; // after a panic, copies arriving this long are ignored (one on its way must not put back what was wiped)
     int autoForgetIntervalMs = 60000; // how often the auto_forget rules run (tests shorten it)
     std::function<QDateTime()> autoForgetClock; // what "now" is for the rules; null: the system clock (tests)
 };
@@ -103,6 +105,20 @@ public:
     QVariantMap status() const;
     // Adds platform details (e.g. the Windows hotkey) to status().
     void setStatusValue(const QString& key, const QVariant& value) { m_extraStatus.insert(key, value); }
+    void removeStatusValue(const QString& key) { m_extraStatus.remove(key); }
+
+    // The panic key (roadmap 20): one action, no question. Locks the password copies, empties the system clipboard
+    // (unconditionally), and wipes the history exactly as "Clear everything, also in groups" does (pinned, starred and
+    // grouped copies and the password copies go too; the groups, the settings and the vault stay). Nothing here logs
+    // what was in the history. Triggered by `clipitto --panic` and the panic shortcut.
+    struct PanicResult {
+        bool locked = false; // the password copies are locked (false: no vault, or the open mode that cannot lock)
+        ClipboardWriter::ClearResult clipboard = ClipboardWriter::ClearResult::Unsupported;
+        bool wiped = false; // the history was deleted
+        bool deferred = false; // the history file is being converted: it is wiped as soon as that is over
+        qint64 deleted = 0;
+    };
+    PanicResult panic();
 
     bool isConverting() const { return m_converting; } // history being encrypted/decrypted
     bool isHistoryEncrypted() const { return m_encrypted; }
@@ -122,6 +138,7 @@ signals:
     void configReloaded();
     void encryptionFinished(bool ok, const QString& error); // after a runtime switch
     void shortcutApplied(); // after each GNOME shortcut update, whether or not it worked
+    void panicShortcutApplied(); // after each GNOME update of the panic shortcut
 
 private:
     void startCapture();
@@ -134,6 +151,8 @@ private:
     void finishConversion(bool encrypted, const QString& error);
     void revertEncryptionSetting(); // after a failed runtime switch: config follows the file
     void applyDesktopShortcut();
+    void applyPanicShortcut(); // GNOME: the second custom shortcut, or its removal; elsewhere only the status
+    bool wipeHistory(qint64* deleted); // Clear everything's database path, plus what lives beside it
     // Password copies follow the settings and the vault: kept or not, which group, unlock time.
     void applyPasswordSettings();
     void setUpWindowsHello(); // availability, and the popup's Hello unlock
@@ -151,7 +170,7 @@ private:
     void onOnceActivated(const Entry& entry);
     void helloUnlock(std::function<void(bool)> done);
     void setWindowsHello(bool on, std::function<void(QString error)> done);
-    QString cliCommand() const;
+    QString cliCommand(const QString& option = QStringLiteral("--toggle")) const;
     LoginItem loginItem() const; // macOS: start at login
     void onEntryActivated(const Entry& entry);
     void onPopupVisibilityChanged(bool visible);
@@ -194,6 +213,9 @@ private:
     QThreadPool m_helloPool; // one thread: Windows Hello and text-recognition calls (blocking, WinRT; never on the GUI thread)
     bool m_helloAvailable = false;
     QString m_helloReason;
+    quint64 m_panicEpoch = 0; // counts panics: an answer that was started before one is dropped
+    bool m_panicAfterConversion = false; // a panic came while the file was being converted
+    quint64 m_panicShortcutRequest = 0;
     quint64 m_shortcutRequest = 0; // results of older requests don't overwrite the status
 };
 
