@@ -1,6 +1,7 @@
 #include "ScreenLockWatcher.h"
 
 #include <QCoreApplication>
+#include <QEvent>
 #include <QLoggingCategory>
 #include <QMetaObject>
 
@@ -73,10 +74,14 @@ private:
     }
 
     // Runs on the GUI thread inside the message pump; touches no widgets: it only queues the signal.
-    void post(const char* reason)
+    // `now`: for suspend, Windows gives about two seconds, so the queued signal is delivered before returning.
+    void post(const char* reason, bool now = false)
     {
         QMetaObject::invokeMethod(
             this, [this, text = QString::fromLatin1(reason)] { emit locked(text); }, Qt::QueuedConnection);
+        if (now) {
+            QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
+        }
     }
 
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -98,7 +103,7 @@ private:
                 return 0;
             }
             if (message == WM_POWERBROADCAST && wParam == PBT_APMSUSPEND) {
-                self->post("sleep");
+                self->post("sleep", /*now=*/true);
                 return TRUE;
             }
         }

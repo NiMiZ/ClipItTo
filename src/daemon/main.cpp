@@ -2,6 +2,7 @@
 #include "AppIcon.h"
 #include "Theme.h"
 #include "Daemon.h"
+#include "ScreenLockWatcher.h"
 #include "MacApp.h"
 #include "Paths.h"
 #include "PopupWindow.h"
@@ -36,7 +37,6 @@
 // print to there.
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
 #include "GlobalHotkey.h"
-#include "ScreenLockWatcher.h"
 
 #include <QMenu>
 #include <QMessageBox>

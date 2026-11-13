@@ -1,6 +1,7 @@
 #include "ScreenLockWatcher_dbus.h"
 
 #include <QCoreApplication>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
@@ -43,13 +44,25 @@ bool DbusScreenLockWatcher::subscribe(const QDBusConnection& bus, const QString&
     return true;
 }
 
+// A subscription to a well-known name is accepted by the bus even when nobody owns the name, so "watching" counts
+// only services that exist now (one that appears later is still heard, but is not promised).
+static bool serviceExists(const QDBusConnection& bus, const char* name)
+{
+    QDBusConnectionInterface* iface = bus.interface();
+    return iface && iface->isServiceRegistered(QString::fromLatin1(name));
+}
+
 bool DbusScreenLockWatcher::start(QString* why)
 {
     stop();
     ++m_epoch;
     int subscribed = 0;
     if (m_system.isConnected()) {
-        subscribed += subscribe(m_system, QString::fromLatin1(kLogindService), QString::fromLatin1(kLogindPath),
+        const bool present = serviceExists(m_system, kLogindService);
+        if (!present) {
+            qCInfo(lcScreenLock) << "systemd-logind is not on the system bus";
+        }
+        subscribed += present * subscribe(m_system, QString::fromLatin1(kLogindService), QString::fromLatin1(kLogindPath),
                                 QString::fromLatin1(kLogindManager), QStringLiteral("PrepareForSleep"),
                                 SLOT(onPrepareForSleep(bool)));
         if (m_sessionPath.isEmpty()) {
@@ -62,11 +75,16 @@ bool DbusScreenLockWatcher::start(QString* why)
     }
     if (m_sessionBus.isConnected()) {
         // GNOME, and the freedesktop name that KDE and others use (at /org/freedesktop/ScreenSaver and /ScreenSaver).
-        subscribed += subscribe(m_sessionBus, QStringLiteral("org.gnome.ScreenSaver"), QStringLiteral("/org/gnome/ScreenSaver"),
-                                QStringLiteral("org.gnome.ScreenSaver"), QStringLiteral("ActiveChanged"),
-                                SLOT(onScreenSaverActive(bool)));
+        const bool gnome = serviceExists(m_sessionBus, "org.gnome.ScreenSaver");
+        const bool freedesktop = serviceExists(m_sessionBus, "org.freedesktop.ScreenSaver");
+        subscribed += gnome * subscribe(m_sessionBus, QStringLiteral("org.gnome.ScreenSaver"), QStringLiteral("/org/gnome/ScreenSaver"),
+                                        QStringLiteral("org.gnome.ScreenSaver"), QStringLiteral("ActiveChanged"),
+                                        SLOT(onScreenSaverActive(bool)));
+        if (!gnome && !freedesktop) {
+            qCInfo(lcScreenLock) << "no screensaver service on the session bus";
+        }
         for (const char* path : {"/org/freedesktop/ScreenSaver", "/ScreenSaver"}) {
-            subscribed += subscribe(m_sessionBus, QStringLiteral("org.freedesktop.ScreenSaver"), QString::fromLatin1(path),
+            subscribed += freedesktop * subscribe(m_sessionBus, QStringLiteral("org.freedesktop.ScreenSaver"), QString::fromLatin1(path),
                                     QStringLiteral("org.freedesktop.ScreenSaver"), QStringLiteral("ActiveChanged"),
                                     SLOT(onScreenSaverActive(bool)));
         }
