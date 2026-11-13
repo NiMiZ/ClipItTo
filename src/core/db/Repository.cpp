@@ -1230,13 +1230,23 @@ std::optional<qint64> Repository::newestId()
 void Repository::remove(qint64 id)
 {
     // A deletion the user asked for: with sync on it is written to the sync file (sync_share_deletes).
-    Transaction tx(m_db);
+    // A copy that looks like a secret leaves no hash behind (the hash of a short secret can be guessed back).
+    const auto doomed = get(id);
+    const bool secretLooking = doomed && !doomed->secret && !doomed->image && looksSecret(doomed->content);
     setMeta(m_db, "sync_share_deletes", QStringLiteral("1"));
-    m_remove->reset();
-    m_remove->bindInt(1, id);
-    m_remove->run();
+    try {
+        m_remove->reset();
+        m_remove->bindInt(1, id);
+        m_remove->run();
+    } catch (...) {
+        setMeta(m_db, "sync_share_deletes", QStringLiteral("0"));
+        throw;
+    }
     setMeta(m_db, "sync_share_deletes", QStringLiteral("0"));
-    tx.commit();
+    if (secretLooking) {
+        Stmt forgetHash(m_db, "DELETE FROM sync_tombstones WHERE content_hash = ?1");
+        forgetHash.bindText(1, doomed->contentHash).run();
+    }
 }
 
 void Repository::setPasteOnce(qint64 id, bool once)
@@ -1622,6 +1632,9 @@ QString isoStamp(const QDateTime& time)
 void Repository::setSyncTracking(bool on)
 {
     setMeta(m_db, "sync_on", on ? QStringLiteral("1") : QStringLiteral("0"));
+    if (!on) {
+        m_db.exec("DELETE FROM sync_tombstones"); // nothing of what was deleted is kept when sync is off
+    }
 }
 
 bool Repository::syncTracking()

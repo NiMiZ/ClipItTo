@@ -69,7 +69,10 @@ private slots:
         QSignalSpy hidden(&channel, &ControlChannel::hideRequested);
         QSignalSpy reloaded(&channel, &ControlChannel::reloadRequested);
         QSignalSpy quit(&channel, &ControlChannel::quitRequested);
+        QSignalSpy syncRequested(&channel, &ControlChannel::syncRequested);
 
+        QVERIFY(call({QStringLiteral("SyncNow"), {}}).ok);
+        QCOMPARE(syncRequested.size(), 1);
         QVERIFY(call({QStringLiteral("Toggle"), {QStringLiteral("token")}}).ok);
         QCOMPARE(toggled.size(), 1);
         QCOMPARE(toggled.at(0).at(0).toString(), QStringLiteral("token"));

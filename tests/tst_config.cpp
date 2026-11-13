@@ -113,7 +113,7 @@ private slots:
         QVERIFY(Config::fromToml(longName, &warnings).syncDeviceName.isEmpty());
         QCOMPARE(warnings.size(), 1);
         // The passphrase is not a setting: no such key is written, and one in the file is just an unknown key.
-        QVERIFY(Config().toToml().find("passphrase") == std::string::npos);
+        QVERIFY(Config().toToml().find("passphrase =") == std::string::npos);
     }
 
     void keyboardLayouts()

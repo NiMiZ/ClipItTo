@@ -193,6 +193,7 @@ private slots:
         QCOMPARE(wanted.type(), QDBusMessage::ReplyMessage);
         QCOMPARE(wanted.arguments().constFirst().toBool(), false);
         QCOMPARE(call(QStringLiteral("LockPasswords")).type(), QDBusMessage::ReplyMessage);
+        QCOMPARE(call(QStringLiteral("SyncNow")).type(), QDBusMessage::ReplyMessage);
     }
 
     void reloadConfigMethodTriggersReload()

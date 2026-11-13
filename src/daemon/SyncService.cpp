@@ -113,7 +113,12 @@ void SyncService::applyConfig(const Config& config, bool runSoon)
         m_backoffMs = 0;
     }
     updatePoll();
-    if (runSoon && (first || !previous.syncEnabled || previous.syncFolder != config.syncFolder || previous != config)) {
+    const bool syncChanged = previous.syncEnabled != config.syncEnabled || previous.syncFolder != config.syncFolder
+        || previous.syncDeviceName != config.syncDeviceName || previous.syncMaxCopies != config.syncMaxCopies
+        || previous.syncPictures != config.syncPictures || previous.syncPictureMaxKb != config.syncPictureMaxKb
+        || previous.syncTombstoneDays != config.syncTombstoneDays || previous.maxHistory != config.maxHistory
+        || previous.maxImages != config.maxImages;
+    if (runSoon && (first || syncChanged)) {
         scheduleRun(1500);
     }
 }
@@ -402,7 +407,8 @@ void SyncService::stepMerge()
             m_repo.prune(m_config.maxHistory); // what was added may exceed this PC's limits
             m_repo.pruneImages(m_config.maxImages);
         }
-        m_repo.syncPurgeTombstones(stampOf(QDateTime::currentDateTimeUtc().addDays(-std::max(90, 3 * m_config.syncTombstoneDays))));
+        // Hashes of deleted copies are kept no longer than they are announced.
+        m_repo.syncPurgeTombstones(stampOf(QDateTime::currentDateTimeUtc().addDays(-m_config.syncTombstoneDays)));
     } catch (const db::DbError& e) {
         fail(QString::fromUtf8(e.what()));
         return;

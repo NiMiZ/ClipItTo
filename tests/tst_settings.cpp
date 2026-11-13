@@ -8,6 +8,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDir>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QKeySequenceEdit>
@@ -818,6 +819,169 @@ private slots:
         QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
         d.forgetRemoveButton(0)->click();
         QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+    }
+
+    // ---- Sync tab (roadmap 13)
+
+    void syncTabHasItsControlsAndSaysWhatIsNotSynced()
+    {
+        TestDb t;
+        Config start;
+        start.syncEnabled = true;
+        start.syncFolder = QStringLiteral("/srv/sync/clipitto");
+        start.syncDeviceName = QStringLiteral("Desk");
+        start.syncMaxCopies = 700;
+        start.syncPictures = false;
+        start.syncPictureMaxKb = 300;
+        start.syncTombstoneDays = 9;
+        SettingsDialog d(start, *t.repo, ShortcutSupport{});
+        int index = -1;
+        for (int i = 0; i < d.tabs()->count(); ++i) {
+            if (d.tabs()->tabText(i) == QLatin1String("Sync")) {
+                index = i;
+            }
+        }
+        QVERIFY(index >= 0);
+        QVERIFY(d.syncEnabledBox()->isChecked());
+        QCOMPARE(d.syncFolderEdit()->text(), start.syncFolder);
+        QCOMPARE(d.syncNameEdit()->text(), QStringLiteral("Desk"));
+        QCOMPARE(d.syncMaxCopiesBox()->value(), 700);
+        QVERIFY(!d.syncPicturesBox()->isChecked());
+        QVERIFY(!d.syncPictureKbBox()->isEnabled()); // follows the picture switch
+        d.syncPicturesBox()->setChecked(true);
+        QVERIFY(d.syncPictureKbBox()->isEnabled());
+        QCOMPARE(d.syncDaysBox()->value(), 9);
+        // The page says, in words, what is and is not synced, and that nothing goes over a network.
+        const QWidget* page = d.tabs()->widget(index);
+        QString text;
+        for (const QLabel* label : page->findChildren<QLabel*>()) {
+            text += label->text() + QLatin1Char(' ');
+        }
+        QVERIFY(text.contains(QLatin1String("no network connection")));
+        QVERIFY(text.contains(QLatin1String("Never synced")));
+        QVERIFY(text.contains(QLatin1String("password copies")));
+        QVERIFY(text.contains(QLatin1String("Paste once")));
+        QVERIFY(text.contains(QLatin1String("never put there")));
+        // And the values come back.
+        const Config c = d.config();
+        QVERIFY(c.syncEnabled && c.syncPictures);
+        QCOMPARE(c.syncMaxCopies, 700);
+        QCOMPARE(c.syncFolder, start.syncFolder);
+        // Nothing but a sync passphrase button: no field that could show it.
+        QVERIFY(d.syncPassphraseLabel()->text().contains(QLatin1String("keyring"))); // no support given: nothing to keep a key with
+    }
+
+    void syncPassphraseIsAskedMaskedCheckedAndNeverShown()
+    {
+        TestDb t;
+        bool hasKey = false;
+        QStringList seenFolders;
+        QByteArray seenPass;
+        bool seenNew = false;
+        bool mismatch = false;
+        int syncNowCalls = 0;
+        int removed = 0;
+        clipitto::ui::SyncSupport support;
+        support.available = true;
+        support.hasPassphrase = [&] { return hasKey; };
+        support.setPassphrase = [&](const QString& folder, QByteArray pass, bool startNew,
+                                    std::function<void(QString, bool)> done) {
+            seenFolders << folder;
+            seenPass = pass;
+            seenNew = startNew;
+            if (mismatch && !startNew) {
+                done(QStringLiteral("does not open"), true);
+                return;
+            }
+            hasKey = true;
+            done(QString(), false);
+        };
+        support.removePassphrase = [&] { hasKey = false; ++removed; };
+        support.syncNow = [&] { ++syncNowCalls; };
+        support.status = [] { return QStringLiteral("Last sync: never"); };
+        support.computerName = [] { return QStringLiteral("this-box"); };
+        SettingsDialog d({}, *t.repo, ShortcutSupport{}, {}, nullptr, {}, {}, {}, support);
+        QStringList messages;
+        d.setNotify([&](QWidget*, const QString& m) { messages << m; });
+        d.setInform([&](QWidget*, const QString& m) { messages << m; });
+        std::optional<QString> typed = QStringLiteral("correct horse battery");
+        QStringList asked;
+        d.setSyncPassphrasePrompt([&](QWidget*, bool change) {
+            asked << (change ? QStringLiteral("change") : QStringLiteral("set"));
+            return typed;
+        });
+        bool confirmAnswer = false;
+        d.setConfirmPrompt([&](QWidget*, const QString&) { return confirmAnswer; });
+        QCOMPARE(d.syncNameEdit()->placeholderText(), QStringLiteral("this-box"));
+        QCOMPARE(d.syncStatusLabel()->text(), QStringLiteral("Last sync: never"));
+        QVERIFY(!d.syncNowButton()->isEnabled()); // no passphrase yet
+        QVERIFY(!d.syncRemoveButton()->isEnabled());
+        QCOMPARE(d.syncPassphraseButton()->text(), QStringLiteral("Set…"));
+
+        // The folder first: the passphrase is checked against the files in it.
+        d.syncPassphraseButton()->click();
+        QVERIFY(asked.isEmpty());
+        QVERIFY(messages.last().contains(QLatin1String("folder first")));
+
+        d.setFolderPrompt([](QWidget*, const QString&) { return QStringLiteral("/mnt/share/clip"); });
+        d.syncBrowseButton()->click();
+        QCOMPARE(QDir::fromNativeSeparators(d.syncFolderEdit()->text()), QStringLiteral("/mnt/share/clip"));
+
+        typed = QStringLiteral("short");
+        d.syncPassphraseButton()->click();
+        QVERIFY(seenFolders.isEmpty()); // too short: not even tried
+        QVERIFY(messages.last().contains(QLatin1String("at least 10")));
+
+        typed = QStringLiteral("correct horse battery");
+        d.syncPassphraseButton()->click();
+        QCOMPARE(seenFolders.size(), 1);
+        QCOMPARE(QDir::fromNativeSeparators(seenFolders.front()), QStringLiteral("/mnt/share/clip"));
+        QCOMPARE(seenPass, QByteArray("correct horse battery"));
+        QVERIFY(!seenNew);
+        QCOMPARE(d.syncPassphraseLabel()->text(), QStringLiteral("Set (the key is kept in the system keyring)"));
+        QVERIFY(!d.syncPassphraseLabel()->text().contains(QLatin1String("horse")));
+        QCOMPARE(d.syncPassphraseButton()->text(), QStringLiteral("Change…"));
+        QVERIFY(d.syncNowButton()->isEnabled());
+        for (const QLineEdit* edit : d.findChildren<QLineEdit*>()) {
+            QVERIFY(!edit->text().contains(QLatin1String("horse"))); // no field ever holds it
+        }
+        QVERIFY(!d.config().toToml().empty() && d.config().toToml().find("horse") == std::string::npos);
+        d.syncNowButton()->click();
+        QCOMPARE(syncNowCalls, 1);
+
+        // Changing it onto files it does not open asks before starting a new group.
+        mismatch = true;
+        confirmAnswer = false;
+        d.syncPassphraseButton()->click();
+        QCOMPARE(asked.last(), QStringLiteral("change"));
+        QVERIFY(!seenNew);
+        QVERIFY(messages.last().contains(QLatin1String("does not open")));
+        confirmAnswer = true;
+        d.syncPassphraseButton()->click();
+        QVERIFY(seenNew); // after "Start a new sync group"
+
+        // Removing asks first.
+        confirmAnswer = false;
+        d.syncRemoveButton()->click();
+        QCOMPARE(removed, 0);
+        confirmAnswer = true;
+        d.syncRemoveButton()->click();
+        QCOMPARE(removed, 1);
+        QCOMPARE(d.syncPassphraseLabel()->text(), QStringLiteral("Not set"));
+        QVERIFY(!d.syncNowButton()->isEnabled());
+    }
+
+    void syncTabSaysWhenThereIsNoKeyring()
+    {
+        TestDb t;
+        clipitto::ui::SyncSupport support;
+        support.available = false;
+        support.reason = QStringLiteral("no keyring in this test");
+        support.hasPassphrase = [] { return false; };
+        support.setPassphrase = [](const QString&, QByteArray, bool, std::function<void(QString, bool)>) {};
+        SettingsDialog d({}, *t.repo, ShortcutSupport{}, {}, nullptr, {}, {}, {}, support);
+        QVERIFY(!d.syncPassphraseButton()->isEnabled());
+        QVERIFY(d.syncPassphraseLabel()->text().contains(QLatin1String("no keyring in this test")));
     }
 
     void backupTabAsksForTheMasterPasswordAndImportsTheChosenParts()

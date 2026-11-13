@@ -605,6 +605,19 @@ private slots:
         QCOMPARE(mergeInto(a, {other}).added, 0);
     }
 
+    void aDeletedSecretLookingCopyLeavesNoHashAndTurningSyncOffForgetsAll()
+    {
+        TestDb a;
+        a.repo->setSyncTracking(true);
+        const QString token = QStringLiteral("ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789");
+        a.repo->remove(a.repo->ingest(token).id);
+        a.repo->remove(a.repo->ingest(QStringLiteral("an ordinary line")).id);
+        QVERIFY(a.repo->syncTombstone(a.repo->textHash(token)).isEmpty()); // the hash of a guessable secret is not kept
+        QVERIFY(!a.repo->syncTombstone(a.repo->textHash(QStringLiteral("an ordinary line"))).isEmpty());
+        a.repo->setSyncTracking(false);
+        QVERIFY(a.repo->syncTombstone(a.repo->textHash(QStringLiteral("an ordinary line"))).isEmpty());
+    }
+
     void nothingIsTrackedWhileSyncIsOff()
     {
         TestDb a;
