@@ -776,6 +776,76 @@ private slots:
         QCOMPARE(d.config().passwordSearchKeyword, QStringLiteral("p[]"));
     }
 
+    void pasteKeysEditorAddsEditsAndRemovesRules()
+    {
+        using clipitto::PasteKeyRule;
+        using clipitto::PasteKeys;
+        TestDb t;
+        Config start;
+        start.pasteKeysApps = {{QStringLiteral("WindowsTerminal.exe"), PasteKeys::CtrlShiftV},
+                               {QStringLiteral("notepad"), PasteKeys::ShiftInsert}};
+        {
+            SettingsDialog d(start, *t.repo, {});
+            QVERIFY(d.pasteKeysPerAppBox()->isChecked());
+            QCOMPARE(d.pasteKeysRowCount(), 2);
+            QCOMPARE(d.pasteKeysPatternEdit(0)->text(), QStringLiteral("WindowsTerminal.exe"));
+            QCOMPARE(d.pasteKeysChordBox(1)->currentText(), QStringLiteral("shift+insert"));
+            QVERIFY(d.config() == start); // untouched: the same on the way out
+        }
+
+        SettingsDialog d(Config{}, *t.repo, {});
+        QCOMPARE(d.pasteKeysRowCount(), 0); // the built-in terminals only
+        QVERIFY(d.config().pasteKeysApps.isEmpty());
+        QVERIFY(d.pasteKeysPanel()->isEnabled());
+        d.pasteKeysPerAppBox()->setChecked(false);
+        QVERIFY(!d.pasteKeysPanel()->isEnabled()); // the rules wait for the switch
+        QVERIFY(!d.config().pasteKeysPerApp);
+        d.pasteKeysPerAppBox()->setChecked(true);
+
+        // A new row has no program yet: that is an error and blocks OK, with the reason shown.
+        d.addPasteKeysButton()->click();
+        QCOMPARE(d.pasteKeysRowCount(), 1);
+        QVERIFY(!d.pasteKeysErrorLabel()->isHidden());
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        QVERIFY(d.config().pasteKeysApps.isEmpty()); // an invalid row is never saved
+        d.pasteKeysPatternEdit(0)->setText(QStringLiteral("a=b"));
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.pasteKeysPatternEdit(0)->setText(QStringLiteral("  XTerm "));
+        QVERIFY(d.pasteKeysErrorLabel()->isHidden());
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.pasteKeysChordBox(0)->setCurrentIndex(d.pasteKeysChordBox(0)->findData(int(PasteKeys::ShiftInsert)));
+        QCOMPARE(d.config().pasteKeysApps.size(), 1);
+        QCOMPARE(d.config().pasteKeysApps.front().pattern, QStringLiteral("XTerm")); // trimmed
+        QVERIFY(d.config().pasteKeysApps.front().keys == PasteKeys::ShiftInsert);
+
+        // Up to sixteen; Add is off at the limit; removing frees it again.
+        while (d.pasteKeysRowCount() < clipitto::pastekeys::kMaxRules) {
+            d.addPasteKeysButton()->click();
+            d.pasteKeysPatternEdit(d.pasteKeysRowCount() - 1)->setText(QStringLiteral("app%1").arg(d.pasteKeysRowCount()));
+        }
+        QVERIFY(!d.addPasteKeysButton()->isEnabled());
+        d.addPasteKeysButton()->click(); // disabled: nothing
+        QCOMPARE(d.pasteKeysRowCount(), clipitto::pastekeys::kMaxRules);
+        QCOMPARE(d.config().pasteKeysApps.size(), clipitto::pastekeys::kMaxRules);
+        d.pasteKeysRemoveButton(3)->click();
+        QVERIFY(d.addPasteKeysButton()->isEnabled());
+        while (d.pasteKeysRowCount() > 0) {
+            d.pasteKeysRemoveButton(0)->click();
+        }
+        QVERIFY(d.config().pasteKeysApps.isEmpty());
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+
+        // The three rule editors share the OK button: it stays off until every error is fixed.
+        d.addPasteKeysButton()->click(); // empty program
+        d.addForgetButton()->click();
+        d.forgetTypeBox(0)->setCurrentIndex(d.forgetTypeBox(0)->findData(int(clipitto::AutoForgetRule::Type::Contains)));
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        d.forgetRemoveButton(0)->click();
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled()); // the program is still empty
+        d.pasteKeysRemoveButton(0)->click();
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+    }
+
     void autoForgetEditorAddsEditsAndRemovesRules()
     {
         using clipitto::AutoForgetRule;

@@ -119,6 +119,24 @@ always the first group (up to 10 copies; Settings allows up to 20). A starred co
 is listed first in that group, up to 10 per group. Moving a starred copy into a group, or out
 of one, takes its star along; ClipItTo tells you when the target is full.
 
+**Paste keys per program.** ClipItTo pastes by typing keys into the program you came from, and terminals do not
+paste with Ctrl+V. With *Choose the paste keys by the program* (Settings › General, `paste_keys_per_app`, on by default) it
+looks at which program had the focus when the popup opened and types **Ctrl+Shift+V** for the well-known terminals
+(Windows Terminal, GNOME Terminal, Konsole, xterm, Alacritty, kitty, WezTerm, Tilix, Terminator, foot, Ghostty, and more),
+**Shift+Insert** for Windows consoles (cmd, PowerShell in the classic console, mintty), and `paste_keys` (Ctrl+V unless you
+changed it) for everything else. *Programs* in the same place lists your own rules, up to 16, tried before the built-in
+ones: a program name, which is its executable name (Windows, `.exe` optional), its window class (X11, `WM_CLASS`) or its
+app id (GNOME), in any letter case with `*` for any text, and one of `ctrl+v`, `shift+insert`, `ctrl+shift+v`. In the
+config file: `paste_keys_apps = ["Code = ctrl+shift+v", "xterm = shift+insert"]`. A rule can also turn a terminal back to
+`ctrl+v`. To find a program's name on X11 run `xprop WM_CLASS` and click its window. ClipItTo only reads these names
+(never a window title) and, with the diagnostic log on, writes which rule decided, not the program.
+Where it works: **Windows** (executable name and window class), **X11** (`WM_CLASS`), **GNOME Wayland** with the ClipItTo
+extension (log out and back in once after updating it; an older extension cannot say, then `paste_keys` is used).
+Where it cannot: **macOS** always pastes with Cmd+V (terminals included, so there is nothing to choose), and **other Wayland
+desktops** (KDE, wlroots) let no program ask which window has the focus; there `paste_keys` is used for every program and
+auto-paste itself needs the GNOME extension anyway. Program names are matched whole (`xterm` does not match `xterm-256color`), a program can name its own window class, and the names in the config file are not secret. A terminal inside another program (VS Code's) is the program: add a
+rule for it.
+
 **Pinned** (`Ctrl+P`): up to 10 copies listed at the top, above *Recent*, in the order you
 pin them (`Alt+↑/↓` reorders them). Pinned, starred and grouped copies are never pruned.
 
@@ -147,7 +165,7 @@ text. *Keep copies that look like generated passwords as password copies* (Passw
 `detect_passwords`, off by default; needs a master password or *Use without one…*) keeps a
 single-line copy of 8 to 64 characters without spaces that mixes three of lower case, upper case,
 digits and symbols as a password copy. It is a guess by shape and will take some ordinary copies
-(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md).
+(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md). A copy from an actual password field is not detected by where it came from: browsers set no marker for it, and the focus-based signals of Windows and macOS are not reliable (see [password-field-research.md](password-field-research.md)).
 
 **Your own password rules:** Settings › Passwords › *Password rules* (`password_rules`, up to 5)
 keeps a copy as a password copy when it fits a rule you define: a length range, minimum counts of

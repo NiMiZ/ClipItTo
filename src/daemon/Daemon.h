@@ -67,6 +67,8 @@ struct DaemonOptions {
     // Pastes with synthetic keys where there is no desktop integration (tests replace it, so
     // they never type real keys); returns false where that isn't possible.
     std::function<bool(PasteKeys)> syntheticPaste;
+    // Replaces the platform's answer to "which program gets the paste" (tests; see PasteKeys.h).
+    std::function<PasteTarget()> pasteTarget;
     // Side notification (title, body); false = none could be shown, and the popup says it instead.
     // Null: the desktop's (D-Bus notifications on Linux, the tray's message elsewhere). Tests replace it.
     std::function<bool(const QString&, const QString&)> notify;

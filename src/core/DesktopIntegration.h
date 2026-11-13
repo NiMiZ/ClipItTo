@@ -30,6 +30,10 @@ public:
     virtual void setClipboard(const QString& text) = 0;
     virtual void setClipboardImage(const QByteArray& png) = 0; // a PNG picture
     virtual void paste(PasteKeys keys) = 0;
+    // Asked right before the popup takes focus: note which program has it, because that is the one the paste
+    // goes to (PasteKeys.h). pasteTarget() is what was noted; Unsupported where the shell cannot say.
+    virtual void rememberPasteTarget() {}
+    virtual PasteTarget pasteTarget() const { return PasteTarget::unsupported(); }
 
 signals:
     void availabilityChanged(bool available);

@@ -16,4 +16,13 @@ bool pasteWithSyntheticKeys(PasteKeys keys);
 // GNOME extension return focus themselves). Call right before the popup takes focus.
 void rememberPasteTarget();
 
+// What rememberPasteTarget() saw, as names that identify the program (never a window title); see
+// PasteKeys.h for the three answers. The question is what receives the paste, so each platform says
+// what it can really tell:
+//   Windows: the foreground window's executable name and window class
+//   X11:     _NET_ACTIVE_WINDOW's WM_CLASS (instance and class); a Wayland session: unsupported
+//   macOS:   unsupported (⌘V everywhere; there is nothing to choose)
+//   elsewhere, builds without XTest: unsupported
+PasteTarget rememberedPasteTarget();
+
 } // namespace clipitto

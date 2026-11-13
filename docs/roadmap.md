@@ -90,8 +90,11 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
 7. **DONE (except `app:`): Search filters:** `img:`, `text:`, `pin:`, `star:`, `group:`, `note:`, `today:`, `since:`.
    Still open: `app:chrome` and showing the source app and time on a row; both need the source app stored for
    every copy (it is captured only for password copies today).
-8. **Smart paste keys per app:** pick Ctrl+V / Shift+Insert / Ctrl+Shift+V automatically for terminals
-   instead of one global setting.
+8. **DONE: Smart paste keys per app:** ClipItTo picks Ctrl+V / Shift+Insert / Ctrl+Shift+V by the program that gets the
+   paste (`paste_keys_per_app`, on by default, a built-in list of terminals; your own `paste_keys_apps` rules, up to 16,
+   Settings › General). Supported: Windows (executable name + window class), X11 (`WM_CLASS`), GNOME Wayland with the
+   extension (`FocusedApp`: WM_CLASS / app id). Not possible: macOS (always Cmd+V) and KDE / wlroots Wayland (no way to
+   ask for the focused window; `paste_keys` is used). The core is `PasteKeys.{h,cpp}`.
 9. **Clean links:** strip tracking parameters (`utm_*`, `fbclid`) from copied URLs, optionally.
 10. **Text from pictures (OCR):** **DONE: copy the text out of a picture** (right-click › Paste text from picture;
     offline: Windows.Media.Ocr, Vision, Tesseract). Languages: a setting (`ocr_languages`). **DONE: search inside screenshots** (the text is read in the background when a picture is copied, `index_pictures`, on by default). Still open: picking the Tesseract language
@@ -149,7 +152,8 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     clearing mechanism of the password work: `ClipboardWriter::clearPasted()` (the old `clearPassword()`) now also handles Paste once
     text and pictures. The automatic rules (by pattern or app) are not done.
 18. **DONE: Auto-forget:** copies that expire (`auto_forget`, Settings › Passwords › *Auto-forget*). *Details below.*
-19. **Password-field copies on Windows and macOS.** Some browsers set no password-manager marker when a password is copied from a
+19. **PARTLY DONE: Password-field copies on Windows and macOS.**
+    *Research in [password-field-research.md](password-field-research.md). Done: the marker list is extended (KeeWeb as a secret; three more transient pasteboard types), with tests. Not done, on purpose: Windows UI Automation `IsPassword` and macOS `IsSecureEventInputEnabled` as signals (neither is reliable at copy time; no setting added).* Some browsers set no password-manager marker when a password is copied from a
     field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
     (the source window's class or title when it is a browser password field, a copy made right after an autofill) and see what
     each platform really offers; do nothing that reads more of the clipboard than now.

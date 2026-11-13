@@ -167,6 +167,55 @@ private slots:
         QCOMPARE(more.size(), 1);
     }
 
+    void pasteKeysPerAppRules()
+    {
+        // On by default, with no rules of your own: the built-in terminals do the work.
+        QVERIFY(Config{}.pasteKeysPerApp);
+        QVERIFY(Config{}.pasteKeysApps.isEmpty());
+        QVERIFY(Config{}.pasteKeys == PasteKeys::CtrlV);
+
+        Config c;
+        c.pasteKeysPerApp = false;
+        c.pasteKeysApps = {{QStringLiteral("WindowsTerminal.exe"), PasteKeys::CtrlShiftV},
+                           {QStringLiteral("org.gnome.*"), PasteKeys::ShiftInsert},
+                           {QStringLiteral("notepad"), PasteKeys::CtrlV}};
+        QVERIFY(Config::fromToml(c.toToml()) == c);
+        QVERIFY(Config::fromToml(c.mergeInto("paste_keys_apps = []  # mine\nrecent_count = 7\n")) == c);
+
+        // The file is a list of "program = keys" strings.
+        QStringList none;
+        const Config fromFile = Config::fromToml("paste_keys_per_app = false\npaste_keys_apps = [\"WindowsTerminal.exe = ctrl+shift+v\", "
+                                                 "\" org.gnome.* =  Shift+Insert\", \"notepad=ctrl+v\"]",
+                                                 &none);
+        QVERIFY(none.isEmpty());
+        QVERIFY(fromFile == c);
+
+        // Bad rules are skipped with one warning each; more than sixteen: the rest is dropped with a warning.
+        QStringList warnings;
+        const Config bad = Config::fromToml("paste_keys_apps = [\"xterm\", \"xterm = ctrl+c\", \" = ctrl+v\", 7, \"kitty = ctrl+v\"]", &warnings);
+        QCOMPARE(bad.pasteKeysApps.size(), 1);
+        QCOMPARE(bad.pasteKeysApps.front().pattern, QStringLiteral("kitty"));
+        QCOMPARE(warnings.size(), 4);
+        QStringList many;
+        QString seventeen = QStringLiteral("paste_keys_apps = [");
+        for (int i = 0; i < 17; ++i) {
+            seventeen += QStringLiteral("\"app%1 = ctrl+v\",").arg(i);
+        }
+        seventeen += QLatin1Char(']');
+        QCOMPARE(Config::fromToml(seventeen.toStdString(), &many).pasteKeysApps.size(), clipitto::pastekeys::kMaxRules);
+        QCOMPARE(many.size(), 1);
+        QStringList notList;
+        QVERIFY(Config::fromToml("paste_keys_apps = 5", &notList).pasteKeysApps.isEmpty());
+        QCOMPARE(notList.size(), 1);
+        QStringList notBool;
+        QVERIFY(Config::fromToml("paste_keys_per_app = \"yes\"", &notBool).pasteKeysPerApp);
+        QCOMPARE(notBool.size(), 1);
+        // paste_keys itself stays a choice of two: ctrl+shift+v is for the per-program rules.
+        QStringList global;
+        QVERIFY(Config::fromToml("paste_keys = \"ctrl+shift+v\"", &global).pasteKeys == PasteKeys::CtrlV);
+        QCOMPARE(global.size(), 1);
+    }
+
     void autoForgetRules()
     {
         QVERIFY(Config{}.autoForget.isEmpty()); // nothing happens by default
