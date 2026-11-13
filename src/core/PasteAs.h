@@ -25,6 +25,7 @@ inline constexpr const char* kPictureText = "pic_text";
 inline constexpr const char* kPictureChanged = "pic_changed";
 inline constexpr const char* kPictureTranslate = "pic_translate";
 inline constexpr const char* kPicturePaste = "pic_paste";
+inline constexpr const char* kPasteOnce = "once"; // a toggle: forget the copy right after it is pasted; for text and pictures
 
 // The built-in items in the built-in order, for a text copy and for a picture.
 QList<Item> textItems();

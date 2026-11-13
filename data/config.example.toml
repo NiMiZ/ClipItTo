@@ -24,6 +24,7 @@ paste_as_text = ""          # items of the Paste as... menu for text, in order, 
                             # "upper,-lower,title"; empty = all of them, in the built-in order
 paste_as_picture = ""       # the same for pictures
 paste_as_others = true      # the Paste as... menu ends with "Others", which holds the items left unticked
+                            # (the item "once", Paste once, is one of the items: shown, under Others, or hidden, and where)
 translate_timeout = 5       # seconds (1-10) a translation may take before it is cancelled
 max_image_bytes = 52428800  # larger pictures (50 MB as PNG) are not recorded
 capture_primary = false     # also record the primary (mouse-selection) clipboard, where supported

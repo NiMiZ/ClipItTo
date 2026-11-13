@@ -93,6 +93,22 @@ QAction* actionStartingWith(QMenu* menu, const QString& start)
     return nullptr;
 }
 
+// The action in the menu or in any of its submenus (Paste as, Others, ...).
+QAction* findDeep(QMenu* menu, const QString& start)
+{
+    if (QAction* direct = actionStartingWith(menu, start)) {
+        return direct;
+    }
+    for (QAction* a : menu->actions()) {
+        if (a->menu()) {
+            if (QAction* inner = findDeep(a->menu(), start)) {
+                return inner;
+            }
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 class TestPasteOnce : public QObject {
@@ -529,7 +545,7 @@ private slots:
         f.popup->refresh();
         const auto menuFor = [&](std::unique_ptr<QMenu>& owner) {
             owner.reset(f.popup->createContextMenu(*f.t.repo->get(id), f.popup.get()));
-            return actionStartingWith(owner.get(), QStringLiteral("Paste once"));
+            return findDeep(owner.get(), QStringLiteral("Paste once")); // an item of the Paste as list
         };
         std::unique_ptr<QMenu> owner;
         QAction* once = menuFor(owner);
@@ -543,20 +559,57 @@ private slots:
         once->trigger();
         QVERIFY(!f.t.repo->get(id)->pasteOnce); // can be unmarked
 
-        // The Shift+Enter menu gets the same toggle.
-        QMenu shiftEnter;
-        f.popup->addPasteOnceAction(&shiftEnter, *f.t.repo->get(id));
-        QAction* again = actionStartingWith(&shiftEnter, QStringLiteral("Paste once"));
+        // The Shift+Enter menu is the same Paste as list: it has the toggle too.
+        std::unique_ptr<QMenu> shiftEnter(f.popup->createPasteAsMenu(*f.t.repo->get(id), f.popup.get()));
+        QAction* again = findDeep(shiftEnter.get(), QStringLiteral("Paste once"));
         QVERIFY(again);
         again->trigger();
         QVERIFY(f.t.repo->get(id)->pasteOnce);
-        // Passwords and pictures have it too.
+        // A password has no Paste as menu: its right-click menu has the toggle at the top level.
         const qint64 secret = f.t.repo->ingestSecret(QByteArray("s"), QStringLiteral("secret:3"), QString(), QString()).id;
         std::unique_ptr<QMenu> secretMenu(f.popup->createContextMenu(*f.t.repo->get(secret), f.popup.get()));
         QVERIFY(actionStartingWith(secretMenu.get(), QStringLiteral("Paste once")));
         const qint64 pic = f.t.repo->ingestImage(fakeImage(6)).id;
         std::unique_ptr<QMenu> picMenu(f.popup->createContextMenu(*f.t.repo->get(pic), f.popup.get()));
-        QVERIFY(actionStartingWith(picMenu.get(), QStringLiteral("Paste once")));
+        QVERIFY(findDeep(picMenu.get(), QStringLiteral("Paste once"))); // in the picture's Paste as menu
+    }
+
+    // Settings › Paste as decides where the item is: in the menu (and its place), under "Others", or not at all.
+    void settingsPasteAsDecideWhereThePasteOnceItemIs()
+    {
+        PopupFixture f;
+        const qint64 id = f.t.repo->ingest(QStringLiteral("menu copy")).id;
+        f.popup->refresh();
+        const auto menuWith = [&](const QString& setting, bool others) {
+            Config c;
+            c.pasteAsText = setting;
+            c.pasteAsOthers = others;
+            f.popup->applyConfig(c);
+            return std::unique_ptr<QMenu>(f.popup->createPasteAsMenu(*f.t.repo->get(id), f.popup.get()));
+        };
+        // Built in: the last item of the menu.
+        {
+            auto menu = menuWith(QString(), true);
+            QVERIFY(actionStartingWith(menu.get(), QStringLiteral("Paste once")));
+        }
+        // First, when the setting says so.
+        {
+            auto menu = menuWith(QStringLiteral("once,upper"), true);
+            QVERIFY(menu->actions().first()->text().remove(QLatin1Char('&')).startsWith(QStringLiteral("Paste once")));
+        }
+        // Unticked: under Others.
+        {
+            auto menu = menuWith(QStringLiteral("-once"), true);
+            QVERIFY(!actionStartingWith(menu.get(), QStringLiteral("Paste once")));
+            QAction* others = actionStartingWith(menu.get(), QStringLiteral("Others"));
+            QVERIFY(others && others->menu());
+            QVERIFY(actionStartingWith(others->menu(), QStringLiteral("Paste once")));
+        }
+        // Unticked, and Others off: not offered in the menu (Ctrl+Shift+Enter still works).
+        {
+            auto menu = menuWith(QStringLiteral("-once"), false);
+            QVERIFY(!findDeep(menu.get(), QStringLiteral("Paste once")));
+        }
     }
 
     void theRowShowsAOnceTag()

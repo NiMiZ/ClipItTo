@@ -143,7 +143,7 @@ public:
     QMenu* createContextMenu(const Entry& entry, QWidget* parent);
     // The transforms for a text copy (Shift+Enter, and a submenu of the right-click menu).
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
-    void addPasteOnceAction(QMenu* menu, const Entry& entry); // the "Paste once" toggle at the end of a Paste as menu
+    QAction* addPasteOnceItem(QMenu* menu, const QString& label, const Entry& entry); // the "Paste once" toggle, an item of the Paste as list
     void showQrCode(qint64 id);
     static void fixMnemonics(QMenu* menu);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);

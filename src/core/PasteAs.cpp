@@ -26,6 +26,7 @@ QList<Item> textItems()
     items.append({QString::fromLatin1(kTranslate), t("Tran&slate")});
     items.append({QString::fromLatin1(kRich), t("With &formatting")});
     items.append({QString::fromLatin1(kNumber), t("&Number")});
+    items.append({QString::fromLatin1(kPasteOnce), t("Paste on&ce")});
     return items;
 }
 
@@ -36,6 +37,7 @@ QList<Item> pictureItems()
         {QString::fromLatin1(kPictureChanged), t("Text from picture, &changed")},
         {QString::fromLatin1(kPictureTranslate), t("Trans&late text from picture")},
         {QString::fromLatin1(kPicturePaste), t("Paste the &picture")},
+        {QString::fromLatin1(kPasteOnce), t("Paste on&ce")},
     };
 }
 
