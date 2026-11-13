@@ -90,8 +90,11 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
 7. **DONE (except `app:`): Search filters:** `img:`, `text:`, `pin:`, `star:`, `group:`, `note:`, `today:`, `since:`.
    Still open: `app:chrome` and showing the source app and time on a row; both need the source app stored for
    every copy (it is captured only for password copies today).
-8. **Smart paste keys per app:** pick Ctrl+V / Shift+Insert / Ctrl+Shift+V automatically for terminals
-   instead of one global setting.
+8. **DONE: Smart paste keys per app:** ClipItTo picks Ctrl+V / Shift+Insert / Ctrl+Shift+V by the program that gets the
+   paste (`paste_keys_per_app`, on by default, a built-in list of terminals; your own `paste_keys_apps` rules, up to 16,
+   Settings › General). Supported: Windows (executable name + window class), X11 (`WM_CLASS`), GNOME Wayland with the
+   extension (`FocusedApp`: WM_CLASS / app id). Not possible: macOS (always Cmd+V) and KDE / wlroots Wayland (no way to
+   ask for the focused window; `paste_keys` is used). The core is `PasteKeys.{h,cpp}`.
 9. **Clean links:** strip tracking parameters (`utm_*`, `fbclid`) from copied URLs, optionally.
 10. **Text from pictures (OCR):** **DONE: copy the text out of a picture** (right-click › Paste text from picture;
     offline: Windows.Media.Ocr, Vision, Tesseract). Languages: a setting (`ocr_languages`). **DONE: search inside screenshots** (the text is read in the background when a picture is copied, `index_pictures`, on by default). Still open: picking the Tesseract language
