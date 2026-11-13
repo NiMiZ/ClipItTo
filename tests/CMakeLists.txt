@@ -126,6 +126,19 @@ if(CLIPITTO_DBUS)
     endif()
     set_tests_properties(tst_dbus PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120)
 
+    # The screen-lock watcher against a fake logind / screensaver on the same private bus (Linux only).
+    if(NOT APPLE AND NOT WIN32)
+        add_executable(tst_screenlock tst_screenlock.cpp)
+        target_link_libraries(tst_screenlock PRIVATE clipitto_daemon_lib Qt6::DBus Qt6::Test)
+        clipitto_set_warnings(tst_screenlock)
+        if(DBUS_RUN_SESSION)
+            add_test(NAME tst_screenlock COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_screenlock>)
+        else()
+            add_test(NAME tst_screenlock COMMAND tst_screenlock) # skips itself without a session bus
+        endif()
+        set_tests_properties(tst_screenlock PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120)
+    endif()
+
     if(DBUS_RUN_SESSION)
         add_test(NAME dbus_activation
             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/test-dbus-activation.sh

@@ -142,6 +142,36 @@ private:
         return QTest::qWaitFor([&ok] { return ok.has_value(); }, 10000) && *ok;
     }
 
+    QString lockLine(Daemon& d) { return d.status().value(QStringLiteral("lock_on_screen_lock")).toString(); }
+
+    // A daemon with a master password, a password copy and a fake watcher; unlocked when `unlock`.
+    struct ScreenLockEnv {
+        std::shared_ptr<clipitto::FakeScreenLockWatcher> watcher = std::make_shared<clipitto::FakeScreenLockWatcher>();
+        std::unique_ptr<Daemon> d;
+        Entry secret;
+    };
+
+    void startScreenLockEnv(ScreenLockEnv& e, VaultMode mode, bool unlock = true)
+    {
+        DaemonOptions o = options();
+        o.matchKeyStore = std::make_shared<FakeKeyStore>();
+        o.screenLockWatcher = e.watcher;
+        e.d = std::make_unique<Daemon>(o, std::make_unique<FakeControl>());
+        QVERIFY(e.d->start() == Daemon::StartResult::Ok);
+        QVERIFY(setUpVault(*e.d, mode));
+        Config quiet = e.d->config();
+        quiet.passwordAskNote = false;
+        QVERIFY(e.d->applySettings(quiet));
+        if (mode == VaultMode::None) {
+            return;
+        }
+        emit e.d->control()->ingestRequested(QStringLiteral("screen-lock-pw"), marked());
+        e.secret = e.d->repository()->allEntries().back();
+        if (mode == VaultMode::Master && unlock) {
+            QVERIFY(unlockWith(*e.d, "master"));
+        }
+    }
+
     // Does the history file (or its WAL / shared-memory files) hold these bytes? Files are closed again at once.
     bool historyFileHolds(const QByteArray& needle) const
     {
@@ -2033,6 +2063,151 @@ private slots:
     }
 
     // --- Grouping through the popup ---
+
+    // --- lock_on_screen_lock: a screen lock or a sleep locks the vault, through a fake watcher ---
+
+    void aScreenLockLocksAnUnlockedVaultAndWipesTheKey_data()
+    {
+        QTest::addColumn<QString>("reason");
+        QTest::newRow("screen lock") << QStringLiteral("screen lock");
+        QTest::newRow("sleep") << QStringLiteral("sleep");
+        QTest::newRow("disconnect") << QStringLiteral("disconnect");
+    }
+
+    void aScreenLockLocksAnUnlockedVaultAndWipesTheKey()
+    {
+        QFETCH(QString, reason);
+        ScreenLockEnv e;
+        startScreenLockEnv(e, VaultMode::Master);
+        Daemon& d = *e.d;
+        QVERIFY(e.watcher->isWatching()); // on by default
+        QVERIFY(d.config().lockOnScreenLock);
+        QCOMPARE(lockLine(d), QStringLiteral("on (watching)"));
+        QVERIFY(d.passwords()->isUnlocked());
+        QVERIFY(d.passwords()->secondsLeft() > 0);
+        QCOMPARE(d.passwords()->reveal(e.secret.id).value_or(QByteArray()), QByteArray("screen-lock-pw"));
+
+        QSignalSpy lockChanged(d.passwords(), &clipitto::PasswordKeeper::lockChanged);
+        e.watcher->simulateLock(reason);
+        QVERIFY(!d.passwords()->isUnlocked());
+        QVERIFY(!d.passwords()->vault().isUnlocked()); // the key in memory is gone
+        QVERIFY(!d.passwords()->reveal(e.secret.id));
+        QCOMPARE(d.passwords()->secondsLeft(), 0); // the unlock timer stopped with it
+        QCOMPARE(lockChanged.size(), 1);
+        QCOMPARE(d.status().value(QStringLiteral("passwords")).toString(), QStringLiteral("locked"));
+        QCOMPARE(lockLine(d), QStringLiteral("on (watching)"));
+    }
+
+    void aScreenLockIsIgnoredWhenTheSettingIsOffAndWorksAgainWhenItIsOn()
+    {
+        ScreenLockEnv e;
+        startScreenLockEnv(e, VaultMode::Master);
+        Daemon& d = *e.d;
+        Config off = d.config();
+        off.lockOnScreenLock = false;
+        QVERIFY(d.applySettings(off));
+        QVERIFY(!e.watcher->isWatching()); // not even listening
+        QCOMPARE(lockLine(d), QStringLiteral("off"));
+        e.watcher->simulateLock();
+        emit e.watcher->locked(QStringLiteral("screen lock")); // an event that still arrives is ignored too
+        QVERIFY(d.passwords()->isUnlocked());
+        QVERIFY(d.passwords()->reveal(e.secret.id).has_value());
+
+        Config on = d.config();
+        on.lockOnScreenLock = true;
+        QVERIFY(d.applySettings(on));
+        QVERIFY(e.watcher->isWatching());
+        QCOMPARE(lockLine(d), QStringLiteral("on (watching)"));
+        e.watcher->simulateLock();
+        QVERIFY(!d.passwords()->isUnlocked());
+    }
+
+    void aScreenLockDoesNothingWhenLockedOrWithoutAMasterPassword()
+    {
+        { // already locked: no second lock, no change signal
+            ScreenLockEnv e;
+            startScreenLockEnv(e, VaultMode::Master, /*unlock=*/false);
+            QVERIFY(!e.d->passwords()->isUnlocked());
+            QSignalSpy lockChanged(e.d->passwords(), &clipitto::PasswordKeeper::lockChanged);
+            e.watcher->simulateLock();
+            QCOMPARE(lockChanged.size(), 0);
+            QVERIFY(!e.d->passwords()->isUnlocked());
+            QVERIFY(unlockWith(*e.d, "master")); // and unlocking still works afterwards
+            QVERIFY(e.d->passwords()->isUnlocked());
+        }
+        { // open mode (no master password) never locks
+            ScreenLockEnv e;
+            startScreenLockEnv(e, VaultMode::Open);
+            QVERIFY(e.d->passwords()->isOpen());
+            QVERIFY(e.d->passwords()->isUnlocked());
+            e.watcher->simulateLock();
+            QVERIFY(e.d->passwords()->isUnlocked());
+            QVERIFY(e.d->passwords()->reveal(e.secret.id).has_value());
+        }
+        { // no vault at all
+            ScreenLockEnv e;
+            startScreenLockEnv(e, VaultMode::None);
+            e.watcher->simulateLock();
+            QVERIFY(!e.d->passwords()->isSetUp());
+        }
+    }
+
+    void theUnlockTimerStillRunsAfterAScreenLockAndAnUnlock()
+    {
+        ScreenLockEnv e;
+        startScreenLockEnv(e, VaultMode::Master);
+        Daemon& d = *e.d;
+        e.watcher->simulateLock();
+        QCOMPARE(d.passwords()->secondsLeft(), 0);
+        QVERIFY(unlockWith(d, "master"));
+        // The timer is back, with the setting's length (5 minutes by default).
+        QVERIFY(d.passwords()->secondsLeft() > 290 && d.passwords()->secondsLeft() <= 300);
+        QVERIFY(d.status().value(QStringLiteral("passwords")).toString().startsWith(QLatin1String("unlocked")));
+        d.passwords()->lock(); // Lock now / --lock keep working
+        QVERIFY(!d.passwords()->isUnlocked());
+    }
+
+    void theStatusLineSaysWhenThisSystemGivesNoLockEvents()
+    {
+        { // a watcher that cannot work here
+            DaemonOptions o = options();
+            o.matchKeyStore = std::make_shared<FakeKeyStore>();
+            auto unsupported = std::make_shared<clipitto::FakeScreenLockWatcher>(/*supported=*/false);
+            o.screenLockWatcher = unsupported;
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, VaultMode::Master));
+            QVERIFY(unsupported->startCalls >= 1);
+            QCOMPARE(lockLine(d), QStringLiteral("on (unsupported here)"));
+            Config off = d.config();
+            off.lockOnScreenLock = false;
+            QVERIFY(d.applySettings(off));
+            QCOMPARE(lockLine(d), QStringLiteral("off"));
+        }
+        { // no watcher given at all
+            DaemonOptions o = options();
+            o.matchKeyStore = std::make_shared<FakeKeyStore>();
+            Daemon d(o, std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(setUpVault(d, VaultMode::Master));
+            QCOMPARE(lockLine(d), QStringLiteral("on (unsupported here)"));
+        }
+    }
+
+    void theSettingIsReadFromTheConfigFileAndTheWatcherFollowsIt()
+    {
+        writeConfig("lock_on_screen_lock = false\n");
+        ScreenLockEnv e;
+        startScreenLockEnv(e, VaultMode::Master);
+        QVERIFY(!e.d->config().lockOnScreenLock);
+        QVERIFY(!e.watcher->isWatching());
+        QCOMPARE(lockLine(*e.d), QStringLiteral("off"));
+        writeConfig("lock_on_screen_lock = true\n");
+        e.d->reloadConfig();
+        QVERIFY(e.watcher->isWatching());
+        e.watcher->simulateLock();
+        QVERIFY(!e.d->passwords()->isUnlocked());
+    }
 
     void ctrlGAndTheGroupMenuFileACopyAndNestedGroupsAreMade()
     {

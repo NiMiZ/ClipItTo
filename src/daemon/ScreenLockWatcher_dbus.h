@@ -3,6 +3,7 @@
 #include "ScreenLockWatcher.h"
 
 #include <QDBusConnection>
+#include <QDBusPendingCallWatcher>
 #include <QList>
 
 namespace clipitto {

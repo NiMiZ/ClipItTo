@@ -232,6 +232,7 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"password_clear_seconds", [](SettingsDialog& d) { d.clearSecondsBox()->setValue(12); }},
         {"paste_once_clear_seconds", [](SettingsDialog& d) { d.pasteOnceClearSecondsBox()->setValue(9); }},
         {"password_search_keyword", [](SettingsDialog& d) { d.keywordEdit()->setText(QStringLiteral("pw[]")); }},
+        {"lock_on_screen_lock", [](SettingsDialog& d) { toggle(d.lockOnScreenLockBox()); }},
     };
     return changes;
 }
@@ -384,6 +385,7 @@ private slots:
             {"debug_log", "false"},       {"translate_timeout", "5"},    {"capture_primary", "false"},
             {"index_pictures", "true"},   {"keep_passwords", "true"},    {"password_unlock_minutes", "5"},
             {"password_clear_seconds", "2"}, {"paste_once_clear_seconds", "2"}, {"password_search_keyword", "\"p[]\""}, {"backend", "\"auto\""},
+            {"lock_on_screen_lock", "true"},
         };
         for (const auto& [key, expected] : rows) {
             QTest::newRow(key) << QString::fromLatin1(key) << QString::fromLatin1(expected);
