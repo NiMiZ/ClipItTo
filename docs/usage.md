@@ -195,6 +195,11 @@ from the history right after you paste it from ClipItTo, and taken off the syste
 ClipItTo, but only if the clipboard still holds that password: if you copied something else meanwhile it stays. The clear
 is not stored as a copy, and a clear still waiting when ClipItTo quits is done at once.
 
+**Passwords lock with the screen:** Settings › Passwords › *Lock the passwords when the screen locks or the PC sleeps*
+(`lock_on_screen_lock`, on by default) locks the password copies when the screen locks or the PC goes to sleep (Windows,
+macOS, and Linux through systemd-logind or the GNOME / freedesktop screensaver), like `clipitto --lock`. `clipitto --status`
+shows `lock_on_screen_lock: on (watching)`, `on (unsupported here)` or `off`. See [passwords.md](passwords.md).
+
 **Backup** (Settings › Backup): *Export…* writes your copies (with notes, stars, pins, groups and
 pictures) and/or your settings to one JSON file; *Import…* adds a file's contents to what is here
 (copies already in the history are left alone). Tick *Copies* and/or *Settings* when exporting;

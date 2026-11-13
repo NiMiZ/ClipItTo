@@ -58,7 +58,7 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   (Windows, X11, GNOME; not with wl-paste). Ordinary search finds it by note or group only.
 - **Unlocked with the master password.** Choosing one (Enter), *Show password* (10 s in its row)
   and *Not a password* ask for it first. An unlock lasts 5 minutes (`password_unlock_minutes`);
-  `clipitto --lock` or *Lock passwords* ends it. Unlocking takes about 0.1 s (Argon2id, 64 MiB).
+  `clipitto --lock`, *Lock passwords*, or your screen locking or the PC going to sleep (see below) ends it. Unlocking takes about 0.1 s (Argon2id, 64 MiB).
   On Windows, *Unlock with Windows Hello too* lets your face, fingerprint or PIN do it.
 - **Pasted marked, then cleared.** A password pasted back carries the password-manager markers,
   so other clipboard managers and Windows' clipboard history skip it too (not through the GNOME
@@ -160,8 +160,25 @@ copies can't be recovered**: *Remove…* deletes them and starts over.
 This protects them in the history file and from people using your computer while they are
 locked. It doesn't protect them from programs running as you: those can read the clipboard
 when a password is copied, and on GNOME a copied password travels from the shell extension to
-the daemon over your session's D-Bus. Passwords don't lock by themselves when the screen locks
-yet; use `clipitto --lock` (e.g. from your screen-lock hook) or a short unlock time.
+the daemon over your session's D-Bus.
+
+**Locking with the screen** (`lock_on_screen_lock`, on by default; Settings › Passwords › *Lock the passwords when the
+screen locks or the PC sleeps*). When your screen locks or the PC goes to sleep, the passwords lock at once, exactly
+as `clipitto --lock` does: the unlock key is wiped from memory and the unlock timer stops. It only locks, never
+unlocks, and does nothing without a master password (*Use without one…* never locks). A pasted password that is still
+waiting to be cleared from the clipboard is handled by its own timer, as before. What counts as a lock:
+
+| System | Events used |
+|---|---|
+| Windows | session lock, disconnect (console or remote desktop) and suspend (`WTS_SESSION_LOCK`, `WTS_CONSOLE_DISCONNECT`, `WTS_REMOTE_DISCONNECT`, `PBT_APMSUSPEND`) |
+| macOS | `com.apple.screenIsLocked`, will-sleep and screens-did-sleep |
+| Linux | systemd-logind: the `Lock` signal of your session and `PrepareForSleep(true)`; the GNOME and freedesktop screensaver `ActiveChanged(true)` (KDE and others) |
+
+On Linux this depends on logind or a screensaver service being there and signalling a lock; a desktop that locks
+without telling either (for example some window-manager-only setups with a bare `xss-lock`-less locker) is not
+noticed, and `clipitto --status` cannot tell. `lock_on_screen_lock: on (unsupported here)` means this system
+gives no such events at all (no D-Bus); then use `clipitto --lock` from your screen-lock hook or a short unlock time.
+On a Mac, Touch ID is still only a gate (see above).
 
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs
