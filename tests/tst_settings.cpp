@@ -699,6 +699,14 @@ private slots:
         QVERIFY(again.askNoteBox()->isChecked());
     }
 
+    // Qt writes Ctrl as Cmd (and the modifiers in another order) on macOS: compare the keys, not the text.
+    static QStringList shortcutKeys(const QString& text)
+    {
+        QStringList keys = text.toLower().replace(QLatin1String("cmd"), QLatin1String("ctrl")).replace(QLatin1String("meta"), QLatin1String("ctrl")).split(QLatin1Char('+'));
+        keys.sort();
+        return keys;
+    }
+
     void thePanicKeyIsOffByDefaultAndItsShortcutNeedsTheBox()
     {
         TestDb t;
@@ -712,11 +720,11 @@ private slots:
         QVERIFY(d.panicShortcutEdit()->isEnabled());
         QVERIFY(d.panicShortcutStatus()->isVisibleTo(&d) || !d.panicShortcutStatus()->text().isEmpty()); // "no shortcut set"
         d.panicShortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_F12));
-        QCOMPARE(d.config().panicHotkey, QStringLiteral("Ctrl+Alt+Shift+F12"));
+        QCOMPARE(shortcutKeys(d.config().panicHotkey), shortcutKeys(QStringLiteral("Ctrl+Alt+Shift+F12")));
         QVERIFY(d.config().panicKey);
         // The popup's own shortcut is refused, and the old one kept.
         d.panicShortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_V));
-        QCOMPARE(d.config().panicHotkey, QStringLiteral("Ctrl+Alt+Shift+F12"));
+        QCOMPARE(shortcutKeys(d.config().panicHotkey), shortcutKeys(QStringLiteral("Ctrl+Alt+Shift+F12")));
         QVERIFY(d.panicShortcutStatus()->text().contains(QLatin1String("already opens the popup")));
         // And the other way round.
         d.shortcutEdit()->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_F12));
