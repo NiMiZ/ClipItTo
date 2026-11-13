@@ -58,7 +58,7 @@ TOML via toml++, user comments/layout preserved on save. Hot reload with `clipit
 (`Daemon::reload` re-applies setIgnoreCase/setSecretsPerNote). Removed key: `passwords_in_recent`
 (now a Passwords-group rule set in `SettingsDialog::accept`). New keys must go in Config.cpp load+save,
 config.example.toml, SettingsDialog (init-list order must equal declaration order: -Werror=reorder in CI),
-and tst_config/tst_settings. Settings tabs: General, ..., Passwords, Backup (index 3; tab count test = 4).
+and tst_config/tst_settings. Settings tabs: General, ..., Passwords, Backup (index 3), Sync (index 4); Paste as and Translation follow.
 
 ## Backup (`Backup.{h,cpp}`, Settings > Backup)
 JSON `{format:"clipitto-backup", version:1}`: copies (text; images base64), pins, stars, groups (with order,
@@ -69,6 +69,17 @@ re-sealed to the importing PC's vault (it needs its own master password). Import
 present (`repo.textHash`, `hasSecret`), places new groups last in file order. Settings import keeps local
 hotkey, backend, encrypt_history, windows_hello. File written owner-only via QSaveFile. Tests: `tst_backup`.
 Only exercised on Linux; format is plain JSON so cross-OS should work.
+
+## Sync through a folder (`Sync.{h,cpp}`, `daemon/SyncService.*`, roadmap 13, `sync_enabled`, off by default)
+Design and limits: `docs/sync-design.md`. One encrypted file per device (`<id>.clipitto-sync`) in a folder the user syncs;
+the live DB is never there. Key = Argon2id(sync passphrase, shared salt), kept as salt+key in the keyring entry `sync-key`
+(not the master password; the passphrase is never stored). Migration 011: `clips.meta_changed`, `sync_tombstones`
+(triggers; `meta` sync_on / sync_applying / sync_share_deletes / sync_device_id / sync_fingerprint). `Collector` (own copies,
+batches) -> worker encodes + `writeAtomic` (temp, fsync, rename, retry); `readFolder` (worker) -> `Merger` (batches of 25 on
+the GUI thread, one transaction each; newest `meta_changed` wins as a set; tombstone deletes unless the local copy is newer).
+Never exported: password copies, paste_once; secret-looking deletions leave no tombstone hash. Config keys `sync_*` are all
+bound to Settings controls (tst_gui_general). `clipitto --sync` = ControlChannel `syncRequested`. Tests: `tst_sync`
+(format, crypto, merge, StallWatchdog), `tst_syncservice` (two PCs, folder gone, keyring), Settings/daemon/ipc/migrator tests.
 
 ## Build/CI facts
 Presets: debug, asan, deb, release, windows, macos, macos-release. CI jobs: linux ASan -Werror, .deb, windows

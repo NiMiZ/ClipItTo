@@ -119,9 +119,30 @@ deletions the user asked for (the Delete action, Clear history, Clear Recent) ar
 Copies that leave through pruning (`max_history`), auto-forget or a merge are remembered **only locally**,
 so this PC does not take them back from another PC's file, but they are not deleted elsewhere.
 
+## Database changes (migration 011)
+
+- `clips.meta_changed`: when pin, star, group or note last changed (NULL: never filed). A trigger stamps it on every
+  such update unless `meta('sync_applying') = 1`, which only the merge sets (inside its own transaction) so it can
+  write the other device's time.
+- `sync_tombstones(content_hash, deleted_at, shared)`: filled by a trigger on any deletion while `meta('sync_on') = 1`
+  (never for password or Paste once copies). `shared = 1` only when the deletion went through `remove()`,
+  `clearRecent()` or `clearHistory()` (they set `meta('sync_share_deletes')` around the DELETE). Pruning, auto-forget
+  and merge deletions are `shared = 0`: they stop this PC from taking the copy back, and are not announced.
+- `meta`: `sync_on`, `sync_device_id`, `sync_fingerprint` (what the last written file was made from).
+
+## Threads
+
+The database belongs to the GUI thread (one connection, no locking). Off the GUI thread: listing, reading,
+decrypting and parsing the other files, and encoding, encrypting and writing the own file (`QtConcurrent`), plus the
+Argon2id work for a passphrase. On the GUI thread, in batches of 25 copies per event-loop turn (one transaction
+each): the merge and the collection of the own copies. Measured with 3000 copies: the longest GUI stall is about 10 ms
+(`tst_sync`, `tst_syncservice`, budget 100 ms, CI x5). The first version rewrote the search index for every merged copy
+(an UPDATE that names the indexed columns), which grew a batch to 100 ms; unfiled copies are now written without
+naming them.
+
 ## Settings and keys
 
-`sync_enabled` (false), `sync_folder` (""), `sync_device_name` (host name), `sync_max_copies` (2000, 100-20000),
+`sync_enabled` (false), `sync_folder` (""), `sync_device_name` ("" = host name), `sync_max_copies` (2000, 100-20000),
 `sync_pictures` (true), `sync_picture_max_kb` (2048, 64-20480), `sync_tombstone_days` (30, 1-365). The
 passphrase is not a key. Settings gets a **Sync** tab: enable, folder (Browse…), passphrase Set/Change/Remove
 (masked dialogs; the text is wiped after use), *Sync now*, status line (last sync, devices seen, files ignored
@@ -146,8 +167,20 @@ and why), device name, and a plain statement of what is and is not synced. `clip
   rather than lost).
 - **Pin order** is local. Only *whether* a copy is pinned is synced.
 - **A device id cloned by copying the database** to another PC gives two writers for one file; the two PCs
-  overwrite each other's file (neither loses local data). Delete the database copy's `sync_device_id` by
-  turning sync off and on (a new id is made when sync is first enabled on an install without one).
+  overwrite each other's file (neither loses local data, but each other's copies stop arriving). There is no
+  automatic detection yet; a restored backup of the *settings* does not copy the id (it lives in the database).
+- **Two groups made at the same time.** The salt is shared, so a PC that sets the passphrase while the folder holds no
+  file yet makes a new salt. If two PCs do that before either has written, they have two groups and each ignores the
+  other's file ("different sync passphrase"). Typing the same passphrase again on both (*Change…*) fixes it: joining
+  tries every group in the folder and takes the one with the smallest salt, on every PC. The docs tell the user to
+  finish the first PC before the second.
+- **Deletion notices hold a hash.** A tombstone is the SHA-256 of the deleted text (or the pixel hash of a picture),
+  kept in the local database for `sync_tombstone_days` and in the sync file (encrypted) as long. A short guessable text
+  could be confirmed from its hash by someone holding the history file. Mitigations: copies that look like a key,
+  token or card number leave no hash when deleted with the Delete action; turning sync off deletes every local notice;
+  password copies and Paste once copies never leave one; the history file can be encrypted (Settings). *Clear
+  history* does leave the hashes of what it cleared (it cannot know which ones looked secret without reading every
+  text).
 - The group sort order is not synced, only the paths and "hide from Recent".
 - A sync file stays on the other PCs until they read it; a PC that is never started again keeps its last file.
   Remove a retired device's file by hand.
