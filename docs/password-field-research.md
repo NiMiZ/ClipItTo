@@ -11,7 +11,7 @@ Windows or macOS machine (this was done on Linux), so every "reported" below is 
 
 | Signal | Platform | Reliable | Cheap | Safe | Decision |
 |---|---|---|---|---|---|
-| Marker formats / types set by the copying app | all | Yes, when the app sets one | Yes (names only) | Yes | **Done** (extended list) |
+| Marker formats / types set by the copying app | all (the new KeeWeb and transient types are macOS-only in practice) | Yes, when the app sets one | Yes (names only) | Yes | **Done** (extended list) |
 | Copy owner process | Windows | Only tells the app, not the field | Yes | Yes | Not a signal by itself (a browser owns every copy) |
 | UI Automation `IsPassword` of the focused element | Windows | No (see below) | No | Mixed | **Not implemented** |
 | `IsSecureEventInputEnabled()` | macOS | No (global flag) | Yes | Yes | **Not implemented** |
@@ -21,7 +21,7 @@ Windows or macOS machine (this was done on Linux), so every "reported" below is 
 
 - Documented by Microsoft for clipboard history and cloud clipboard: `ExcludeClipboardContentFromMonitorProcessing` (any
   value), `CanIncludeInClipboardHistory` and `CanUploadToCloudClipboard` (DWORD 0). Password managers (Bitwarden,
-  KeePass, 1Password) set them; KeePass also sets `Clipboard Viewer Ignore`. ClipItTo already honours all four.
+  KeePass, 1Password) set them; KeePass also sets `Clipboard Viewer Ignore`. ClipItTo honours all four; the two DWORD markers count only when their value is 0, and a value that cannot be read counts as 0 (when in doubt, do not record).
 - A browser copying from a password field: browsers refuse to copy the masked value of `<input type="password">`
   (Firefox has a test, `test_cut_copy_password.html`, that the raw value is not put on the clipboard; older reports say
   nothing is copied). So the leak is not "Ctrl+C in a masked field" but values that reach the clipboard another way: the

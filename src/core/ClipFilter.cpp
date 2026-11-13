@@ -52,7 +52,7 @@ bool ClipFilter::isSensitive(const QStringList& mimeTypes)
         // macOS pasteboard types (nspasteboard.org), as the native reader reports them.
         QStringLiteral("org.nspasteboard.ConcealedType"),
         QStringLiteral("com.agilebits.onepassword"),
-        QStringLiteral("net.antelle.keeweb"), // KeeWeb (on the list Maccy and others ignore)
+        QStringLiteral("net.antelle.keeweb"), // KeeWeb: assumed to mean a secret (on other managers' ignore lists), not seen on a real clipboard
     };
     // Qt reports Windows formats it has no MIME type for wrapped:
     // application/x-qt-windows-mime;value="ExcludeClipboardContentFromMonitorProcessing"
