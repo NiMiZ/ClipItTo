@@ -163,9 +163,16 @@ when a password is copied, and on GNOME a copied password travels from the shell
 the daemon over your session's D-Bus. Passwords don't lock by themselves when the screen locks
 yet; use `clipitto --lock` (e.g. from your screen-lock hook) or a short unlock time.
 
+**Panic key.** `clipitto --panic` (and the optional panic shortcut, off by default, Settings › Passwords) locks the password
+copies, empties the system clipboard and deletes the whole history, including every password copy, with no confirmation. The
+vault and the master password are not deleted: they are locked, like `--lock`, and the master password opens the (now empty) vault
+again. In the "no master password" mode nothing can be locked; its password copies are deleted with the rest. See
+[usage.md](usage.md#using-clipitto) for what is deleted and what stays.
+
 ```bash
 clipitto --toggle | --show | --hide     # what the shortcut runs
 clipitto --lock                         # lock the password copies now
+clipitto --panic                        # wipe the history, lock the passwords, empty the clipboard: no question
 clipitto --status                       # backend, item counts, extension state
 clipitto --reload                       # after editing ~/.config/clipitto/config.toml
 ```
