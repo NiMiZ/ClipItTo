@@ -20,7 +20,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
   **groups** and sub-groups. Pinned, starred and grouped clips are never pruned.
 - **Notes** give a clip a readable title.
 - **Password copies** from password managers are kept encrypted behind a master password, never in clear.
-- **Encrypted history** on disk (optional), and **backup** of copies and settings to one file.
+- **Encrypted history** on disk (optional), and **backup** of copies and settings to one file; optional **sync between your PCs** through a folder you already sync (no network of its own).
 - **Private:** no network, no cloud, no telemetry.
 
 ## Keys

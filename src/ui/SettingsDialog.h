@@ -64,6 +64,25 @@ struct PasswordSupport {
     std::function<void(std::function<void(bool unlocked)> done)> helloUnlock;
 };
 
+// Sync through a folder (Settings > Sync, roadmap 13). The sync passphrase is set, changed and removed right away (like
+// the master password); the key made from it lives in the system keyring, never in the config.
+struct SyncSupport {
+    bool available = false; // a system keyring can hold the key
+    QString reason; // why not, when unavailable
+    std::function<bool()> hasPassphrase; // a key is stored
+    // Joins the folder's group with this passphrase (the files already in the folder must open with it), or with
+    // `startNew` makes a new group with a new salt (the other PCs then need the same passphrase). Slow: off the GUI
+    // thread. `done` gets an error text, empty when it worked, and whether the folder has files that this passphrase
+    // does not open (`mismatch`). The bytes are wiped by the service.
+    std::function<void(const QString& folder, QByteArray passphrase, bool startNew,
+                       std::function<void(QString error, bool mismatch)> done)>
+        setPassphrase;
+    std::function<void()> removePassphrase; // forgets the key (this PC stops syncing; the files stay)
+    std::function<void()> syncNow;
+    std::function<QString()> status; // last sync, devices seen, files ignored and why
+    std::function<QString()> computerName; // what an empty device name means
+};
+
 // Start with the user's session (the checkbox is shown where it is offered: macOS). Applied
 // right away, like groups: there is no config key, the state is the launch agent itself.
 struct StartupSupport {
@@ -87,7 +106,7 @@ public:
 
     SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
                    EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {},
-                   StartupSupport startup = {}, TranslationSupport translation = {});
+                   StartupSupport startup = {}, TranslationSupport translation = {}, SyncSupport sync = {});
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -106,6 +125,29 @@ public:
     QPushButton* addPackButton() const { return m_addPack; }
     QPushButton* removePackButton() const { return m_removePack; }
     void setPartsPrompt(PartsPrompt prompt) { m_partsPrompt = std::move(prompt); }
+
+    // Sync tab. The folder prompt returns "" when cancelled.
+    using FolderPrompt = std::function<QString(QWidget* parent, const QString& current)>;
+    void setFolderPrompt(FolderPrompt prompt) { m_folderPrompt = std::move(prompt); }
+    void setSyncPassphrasePrompt(SyncPassphrasePrompt prompt) { m_syncPrompt = std::move(prompt); }
+    void browseSyncFolder();
+    void setSyncPassphrase();
+    void removeSyncPassphrase();
+    void startSyncPassphrase(const QString& folder, QByteArray bytes, bool startNew);
+    void refreshSync(); // button states and the status text
+    QCheckBox* syncEnabledBox() const { return m_syncEnabled; }
+    QLineEdit* syncFolderEdit() const { return m_syncFolder; }
+    QLineEdit* syncNameEdit() const { return m_syncName; }
+    QSpinBox* syncMaxCopiesBox() const { return m_syncMaxCopies; }
+    QCheckBox* syncPicturesBox() const { return m_syncPictures; }
+    QSpinBox* syncPictureKbBox() const { return m_syncPictureKb; }
+    QSpinBox* syncDaysBox() const { return m_syncDays; }
+    QPushButton* syncBrowseButton() const { return m_syncBrowse; }
+    QPushButton* syncPassphraseButton() const { return m_syncSet; }
+    QPushButton* syncRemoveButton() const { return m_syncRemove; }
+    QPushButton* syncNowButton() const { return m_syncNowButton; }
+    QLabel* syncStatusLabel() const { return m_syncStatus; }
+    QLabel* syncPassphraseLabel() const { return m_syncPassphraseState; }
 
     // Backup tab. With a master password set, both ask for it first (even when unlocked).
     void exportBackup();
@@ -375,6 +417,23 @@ private:
     QCheckBox* m_backupSettings;
     QPushButton* m_export;
     QPushButton* m_import;
+    SyncSupport m_syncSupport;
+    QCheckBox* m_syncEnabled = nullptr;
+    QLineEdit* m_syncFolder = nullptr;
+    QLineEdit* m_syncName = nullptr;
+    QSpinBox* m_syncMaxCopies = nullptr;
+    QCheckBox* m_syncPictures = nullptr;
+    QSpinBox* m_syncPictureKb = nullptr;
+    QSpinBox* m_syncDays = nullptr;
+    QPushButton* m_syncBrowse = nullptr;
+    QPushButton* m_syncSet = nullptr; // "Set…" or "Change…"
+    QPushButton* m_syncRemove = nullptr;
+    QPushButton* m_syncNowButton = nullptr;
+    QLabel* m_syncStatus = nullptr;
+    QLabel* m_syncPassphraseState = nullptr;
+    bool m_syncBusy = false; // a key is being derived
+    FolderPrompt m_folderPrompt;
+    SyncPassphrasePrompt m_syncPrompt;
     std::optional<Config> m_imported; // settings taken from a backup: what config() returns
 
     TextPrompt m_textPrompt;

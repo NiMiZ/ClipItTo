@@ -150,12 +150,12 @@ private slots:
         Db db(QStringLiteral(":memory:"));
         configureConnection(db);
         const auto migrations = builtinMigrations();
-        QCOMPARE(migrations.back().version, 10);
-        std::vector<Migration> before(migrations.begin(), migrations.end() - 1);
+        QVERIFY(migrations.size() >= 10 && migrations[9].version == 10);
+        std::vector<Migration> before(migrations.begin(), migrations.begin() + 9);
         migrate(db, before);
         QCOMPARE(schemaVersion(db), 9);
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old copy', 'h-old')");
-        migrate(db);
+        migrate(db, std::vector<Migration>(migrations.begin(), migrations.begin() + 10));
         QCOMPARE(schemaVersion(db), 10);
         Stmt flag(db, "SELECT paste_once FROM clips WHERE content = 'old copy'");
         QVERIFY(flag.step());
@@ -163,6 +163,41 @@ private slots:
         db.exec("INSERT INTO clips(content, content_hash, paste_once) VALUES ('once', 'h-once', 1)");
         QVERIFY_EXCEPTION_THROWN(db.exec("INSERT INTO clips(content, content_hash, paste_once) VALUES ('x', 'h-x', 2)"),
                                  DbError); // only 0 or 1
+    }
+
+    void syncMigrationAddsFilingTimesAndTombstones()
+    {
+        Db db(QStringLiteral(":memory:"));
+        configureConnection(db);
+        const auto migrations = builtinMigrations();
+        QCOMPARE(migrations.back().version, 11);
+        migrate(db, std::vector<Migration>(migrations.begin(), migrations.begin() + 10));
+        db.exec("INSERT INTO clips(content, content_hash) VALUES ('old copy', 'h-old')");
+        migrate(db);
+        QCOMPARE(schemaVersion(db), 11);
+        const auto scalar = [&db](const char* sql) {
+            Stmt s(db, sql);
+            return s.step() ? s.colText(0) : QStringLiteral("<none>");
+        };
+        QVERIFY(scalar("SELECT meta_changed FROM clips WHERE content = 'old copy'").isEmpty()); // never filed
+        // Filing stamps the time; the merge (sync_applying) writes its own.
+        db.exec("UPDATE clips SET tag_or_note = 'n' WHERE content = 'old copy'");
+        QVERIFY(!scalar("SELECT meta_changed FROM clips WHERE content = 'old copy'").isEmpty());
+        db.exec("INSERT INTO meta(key, value) VALUES ('sync_applying', '1')");
+        db.exec("UPDATE clips SET tag_or_note = 'm', meta_changed = '2020-01-01T00:00:00.000Z' WHERE content = 'old copy'");
+        QCOMPARE(scalar("SELECT meta_changed FROM clips WHERE content = 'old copy'"), QStringLiteral("2020-01-01T00:00:00.000Z"));
+        db.exec("UPDATE meta SET value = '0' WHERE key = 'sync_applying'");
+        // Deletions are remembered only while sync is on, and never for passwords or Paste once copies.
+        db.exec("INSERT INTO clips(content, content_hash) VALUES ('a', 'h-a')");
+        db.exec("DELETE FROM clips WHERE content = 'a'");
+        QCOMPARE(scalar("SELECT count(*) FROM sync_tombstones"), QStringLiteral("0"));
+        db.exec("INSERT INTO meta(key, value) VALUES ('sync_on', '1')");
+        db.exec("INSERT INTO clips(content, content_hash) VALUES ('b', 'h-b')");
+        db.exec("INSERT INTO clips(content, content_hash, secret) VALUES ('Password', 'secret:x', 1)");
+        db.exec("INSERT INTO clips(content, content_hash, paste_once) VALUES ('once', 'h-once', 1)");
+        db.exec("DELETE FROM clips WHERE content IN ('b', 'Password', 'once')");
+        QCOMPARE(scalar("SELECT group_concat(content_hash) FROM sync_tombstones"), QStringLiteral("h-b"));
+        QCOMPARE(scalar("SELECT shared FROM sync_tombstones"), QStringLiteral("0")); // not a deletion the user asked for
     }
 
     void passwordsMigrationAddsSecretsAndVault()
@@ -173,7 +208,7 @@ private slots:
         migrate(db, {migrations[0], migrations[1], migrations[2], migrations[3]}); // schema 4
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
         migrate(db);
-        QCOMPARE(schemaVersion(db), 10);
+        QCOMPARE(schemaVersion(db), 11);
 
         Stmt secret(db, "SELECT secret FROM clips WHERE content = 'old text'");
         QVERIFY(secret.step());

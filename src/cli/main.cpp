@@ -108,13 +108,14 @@ int main(int argc, char* argv[])
     const QCommandLineOption hide(QStringLiteral("hide"), QStringLiteral("Hide the popup."));
     const QCommandLineOption status(QStringLiteral("status"), QStringLiteral("Print daemon status."));
     const QCommandLineOption reload(QStringLiteral("reload"), QStringLiteral("Reload the configuration file."));
+    const QCommandLineOption syncNow(QStringLiteral("sync"), QStringLiteral("Sync through the shared folder now."));
     const QCommandLineOption quit(QStringLiteral("quit"), QStringLiteral("Stop the daemon."));
     const QCommandLineOption lock(QStringLiteral("lock"), QStringLiteral("Lock the password copies now."));
     const QCommandLineOption panic(QStringLiteral("panic"),
                                    QStringLiteral("Wipe the history, lock the passwords and empty the clipboard, now, without asking."));
     const QCommandLineOption ingest(QStringLiteral("ingest"), QStringLiteral("Add <text> to the history."),
                                     QStringLiteral("text"));
-    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest};
+    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest, syncNow};
     parser.addOptions(actions);
     parser.process(app);
 
@@ -144,6 +145,8 @@ int main(int argc, char* argv[])
         method = QStringLiteral("Quit");
     } else if (parser.isSet(lock)) {
         method = QStringLiteral("LockPasswords");
+    } else if (parser.isSet(syncNow)) {
+        method = QStringLiteral("SyncNow");
     } else if (parser.isSet(panic)) {
         method = QStringLiteral("Panic");
     } else {

@@ -27,6 +27,7 @@
 namespace clipitto {
 
 class CapturePipeline;
+class SyncService;
 class LoginItem;
 class ClipboardWriter;
 
@@ -64,6 +65,7 @@ struct DaemonOptions {
     QString loginItemPath; // macOS launch agent; empty: ~/Library/LaunchAgents (tests set one)
     std::shared_ptr<KeyStore> keyStore; // holds the history key; null: encryption unavailable
     std::shared_ptr<KeyStore> matchKeyStore; // password copies' match key; null: no keyring
+    std::shared_ptr<KeyStore> syncKeyStore; // the key made from the sync passphrase (entry "sync-key"); null: no keyring
     // Pastes with synthetic keys where there is no desktop integration (tests replace it, so
     // they never type real keys); returns false where that isn't possible.
     std::function<bool(PasteKeys)> syntheticPaste;
@@ -74,6 +76,8 @@ struct DaemonOptions {
     std::function<bool(const QString&, const QString&)> notify;
     bool verbose = false; // --verbose: debug lines and the log file for the whole run, whatever the debug_log setting says
     QString debugLogPath; // the diagnostic log file; empty: paths::debugLogFile() (tests set one)
+    int syncPollMs = 0; // how often the sync folder is checked; 0 = the default (a minute). Tests shorten it
+    int syncDebounceMs = 3000; // after a change in the folder
     int panicQuietMs = 500; // after a panic, copies arriving this long are ignored (one on its way must not put back what was wiped)
     int autoForgetIntervalMs = 60000; // how often the auto_forget rules run (tests shorten it)
     std::function<QDateTime()> autoForgetClock; // what "now" is for the rules; null: the system clock (tests)
@@ -132,6 +136,7 @@ public:
     ControlChannel* control() const { return m_control; }
     ui::PopupWindow* popup() const { return m_popup.get(); } // null until start() succeeded
     PasswordKeeper* passwords() const { return m_passwords.get(); } // null until start() succeeded
+    SyncService* sync() const { return m_sync.get(); } // sync through a shared folder; null until start() succeeded
     // Runs the auto_forget rules now (as the timer, the start and the popup opening do); returns how many copies went.
     // Does nothing without rules, while the history is converted or on a database error.
     qint64 runAutoForget();
@@ -209,6 +214,7 @@ private:
     QTimer* m_forgetMore = nullptr; // the next step of a backlog, one at a time
     QTimer* m_forgetTimer = nullptr; // runs the auto_forget rules once a minute
     std::unique_ptr<autoforget::Pruner> m_forgetter;
+    std::unique_ptr<SyncService> m_sync; // after m_repo: it is destroyed first
     std::thread m_worker; // runs a conversion; the database belongs to it meanwhile
     QThreadPool m_shortcutPool; // one thread: GNOME shortcut updates run in order, off the GUI thread
     QThreadPool m_translatePool; // one thread: translating takes a second or two

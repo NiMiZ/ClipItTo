@@ -223,6 +223,56 @@ PC with that password; importing re-seals them with that PC's own master passwor
 first). Everything else in the file is plain text: keep it private. Imported settings leave this
 computer's shortcut, backend, history encryption and Windows Hello choices as they are.
 
+**Sync your PCs through a folder you already sync** (Settings › Sync, off by default). ClipItTo makes **no network
+connection** of its own: it keeps the history of several PCs in step through a folder that Syncthing, Nextcloud,
+OneDrive, Dropbox or a network share already carries between them. The design and its limits are in
+[sync-design.md](sync-design.md).
+
+- **How it works.** Each PC writes **one small encrypted file of its own** into the folder
+  (`<random id>.clipitto-sync`) and reads the files of the others. A PC never edits another PC's file, so the sync
+  program never sees two writers of one file. The history file (`history.db`) is **never** put in that folder: a sync
+  program copying a database that is open on two PCs corrupts it.
+- **Set it up** (the same on each PC; do the first PC completely before the second):
+  1. Make a folder inside the one your sync program shares (for example `~/Syncthing/clipitto`) and let it
+     appear on every PC. Use a folder only ClipItTo files go in.
+  2. Settings › Sync: choose the **Folder** (*Browse…*), give this PC a name if you like, then **Set…** the **sync
+     passphrase** (at least 10 characters, typed twice). It is not your master password and is never stored: ClipItTo
+     makes a key from it (Argon2id) and keeps only the key in the system keyring, so syncing runs without asking.
+  3. Tick *Keep my PCs in step through this folder* and press **Sync now** (or run `clipitto --sync`). The first PC
+     writes its file. Wait until that file is in the folder on the second PC, then repeat steps 2 and 3 there **with the
+     same passphrase**: ClipItTo finds the first PC's file, checks the passphrase against it (a wrong one is refused
+     right away), and joins it.
+  4. After that it runs by itself: about once a minute, and a few seconds after the folder changes. The Sync tab shows
+     the last sync, the PCs it sees, and any file it had to ignore, with the reason.
+- **Syncthing:** share the folder in "Send & Receive" mode on all PCs. **Nextcloud / OneDrive / Dropbox:** a normal
+  synced folder; make it "always keep on this device" so the files are really there. **Network share:** any
+  folder both PCs can write to. ClipItTo never creates the folder: if it is missing (an unplugged drive or share) it waits,
+  tries again less and less often, and tells you in Settings.
+- **What is synced:** text copies and pictures (pictures only up to *Share pictures too, up to* … KB), with their pins,
+  stars, groups and notes; and what you delete (as a deletion notice kept for *Announce deletions for* days, 30
+  by default). Each PC shares its newest *Copies shared* (2000) unsaved copies and all its pinned, starred and
+  grouped ones.
+- **What is never synced:** password copies (they are sealed to each PC's own master password), copies kept as secrets
+  by the detection of keys, tokens and card numbers, and Paste once copies. Formatted (HTML) versions travel as plain
+  text. The order of the Pinned list and of the groups is each PC's own. The settings are not synced.
+- **If two PCs disagree:** the newest change wins, for a copy's pin, star, group and note together. A copy you
+  used again after another PC deleted it is kept and comes back there. A copy that is new on another PC arrives with
+  the time it was last used there, so it does not jump to the top of your list. PCs with a wrong clock can win or lose
+  by mistake: keep clocks on network time.
+- **If the passphrase differs:** a file made with another passphrase is ignored, and Settings says so ("N file(s) made
+  with a different sync passphrase"). Two PCs that both set the passphrase before either had a file in the folder
+  each made their own group: press **Change…** on both and type the passphrase again; they then find the same one.
+  To change the passphrase for everybody: *Change…* on one PC (answer *Start a new sync group*), then *Change…* with the
+  same new passphrase on the others, once its file is in the folder. Files of the old group stay in the folder and are
+  ignored; delete them by hand.
+- **Taking a PC out:** *Remove…* the passphrase on it (or turn sync off) and delete its `.clipitto-sync` file from the
+  folder on another PC. Its copies stay in the other PCs' histories.
+- **Keep in mind:** anyone who has both the folder and the passphrase can read the synced copies. Do not put the
+  passphrase in the folder. The deletion notices hold a hash (not the text) of each copy you deleted, for 30 days; copies
+  that look like keys or tokens leave none. Real sync programs on Windows and macOS have not been tried yet (see
+  [untested.md](untested.md)); if the sync program makes a "conflicted copy" of a sync file, delete the copy: ClipItTo
+  reads only the files that end in `.clipitto-sync` and are not its own.
+
 **Clear** (the button next to ⚙) empties Recent: unfiled copies are deleted, starred and grouped
 ones only leave Recent and stay in their groups; pinned ones stay pinned. Its menu (the arrow)
 also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups
@@ -286,7 +336,7 @@ finds them by note, group or "image".
   log out and back in after an update so the shell loads the new extension. On KDE, Sway and other Wayland
   desktops the desktop decides, and the setting has no effect.
 - **Groups:** new, sub-group, rename/move, delete, move up/down; saved immediately.
-- **History encryption**, **Backup** and [password copies](passwords.md#password-copies) have
+- **Sync**, **History encryption**, **Backup** and [password copies](passwords.md#password-copies) have
   their own sections.
 
 Saving keeps your own comments and layout in `config.toml`.

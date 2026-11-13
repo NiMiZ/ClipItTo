@@ -40,6 +40,7 @@
 #include <QTabWidget>
 #include <QStyle>
 #include <QToolButton>
+#include <QTimer>
 #include <QToolTip>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -126,7 +127,7 @@ void setNote(QLabel* label, const QString& text)
 
 SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
                                EncryptionSupport encryption, QWidget* parent, PasswordSupport passwords,
-                               StartupSupport startup, TranslationSupport translation)
+                               StartupSupport startup, TranslationSupport translation, SyncSupport sync)
     : QDialog(parent)
     , m_config(config)
     , m_repo(repo)
@@ -194,6 +195,11 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_passwordPrompt(defaultPasswordPrompt())
     , m_masterPrompt(defaultMasterPasswordPrompt())
 {
+    m_syncSupport = std::move(sync);
+    m_syncPrompt = defaultSyncPassphrasePrompt();
+    m_folderPrompt = [](QWidget* parent, const QString& current) {
+        return QFileDialog::getExistingDirectory(parent, tr("Sync folder"), current);
+    };
     setWindowTitle(tr("ClipItTo Settings"));
     setMinimumWidth(480); // the height follows the contents (see the end)
 
@@ -852,11 +858,119 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         return backup::Parts{copies->isChecked(), settings->isChecked()};
     };
 
+
+    // --- Sync --------------------------------------------------------------------------
+    auto* syncPage = new QWidget(this);
+    auto* syncLayout = new QVBoxLayout(syncPage);
+    auto* syncIntro = new QLabel(
+        tr("Keep the history of your PCs in step through a folder that something else already syncs (Syncthing, "
+           "Nextcloud, OneDrive, a network share). ClipItTo itself makes <b>no network connection</b>. It writes one "
+           "small <b>encrypted</b> file of its own into the folder and reads the other PCs' files. The history file "
+           "itself is never put there.<br><br>"
+           "<b>Synced:</b> text copies and pictures (up to the size below), with their pins, stars, groups and notes, "
+           "and what you delete.<br>"
+           "<b>Never synced:</b> password copies, copies kept as secrets (keys, tokens, card numbers) and Paste once "
+           "copies."),
+        syncPage);
+    syncIntro->setWordWrap(true);
+    syncIntro->setTextFormat(Qt::RichText);
+    syncLayout->addWidget(syncIntro);
+
+    m_syncEnabled = new QCheckBox(tr("Keep my PCs in step through this folder"), syncPage);
+    m_syncEnabled->setChecked(config.syncEnabled);
+    syncLayout->addWidget(m_syncEnabled);
+
+    auto* syncForm = new QFormLayout;
+    m_syncFolder = new QLineEdit(syncPage);
+    m_syncFolder->setText(config.syncFolder);
+    m_syncFolder->setPlaceholderText(tr("The folder your sync program shares"));
+    m_syncFolder->setToolTip(tr("ClipItTo never creates this folder: if it is not there (an unplugged drive or share), "
+                                "it waits and tries again."));
+    m_syncBrowse = new QPushButton(tr("Browse…"), syncPage);
+    auto* folderRow = new QHBoxLayout;
+    folderRow->addWidget(m_syncFolder, 1);
+    folderRow->addWidget(m_syncBrowse);
+    syncForm->addRow(tr("Folder:"), folderRow);
+    m_syncName = new QLineEdit(syncPage);
+    m_syncName->setText(config.syncDeviceName);
+    m_syncName->setMaxLength(64);
+    m_syncName->setPlaceholderText(m_syncSupport.computerName ? m_syncSupport.computerName() : tr("this computer's name"));
+    m_syncName->setToolTip(tr("How this PC is named in the other PCs' lists."));
+    syncForm->addRow(tr("This PC is called:"), m_syncName);
+    m_syncPassphraseState = new QLabel(syncPage);
+    m_syncSet = new QPushButton(syncPage);
+    m_syncRemove = new QPushButton(tr("Remove…"), syncPage);
+    auto* passRow = new QHBoxLayout;
+    passRow->addWidget(m_syncPassphraseState, 1);
+    passRow->addWidget(m_syncSet);
+    passRow->addWidget(m_syncRemove);
+    syncForm->addRow(tr("Sync passphrase:"), passRow);
+    m_syncMaxCopies = new QSpinBox(syncPage);
+    m_syncMaxCopies->setRange(100, 20'000);
+    m_syncMaxCopies->setGroupSeparatorShown(true);
+    m_syncMaxCopies->setValue(config.syncMaxCopies);
+    m_syncMaxCopies->setToolTip(tr("How many of the newest unsaved copies this PC puts in its sync file. Every pinned, "
+                                   "starred and grouped copy is in it besides."));
+    syncForm->addRow(tr("Copies shared:"), m_syncMaxCopies);
+    m_syncPictures = new QCheckBox(tr("Share pictures too, up to"), syncPage);
+    m_syncPictures->setChecked(config.syncPictures);
+    m_syncPictureKb = new QSpinBox(syncPage);
+    m_syncPictureKb->setRange(64, 20'480);
+    m_syncPictureKb->setSuffix(tr(" KB"));
+    m_syncPictureKb->setGroupSeparatorShown(true);
+    m_syncPictureKb->setValue(config.syncPictureMaxKb);
+    m_syncPictureKb->setEnabled(config.syncPictures);
+    auto* pictureRow = new QHBoxLayout;
+    pictureRow->addWidget(m_syncPictures);
+    pictureRow->addWidget(m_syncPictureKb);
+    pictureRow->addStretch(1);
+    syncForm->addRow(QString(), pictureRow);
+    m_syncDays = new QSpinBox(syncPage);
+    m_syncDays->setRange(1, 365);
+    m_syncDays->setSuffix(tr(" days"));
+    m_syncDays->setValue(config.syncTombstoneDays);
+    m_syncDays->setToolTip(tr("A deletion is announced to the other PCs this long. A PC that stays off longer than this "
+                              "can bring a deleted copy back."));
+    syncForm->addRow(tr("Announce deletions for:"), m_syncDays);
+    syncLayout->addLayout(syncForm);
+    m_syncNowButton = new QPushButton(tr("Sync now"), syncPage);
+    m_syncStatus = new QLabel(syncPage);
+    m_syncStatus->setWordWrap(true);
+    m_syncStatus->setTextFormat(Qt::PlainText); // device names come from files in the folder
+    m_syncStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto* nowRow = new QHBoxLayout;
+    nowRow->addWidget(m_syncNowButton);
+    nowRow->addStretch(1);
+    syncLayout->addLayout(nowRow);
+    syncLayout->addWidget(m_syncStatus);
+    syncLayout->addStretch();
+    connect(m_syncBrowse, &QPushButton::clicked, this, &SettingsDialog::browseSyncFolder);
+    connect(m_syncSet, &QPushButton::clicked, this, &SettingsDialog::setSyncPassphrase);
+    connect(m_syncRemove, &QPushButton::clicked, this, &SettingsDialog::removeSyncPassphrase);
+    connect(m_syncNowButton, &QPushButton::clicked, this, [this] {
+        if (m_syncSupport.syncNow) {
+            m_syncSupport.syncNow();
+        }
+        refreshSync();
+    });
+    connect(m_syncPictures, &QCheckBox::toggled, m_syncPictureKb, &QWidget::setEnabled);
+    connect(m_syncFolder, &QLineEdit::textChanged, this, [this] { refreshSync(); });
+    auto* syncRefresh = new QTimer(this);
+    syncRefresh->setInterval(2000);
+    connect(syncRefresh, &QTimer::timeout, this, [this] {
+        if (isVisible() && m_tabs->currentWidget() == m_syncStatus->parentWidget()) {
+            refreshSync();
+        }
+    });
+    syncRefresh->start();
+    refreshSync();
+
     // --- Dialog ------------------------------------------------------------------------
     m_tabs->addTab(general, tr("General"));
     m_tabs->addTab(groupsPage, tr("Groups"));
     m_tabs->addTab(passwordsPage, tr("Passwords"));
     m_tabs->addTab(backupPage, tr("Backup"));
+    m_tabs->addTab(syncPage, tr("Sync"));
     {
         // --- Paste as: which items the Shift+Enter menu shows, and in what order ---------------------------
         auto* page = new QWidget(this);
@@ -1035,10 +1149,112 @@ Config SettingsDialog::config() const
     c.panicKey = m_panicKey->isChecked();
     c.panicHotkey = m_panicHotkey;
     c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
+    c.syncEnabled = m_syncEnabled->isChecked();
+    c.syncFolder = m_syncFolder->text().trimmed();
+    c.syncDeviceName = m_syncName->text().trimmed();
+    c.syncMaxCopies = m_syncMaxCopies->value();
+    c.syncPictures = m_syncPictures->isChecked();
+    c.syncPictureMaxKb = m_syncPictureKb->value();
+    c.syncTombstoneDays = m_syncDays->value();
     if (m_keyword->hasAcceptableInput()) {
         c.passwordSearchKeyword = m_keyword->text();
     }
     return c;
+}
+
+void SettingsDialog::browseSyncFolder()
+{
+    const QString chosen = m_folderPrompt(this, m_syncFolder->text());
+    if (!chosen.isEmpty()) {
+        m_syncFolder->setText(QDir::toNativeSeparators(chosen));
+    }
+}
+
+void SettingsDialog::refreshSync()
+{
+    const bool has = m_syncSupport.hasPassphrase && m_syncSupport.hasPassphrase();
+    const bool folder = !m_syncFolder->text().trimmed().isEmpty();
+    m_syncPassphraseState->setText(!m_syncSupport.available
+                                       ? tr("Needs the system keyring: %1").arg(m_syncSupport.reason)
+                                       : (has ? tr("Set (the key is kept in the system keyring)") : tr("Not set")));
+    m_syncSet->setText(has ? tr("Change…") : tr("Set…"));
+    m_syncSet->setEnabled(m_syncSupport.available && m_syncSupport.setPassphrase && !m_syncBusy);
+    m_syncRemove->setEnabled(has && !m_syncBusy);
+    m_syncNowButton->setEnabled(has && folder && m_syncSupport.syncNow && !m_syncBusy);
+    QString status = m_syncSupport.status ? m_syncSupport.status() : QString();
+    if (m_syncBusy) {
+        status = tr("Working out the key from the passphrase…");
+    } else if (!has && status.isEmpty()) {
+        status = tr("Choose the folder, then set the same sync passphrase on each PC.");
+    }
+    m_syncStatus->setText(status);
+}
+
+void SettingsDialog::setSyncPassphrase()
+{
+    if (!m_syncSupport.available || !m_syncSupport.setPassphrase || m_syncBusy) {
+        return;
+    }
+    const QString folder = m_syncFolder->text().trimmed();
+    if (folder.isEmpty()) {
+        m_notify(this, tr("Choose the sync folder first: a passphrase that matches the other PCs' is found from the "
+                          "files already in it."));
+        return;
+    }
+    const bool change = m_syncSupport.hasPassphrase && m_syncSupport.hasPassphrase();
+    std::optional<QString> typed = m_syncPrompt(this, change);
+    if (!typed) {
+        return;
+    }
+    if (typed->size() < kMinSyncPassphrase) {
+        PasswordVault::wipe(*typed);
+        m_notify(this, tr("The sync passphrase needs at least %1 characters.").arg(kMinSyncPassphrase));
+        return;
+    }
+    QByteArray bytes = PasswordVault::passwordBytes(*typed); // wipes `typed`
+    startSyncPassphrase(folder, std::move(bytes), /*startNew=*/false);
+}
+
+void SettingsDialog::startSyncPassphrase(const QString& folder, QByteArray bytes, bool startNew)
+{
+    QByteArray again = bytes; // for the second try, when the files in the folder need a new group
+    m_syncBusy = true;
+    refreshSync();
+    m_syncSupport.setPassphrase(folder, std::move(bytes), startNew,
+                                [this, self = QPointer<SettingsDialog>(this), folder, again = std::move(again),
+                                 startNew](QString error, bool mismatch) mutable {
+        if (!self) {
+            PasswordVault::wipe(again);
+            return;
+        }
+        m_syncBusy = false;
+        refreshSync();
+        if (error.isEmpty()) {
+            PasswordVault::wipe(again);
+            m_inform(this, tr("Sync passphrase set. Turn sync on and press Sync now."));
+        } else if (mismatch && !startNew
+                   && m_confirm(this, tr("The sync files in this folder do not open with this passphrase.\n\nStart a new "
+                                         "sync group with it? Those files are then ignored (you can delete them), and "
+                                         "every other PC must be given this passphrase too."))) {
+            startSyncPassphrase(folder, std::move(again), /*startNew=*/true);
+        } else {
+            PasswordVault::wipe(again);
+            m_notify(this, error);
+        }
+    });
+}
+
+void SettingsDialog::removeSyncPassphrase()
+{
+    if (!m_syncSupport.removePassphrase || m_syncBusy) {
+        return;
+    }
+    if (!m_confirm(this, tr("Remove the sync passphrase from this PC? It stops syncing. The files in the folder and "
+                            "your history stay as they are."))) {
+        return;
+    }
+    m_syncSupport.removePassphrase();
+    refreshSync();
 }
 
 void SettingsDialog::withMasterPassword(const QString& purpose, std::function<void(QByteArray password)> proceed)

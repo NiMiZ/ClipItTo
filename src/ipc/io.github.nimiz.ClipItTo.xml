@@ -49,6 +49,8 @@
     <!-- Locks the password copies now (the CLI's lock option). -->
     <method name="LockPasswords"/>
 
+    <!-- Runs one sync through the shared folder now (the CLI's sync option); does nothing when sync is off. -->
+    <method name="SyncNow"/>
     <!-- Panic: wipes the history, locks the password copies and empties the system clipboard, at once and without
          asking (the CLI's panic option). Replies when it is done. -->
     <method name="Panic"/>

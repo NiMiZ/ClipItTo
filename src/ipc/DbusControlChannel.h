@@ -31,6 +31,7 @@ public slots: // D-Bus methods
     void IngestImage(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void ReloadConfig();
     void LockPasswords();
+    void SyncNow();
     void Panic();
     void Quit();
     QVariantMap Status();
