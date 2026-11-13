@@ -150,13 +150,13 @@ private slots:
         Db db(QStringLiteral(":memory:"));
         configureConnection(db);
         const auto migrations = builtinMigrations();
-        QCOMPARE(migrations.back().version, 10);
+        QCOMPARE(migrations.back().version, 11);
         std::vector<Migration> before(migrations.begin(), migrations.end() - 1);
         migrate(db, before);
         QCOMPARE(schemaVersion(db), 9);
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old copy', 'h-old')");
         migrate(db);
-        QCOMPARE(schemaVersion(db), 10);
+        QCOMPARE(schemaVersion(db), 11);
         Stmt flag(db, "SELECT paste_once FROM clips WHERE content = 'old copy'");
         QVERIFY(flag.step());
         QCOMPARE(flag.colInt(0), 0);
@@ -173,7 +173,7 @@ private slots:
         migrate(db, {migrations[0], migrations[1], migrations[2], migrations[3]}); // schema 4
         db.exec("INSERT INTO clips(content, content_hash) VALUES ('old text', 'h1')");
         migrate(db);
-        QCOMPARE(schemaVersion(db), 10);
+        QCOMPARE(schemaVersion(db), 11);
 
         Stmt secret(db, "SELECT secret FROM clips WHERE content = 'old text'");
         QVERIFY(secret.step());

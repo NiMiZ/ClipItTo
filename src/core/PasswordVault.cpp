@@ -21,6 +21,7 @@ constexpr char kSealVersion = 1;
 const QByteArray kWrapContext = QByteArrayLiteral("clipitto-vault-v1");
 const QByteArray kSealContext = QByteArrayLiteral("clipitto-seal-v1");
 const QByteArray kBackupContext = QByteArrayLiteral("clipitto-backup-v1");
+const QByteArray kSyncContext = QByteArrayLiteral("clipitto-sync-v1");
 const QByteArray kMatchContext = QByteArrayLiteral("clipitto-match-v1");
 
 const uint8_t* bytes(const QByteArray& data)
@@ -180,6 +181,20 @@ std::optional<QByteArray> PasswordVault::unboxWithBackupKey(const QByteArray& ke
         return std::nullopt;
     }
     return unlockWith(key, boxed, kBackupContext);
+}
+
+QByteArray PasswordVault::boxWithSyncKey(const QByteArray& key, const QByteArray& plain, const QByteArray& header)
+{
+    return lockWith(key, plain, kSyncContext + header); // the file header is authenticated too
+}
+
+std::optional<QByteArray> PasswordVault::unboxWithSyncKey(const QByteArray& key, const QByteArray& boxed,
+                                                          const QByteArray& header)
+{
+    if (key.size() != 32) {
+        return std::nullopt;
+    }
+    return unlockWith(key, boxed, kSyncContext + header);
 }
 
 std::optional<PasswordVault::Rekeyed> PasswordVault::changePassword(const Stored& stored, const QByteArray& oldPassword,
