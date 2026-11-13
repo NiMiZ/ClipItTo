@@ -42,6 +42,12 @@ public:
     ClearResult clearPassword() { return clearPasted(); }
     // The same for whatever was pasted last as a password or a Paste once copy (text or picture).
     ClearResult clearPasted();
+    // The panic key: empties the system clipboard whatever it holds (text, a picture, files, a password, something
+    // another program put there), and forgets any pending paste clear. Cleared, or Unsupported when the system did not let
+    // us (a Wayland client without focus or helper: the content is still offered after the call). Through the GNOME
+    // extension (which cannot be read back) the answer is Cleared once the extension was asked. Also empties the
+    // X11 primary selection where there is one. Never reads or logs the content.
+    ClearResult clearAll();
     // A picture (PNG) from the history; `pixelHash` lets the capture filter ignore its echo. With `once` (a Paste once
     // picture) clearPasted() takes it off the clipboard again, if the clipboard still holds that picture.
     void setImage(const QByteArray& png, const QString& pixelHash, bool once = false);

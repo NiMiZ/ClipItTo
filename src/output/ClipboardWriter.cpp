@@ -152,6 +152,32 @@ ClipboardWriter::ClearResult ClipboardWriter::clearPasted()
     return result;
 }
 
+ClipboardWriter::ClearResult ClipboardWriter::clearAll()
+{
+    // Nothing may be waiting to clear "later" any more, and no late echo of a paste of ours may be taken for a copy.
+    m_pendingImage.clear();
+    m_macChangeCount = -1;
+    m_filter.ownPasswordDone();
+    m_filter.ownImageDone();
+    if (m_integration && m_integration->isAvailable()) {
+        m_integration->setClipboard(QString()); // cannot be read back
+        return ClearResult::Cleared;
+    }
+#if defined(__APPLE__)
+    if (QGuiApplication::platformName() == QLatin1String("cocoa")) {
+        clearPasteboard();
+        return ClearResult::Cleared;
+    }
+#endif
+    if (m_clipboard->supportsSelection()) {
+        m_clipboard->clear(QClipboard::Selection);
+    }
+    m_clipboard->clear(QClipboard::Clipboard);
+    // Read back: some systems accept the call and do nothing. Only whether anything is offered, never what.
+    const QMimeData* now = m_clipboard->mimeData(QClipboard::Clipboard);
+    return (now && !now->formats().isEmpty()) ? ClearResult::Unsupported : ClearResult::Cleared;
+}
+
 ClipboardWriter::ClearResult ClipboardWriter::clearPastedImage()
 {
     const QByteArray pasted = std::exchange(m_pendingImage, QByteArray());

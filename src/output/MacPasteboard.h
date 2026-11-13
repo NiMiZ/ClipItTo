@@ -14,4 +14,7 @@ long setConcealedText(const QString& text);
 // anyone). Returns true when it was emptied.
 bool clearPasteboardIfUnchanged(long changeCount);
 
+// Empties the pasteboard whatever it holds (the panic key).
+void clearPasteboard();
+
 } // namespace clipitto
