@@ -81,6 +81,10 @@ struct Config {
     QList<AutoForgetRule> autoForget; // rules (up to 8) for copies that remove themselves; none = nothing is removed
     bool windowsHello = false; // Windows: unlock with Windows Hello too
     QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
+    // Panic key (roadmap 20): one shortcut that wipes the history, locks the passwords and empties the system clipboard,
+    // with no question. Off by default; `panicKey` only gates the shortcut (`clipitto --panic` always works).
+    bool panicKey = false;
+    QString panicHotkey; // empty = none; same spelling as `hotkey`
 
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)
     // and never fail: the affected values keep their defaults.

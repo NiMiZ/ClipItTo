@@ -3,6 +3,7 @@
 // What these cannot show (the real Windows, X11, Wayland and macOS clipboards) is listed in docs/untested.md.
 #include "ClipFilter.h"
 #include "ClipboardWriter.h"
+#include "DesktopIntegration.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -14,6 +15,22 @@
 using clipitto::ClipboardWriter;
 using clipitto::ClipFilter;
 using Result = ClipboardWriter::ClearResult;
+
+namespace {
+
+// Stands in for the GNOME Shell extension: records what it was asked to put on the clipboard.
+class FakeIntegration : public clipitto::DesktopIntegration {
+public:
+    QString name() const override { return QStringLiteral("fake"); }
+    bool isAvailable() const override { return true; }
+    void activatePopup() override {}
+    void setClipboard(const QString& text) override { texts << text; }
+    void setClipboardImage(const QByteArray&) override {}
+    void paste(clipitto::PasteKeys) override {}
+    QStringList texts;
+};
+
+} // namespace
 
 class TestPasswordClear : public QObject {
     Q_OBJECT
@@ -251,6 +268,68 @@ private slots:
         writer.setPassword(QStringLiteral("hunter2-pasted"));
         // Marked the platform's way, so other managers and Windows' own history skip it (as before).
         QVERIFY(ClipFilter::isSensitive(clip()->mimeData()->formats()));
+    }
+
+    // ---- the panic key: ClipboardWriter::clearAll empties the clipboard whatever it holds
+    void clearAllEmptiesATextThatIsNotOurs()
+    {
+        ClipFilter filter(1024 * 1024);
+        ClipboardWriter writer(clip(), filter);
+        clip()->setText(QStringLiteral("copied elsewhere, nothing pasted by us"));
+        QVERIFY(writer.clearPasted() == Result::NothingPending); // the conditional clear leaves it alone
+        QCOMPARE(clip()->text(), QStringLiteral("copied elsewhere, nothing pasted by us"));
+        QVERIFY(writer.clearAll() == Result::Cleared);
+        QVERIFY(clip()->text().isEmpty());
+        QVERIFY(clip()->mimeData() == nullptr || clip()->mimeData()->formats().isEmpty());
+    }
+
+    void clearAllEmptiesAPictureAndRichText()
+    {
+        ClipFilter filter(1024 * 1024);
+        ClipboardWriter writer(clip(), filter);
+        writer.setImage(pngOf(Qt::red), QStringLiteral("hash-red")); // not even a Paste once picture
+        QVERIFY(!pictureOnClipboard().isNull());
+        QVERIFY(writer.clearAll() == Result::Cleared);
+        QVERIFY(pictureOnClipboard().isNull());
+        writer.setRich(QStringLiteral("plain"), QStringLiteral("<b>rich</b>"));
+        QVERIFY(writer.clearAll() == Result::Cleared);
+        QVERIFY(clip()->text().isEmpty());
+        QVERIFY(clip()->mimeData() == nullptr || clip()->mimeData()->html().isEmpty());
+    }
+
+    void clearAllEndsAPendingPasteClearAndItsEchoIsNotACopy()
+    {
+        ClipFilter filter(1024 * 1024);
+        ClipboardWriter writer(clip(), filter);
+        writer.setPassword(QStringLiteral("hunter2-pasted"));
+        QVERIFY(filter.ownPasswordPending());
+        QVERIFY(writer.clearAll() == Result::Cleared);
+        QVERIFY(clip()->text().isEmpty());
+        QVERIFY(!filter.ownPasswordPending());
+        QVERIFY(writer.clearPasted() == Result::NothingPending); // the timer, if it still fires, has nothing to do
+        // A password that was replaced by something else is emptied too (the conditional clear would not touch it).
+        writer.setPassword(QStringLiteral("hunter2-pasted"));
+        clip()->setText(QStringLiteral("something newer"));
+        QVERIFY(writer.clearAll() == Result::Cleared);
+        QVERIFY(clip()->text().isEmpty());
+    }
+
+    void clearAllWorksOnAnAlreadyEmptyClipboard()
+    {
+        ClipFilter filter(1024 * 1024);
+        ClipboardWriter writer(clip(), filter);
+        QVERIFY(writer.clearAll() == Result::Cleared);
+        QVERIFY(writer.clearAll() == Result::Cleared);
+    }
+
+    void clearAllThroughTheShellExtensionAsksItForAnEmptyClipboard()
+    {
+        ClipFilter filter(1024 * 1024);
+        FakeIntegration shell;
+        ClipboardWriter writer(clip(), filter, &shell);
+        clip()->setText(QStringLiteral("local copy"));
+        QVERIFY(writer.clearAll() == Result::Cleared); // the extension cannot be read back: Cleared once it was asked
+        QCOMPARE(shell.texts, QStringList{QString()});
     }
 };
 

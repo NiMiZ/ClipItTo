@@ -87,8 +87,41 @@ void CapturePipeline::setPaused(bool paused)
     }
 }
 
+bool CapturePipeline::inQuietPeriod()
+{
+    if (!m_quiet.isValid()) {
+        return false;
+    }
+    if (m_quiet.elapsed() < m_quietMs) {
+        return true;
+    }
+    m_quiet.invalidate();
+    return false;
+}
+
+void CapturePipeline::discardPending(int quietMs)
+{
+    for (Text& copy : m_waiting) {
+        copy.text.fill(QLatin1Char('\0'));
+        copy.html.fill(QLatin1Char('\0'));
+    }
+    m_waiting.clear();
+    for (ImageClip& image : m_waitingImages) {
+        image.png.fill('\0');
+    }
+    m_waitingImages.clear();
+    m_waitingSecrets.clear(); // sealed already
+    if (quietMs > 0) {
+        m_quietMs = quietMs;
+        m_quiet.start();
+    }
+}
+
 void CapturePipeline::processImage(const ImageClip& image, const QStringList& mimeTypes)
 {
+    if (inQuietPeriod()) {
+        return;
+    }
     if (m_maxImages == 0) {
         return; // pictures are turned off
     }
@@ -124,6 +157,9 @@ void CapturePipeline::storeImage(const ImageClip& image)
 
 void CapturePipeline::process(const QString& rawText, const QStringList& mimeTypes, const QString& html)
 {
+    if (inQuietPeriod()) {
+        return;
+    }
     // Line ends are stored as LF, so the same text copied with CRLF and with LF is one entry. Windows and macOS already
     // deliver LF; this makes Linux (Qt and wl-paste) the same.
     QString text = rawText;

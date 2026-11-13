@@ -278,6 +278,48 @@ private slots:
         QCOMPARE(Config::fromToml(c.toToml()).pasteOnceClearSeconds, 17);
     }
 
+    void panicKeyIsOffByDefaultAndRoundTrips()
+    {
+        QVERIFY(!Config{}.panicKey);
+        QVERIFY(Config{}.panicHotkey.isEmpty());
+        QStringList warnings;
+        const Config none = Config::fromToml("", &warnings);
+        QVERIFY(!none.panicKey && none.panicHotkey.isEmpty() && warnings.isEmpty());
+        Config c;
+        c.panicKey = true;
+        c.panicHotkey = QStringLiteral("Ctrl+Alt+Shift+Delete");
+        const Config back = Config::fromToml(c.toToml(), &warnings);
+        QVERIFY(back.panicKey);
+        QCOMPARE(back.panicHotkey, QStringLiteral("Ctrl+Alt+Shift+Delete"));
+        QVERIFY(warnings.isEmpty());
+        // Spelled loosely, kept canonical; empty means none (no warning).
+        QCOMPARE(Config::fromToml("panic_hotkey = \"ctrl+alt+shift+delete\"").panicHotkey, QStringLiteral("Ctrl+Alt+Shift+Delete"));
+        QVERIFY(Config::fromToml("panic_hotkey = \"\"", &warnings).panicHotkey.isEmpty());
+        QVERIFY(warnings.isEmpty());
+    }
+
+    void panicKeyWarnsOnBadValues()
+    {
+        QStringList warnings;
+        Config c = Config::fromToml("panic_hotkey = \"Delete\"\npanic_key = \"yes\"", &warnings); // no modifier; not a bool
+        QVERIFY(c.panicHotkey.isEmpty());
+        QVERIFY(!c.panicKey);
+        QCOMPARE(warnings.size(), 2);
+        warnings.clear();
+        c = Config::fromToml("panic_hotkey = 5", &warnings);
+        QVERIFY(c.panicHotkey.isEmpty());
+        QCOMPARE(warnings.size(), 1);
+        // Saving into an existing file keeps its comments and writes the keys in place.
+        Config on;
+        on.panicKey = true;
+        on.panicHotkey = QStringLiteral("Ctrl+Alt+Shift+F12");
+        const std::string merged = on.mergeInto("# mine\npanic_key = false # my comment\n");
+        QVERIFY(merged.find("# mine") != std::string::npos);
+        QVERIFY(merged.find("panic_key = true") != std::string::npos);
+        QVERIFY(merged.find("# my comment") != std::string::npos);
+        QVERIFY(merged.find("panic_hotkey = \"Ctrl+Alt+Shift+F12\"") != std::string::npos);
+    }
+
     void passwordClearSecondsRange()
     {
         QCOMPARE(Config{}.passwordClearSeconds, 2);

@@ -49,6 +49,10 @@
     <!-- Locks the password copies now (the CLI's lock option). -->
     <method name="LockPasswords"/>
 
+    <!-- Panic: wipes the history, locks the password copies and empties the system clipboard, at once and without
+         asking (the CLI's panic option). Replies when it is done. -->
+    <method name="Panic"/>
+
     <!-- Exits the daemon. Under systemd, prefer stopping the clipitto.service user unit. -->
     <method name="Quit"/>
 

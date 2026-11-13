@@ -10,7 +10,21 @@ namespace clipitto {
 namespace {
 
 const QString kSchema = QStringLiteral("org.gnome.settings-daemon.plugins.media-keys");
-const QString kPath = QStringLiteral("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipitto/");
+const QString kPathBase = QStringLiteral("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/");
+
+QString pathFor(const QString& slot)
+{
+    return kPathBase + slot + QLatin1Char('/');
+}
+
+QString listValue(const QStringList& paths)
+{
+    QStringList quoted;
+    for (const QString& p : paths) {
+        quoted << QLatin1Char('\'') + p + QLatin1Char('\'');
+    }
+    return QLatin1Char('[') + quoted.join(QLatin1String(", ")) + QLatin1Char(']');
+}
 
 bool run(const QString& program, const QStringList& args, QString* output, QString* error)
 {
@@ -75,8 +89,10 @@ bool setIfChanged(const QString& gsettings, const QString& entry, const QString&
 
 } // namespace
 
-bool applyGnomeShortcut(const QString& accelerator, const QString& command, QString* error, const QString& gsettings)
+bool applyGnomeShortcut(const QString& accelerator, const QString& command, QString* error, const QString& gsettings,
+                        const QString& slot, const QString& name)
 {
+    const QString kPath = pathFor(slot);
     QString current;
     if (!run(gsettings, {QStringLiteral("get"), kSchema, QStringLiteral("custom-keybindings")}, &current, error)) {
         return false;
@@ -84,20 +100,39 @@ bool applyGnomeShortcut(const QString& accelerator, const QString& command, QStr
     QStringList paths = parsePathList(current);
     if (!paths.contains(kPath)) {
         paths << kPath;
-        QStringList quoted;
-        for (const QString& p : std::as_const(paths)) {
-            quoted << QLatin1Char('\'') + p + QLatin1Char('\'');
-        }
-        const QString list = QLatin1Char('[') + quoted.join(QLatin1String(", ")) + QLatin1Char(']');
+        const QString list = listValue(paths);
         if (!run(gsettings, {QStringLiteral("set"), kSchema, QStringLiteral("custom-keybindings"), list}, nullptr,
                  error)) {
             return false;
         }
     }
     const QString entry = kSchema + QStringLiteral(".custom-keybinding:") + kPath;
-    return setIfChanged(gsettings, entry, QStringLiteral("name"), QStringLiteral("ClipItTo"), error)
+    return setIfChanged(gsettings, entry, QStringLiteral("name"), name, error)
         && setIfChanged(gsettings, entry, QStringLiteral("command"), command, error)
         && setIfChanged(gsettings, entry, QStringLiteral("binding"), accelerator, error);
+}
+
+bool removeGnomeShortcut(QString* error, const QString& gsettings, const QString& slot)
+{
+    const QString path = pathFor(slot);
+    QString current;
+    if (!run(gsettings, {QStringLiteral("get"), kSchema, QStringLiteral("custom-keybindings")}, &current, error)) {
+        return false;
+    }
+    QStringList paths = parsePathList(current);
+    if (!paths.removeAll(path)) {
+        return true; // not there: nothing written
+    }
+    // Out of the list first (the shortcut stops working), then its values are reset.
+    if (!run(gsettings, {QStringLiteral("set"), kSchema, QStringLiteral("custom-keybindings"), listValue(paths)}, nullptr,
+             error)) {
+        return false;
+    }
+    const QString entry = kSchema + QStringLiteral(".custom-keybinding:") + path;
+    for (const char* key : {"binding", "command", "name"}) {
+        run(gsettings, {QStringLiteral("reset"), entry, QString::fromLatin1(key)}, nullptr, nullptr); // best effort
+    }
+    return true;
 }
 
 } // namespace clipitto

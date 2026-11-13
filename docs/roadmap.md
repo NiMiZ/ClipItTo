@@ -157,8 +157,25 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
     (the source window's class or title when it is a browser password field, a copy made right after an autofill) and see what
     each platform really offers; do nothing that reads more of the clipboard than now.
-20. **Panic key.** One hotkey (and `clipitto --panic`) that clears the history and locks the passwords at once, with no question.
-    Open: should it also clear the system clipboard, and is it kept off by default so it cannot be hit by mistake.
+20. **DONE: Panic key** (`panic_key`, `panic_hotkey`, `clipitto --panic`; Settings › Passwords). *Decided with the user:* ONE action, no
+    confirmation, that (1) wipes the history, (2) locks the passwords and (3) also empties the system clipboard; OFF by default.
+    - *Wipe* is the existing *Clear everything, also in groups* (`Repository::clearHistory(true)`, not a second code path): all copies
+      including pinned, starred, grouped and password copies, pictures, rich text, learned auto-grouping data, search index merged,
+      pages zeroed (`secure_delete`), WAL folded in; plus the popup's Paste once undo buffer, thumbnails and revealed passwords, and a
+      pending clipboard clear. *Kept:* the groups (empty), the settings, the vault and the master password (locked, not deleted).
+    - *Lock* is `PasswordKeeper::lock` (same as `--lock`); the "no master password" mode cannot lock (its copies are deleted anyway).
+    - *Clipboard:* `ClipboardWriter::clearAll()` empties it unconditionally (text, picture, files, anything; X11 primary too; macOS
+      `clearContents`; GNOME extension asked for an empty clipboard, no read-back). `Unsupported` where the system refuses
+      (Wayland without focus/helper), logged as a flag only.
+    - *Triggers:* the shortcut (only while `panic_key` is on and `panic_hotkey` is set and differs from `hotkey`; Windows/macOS in the
+      daemon with their own hotkey id, GNOME a second custom shortcut `clipitto-panic`, elsewhere bind the command; conflicts show in
+      `--status` as `panic_hotkey: unavailable: ...`), and `clipitto --panic` / D-Bus `Panic` / local socket `Panic`, which work
+      whatever the setting says and print `done`.
+    - *After:* popup hides and shows an empty list; translations, text-from-picture reads, picture decodes and queued captures that
+      were started before are ignored (a half-second quiet period for captures on their way); nothing logged but flags and a count;
+      a panic during an encryption conversion empties the clipboard and locks at once and wipes when the conversion ends.
+    - *Not done:* clearing other programs' clipboard histories (Windows' own Win+V history is unaffected by the clipboard clear
+      unless the OS honours it), and screen-lock triggers.
 
 ### Finding things
 21. **Source app and time on every row** (needed by the `app:` filter above and by auto grouping by app). ClipItTo stores the

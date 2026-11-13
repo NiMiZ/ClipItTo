@@ -228,6 +228,31 @@ ones only leave Recent and stay in their groups; pinned ones stay pinned. Its me
 also offers *Clear everything, also in groups*, which deletes those as well and leaves the groups
 empty. Both ask first and can't be undone.
 
+**Panic key** (off by default; Settings › Passwords › *Panic key*, or `panic_key` and `panic_hotkey` in the config file):
+one shortcut that, at once and **without asking**, (1) deletes the whole history, (2) locks the password copies and (3) empties the
+system clipboard. It cannot be undone, so it does nothing until you turn it on and choose a shortcut (not the one that opens the
+popup). `clipitto --panic` does the same from a terminal or a script, prints `done` when it is over, and works whatever the setting
+says (the setting only gates the shortcut).
+*What it deletes:* exactly what *Clear everything, also in groups* deletes: every copy, including pinned, starred, grouped and
+password copies, pictures and the formatted versions; what auto grouping learned; the search index of them; the space they used is
+overwritten and the database's log folded in, so nothing is left in the file. A pending Paste once *Undo* and a clear still waiting
+on the clipboard are dropped too. *What stays:* your groups (now empty), your settings, the *Passwords* vault itself and the master
+password: the vault is only **locked**, and the master password unlocks it again (there are no password copies left in it). In the
+"no master password" mode there is nothing to lock, and its password copies are deleted with the rest. *The clipboard* is emptied
+whatever it holds (text, a picture, files, something another program copied, a password); on X11 the primary selection too. Where a
+system does not let ClipItTo empty it (Wayland without the GNOME extension or focus), the log says so, in words only, never the
+contents. After a panic the popup (if open) closes and shows an empty history; whatever was being translated or read from a picture
+is thrown away when it finishes; copies that were already on their way are ignored for half a second; `--status` shows nothing
+special and no notification or log line has any content in it. If the history is being encrypted at that moment, the clipboard is
+emptied and the passwords locked at once, and the history is wiped as soon as the conversion is over.
+*Shortcut:* Windows and macOS register it themselves; on GNOME ClipItTo adds a second custom shortcut ("ClipItTo panic") running
+`clipitto --panic` and removes it when the key is turned off; on other desktops bind `clipitto --panic` yourself in the keyboard
+settings. A shortcut another program already owns is reported like the main one (`clipitto --status`, line `panic_hotkey`). Importing
+a backup never changes the panic settings. Limits: Windows' own clipboard history (Win+V) and cloud clipboard are not
+ClipItTo's to empty; any program in your session that may call `clipitto --panic` (D-Bus or the local socket, the same trust as
+`--quit` and `--lock`) can trigger it; `done` means the daemon ran the steps, so check `clipitto --status` / the log if the clipboard
+matters on Wayland without the GNOME extension; on a very large history the wipe takes a moment, during which ClipItTo does not respond.
+
 **Text from a picture:** select a picture and press Shift+Enter (or right-click it › *Paste as*) for its choices: *Paste text from picture* first, *Text from picture, changed* (on one line, trimmed, collapsed spaces, upper / lower / Title case), and *Paste the picture*. *Paste text from picture* reads the text in it and puts it
 on the clipboard and into the window you came from. It runs on your computer only, with no network or cloud
 service: Windows uses its built-in text recognition (languages installed in Settings › Time & language), macOS

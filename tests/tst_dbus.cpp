@@ -294,6 +294,16 @@ private slots:
         QCOMPARE(m_daemon->repository()->recent(1, false).front().content, QStringLiteral("via cli"));
     }
 
+    void panicMethodAndCliWipeTheHistoryWhateverTheSettingSays()
+    {
+        QVERIFY(!m_daemon->config().panicKey); // the setting only gates the shortcut
+        QCOMPARE(call(QStringLiteral("Panic")).type(), QDBusMessage::ReplyMessage);
+        const auto [code, output] = runCli({QStringLiteral("--panic")});
+        QVERIFY2(code == 0, qPrintable(output));
+        QCOMPARE(output.trimmed(), QStringLiteral("done"));
+        QCOMPARE(m_daemon->repository()->count(), qint64(0));
+    }
+
     void cliRejectsZeroOrMultipleActions()
     {
         QCOMPARE(runCli({}).first, 2);
