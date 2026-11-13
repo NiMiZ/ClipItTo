@@ -77,7 +77,7 @@ sync::Options SyncService::options() const
     return o;
 }
 
-void SyncService::applyConfig(const Config& config)
+void SyncService::applyConfig(const Config& config, bool runSoon)
 {
     const Config previous = m_config;
     const bool first = !m_configured;
@@ -113,7 +113,7 @@ void SyncService::applyConfig(const Config& config)
         m_backoffMs = 0;
     }
     updatePoll();
-    if (first || !previous.syncEnabled || previous.syncFolder != config.syncFolder || previous != config) {
+    if (runSoon && (first || !previous.syncEnabled || previous.syncFolder != config.syncFolder || previous != config)) {
         scheduleRun(1500);
     }
 }

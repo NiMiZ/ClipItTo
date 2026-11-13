@@ -43,7 +43,7 @@ public:
 
     // Follows the settings: starts or stops the timers and the folder watch, and tells the database whether to track
     // deletions. A change runs a sync soon.
-    void applyConfig(const Config& config);
+    void applyConfig(const Config& config, bool runSoon = true);
 
     // Whether a keyring can keep the key (asked once).
     bool available(QString* why = nullptr);

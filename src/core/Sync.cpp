@@ -437,6 +437,9 @@ std::optional<Key> keyForFolder(const QString& folder, const QByteArray& passphr
         *existing = false;
     }
     QSet<QByteArray> tried;
+    // Every group in the folder this passphrase opens; the one with the smallest salt wins, so two PCs that made a group
+    // each (they set the passphrase before either file was in the folder) agree on one when they enter it again.
+    std::optional<Key> best;
     for (const QFileInfo& info : syncFiles(folder)) {
         const auto bytes = readWhole(info.absoluteFilePath());
         if (!bytes) {
@@ -450,15 +453,25 @@ std::optional<Key> keyForFolder(const QString& folder, const QByteArray& passphr
             *existing = true;
         }
         const QByteArray id = h.salt + QByteArray::number(h.cost.blocks) + QByteArray::number(h.cost.passes);
-        if (tried.contains(id) || tried.size() >= 4) {
+        // A file is not trusted to ask for any amount of memory: only costs near ours are tried.
+        if (h.cost.blocks > 256 * 1024 || h.cost.passes > 6 || tried.contains(id) || tried.size() >= 4) {
             continue;
         }
         tried.insert(id);
         Key key = deriveKey(passphrase, h.salt, h.cost);
         if (key.isValid() && decode(*bytes, key).status == ReadStatus::Ok) {
-            return key;
+            if (!best || key.salt < best->salt) {
+                if (best) {
+                    best->wipe();
+                }
+                best = key;
+            }
+            continue;
         }
         key.wipe();
+    }
+    if (best) {
+        return best;
     }
     if (existing && *existing) {
         return std::nullopt;
