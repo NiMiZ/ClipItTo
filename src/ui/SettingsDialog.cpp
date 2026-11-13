@@ -357,6 +357,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     }
     m_pasteKeysPanel->setEnabled(config.pasteKeysPerApp);
     connect(m_pasteKeysPerApp, &QCheckBox::toggled, m_pasteKeysPanel, &QWidget::setEnabled);
+    connect(m_pasteKeysPerApp, &QCheckBox::toggled, this, [this] { updateOkButton(); });
     form->addRow(tr("Programs:"), m_pasteKeysPanel);
 
     m_position->addItem(tr("Near the mouse pointer"), int(PopupPosition::Cursor));
@@ -1416,7 +1417,9 @@ void SettingsDialog::updateOkButton()
     // Each editor can hold an error: OK waits for all of them.
     bool fine = true;
     for (const QLabel* error : {m_ruleError, m_forgetError, m_pasteKeysError}) {
-        fine = fine && (!error || error->text().isEmpty());
+        // The paste keys rules are not saved while their switch is off: their errors do not count then.
+        const bool ignored = error == m_pasteKeysError && m_pasteKeysPerApp && !m_pasteKeysPerApp->isChecked();
+        fine = fine && (ignored || !error || error->text().isEmpty());
     }
     if (QPushButton* ok = m_buttons ? m_buttons->button(QDialogButtonBox::Ok) : nullptr) {
         ok->setEnabled(fine);

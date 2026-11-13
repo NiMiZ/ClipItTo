@@ -2,7 +2,6 @@
 
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QtGlobal>
 
 // Platform headers define macros (None, Bool, KeyPress, ...) that clash with Qt: include last.
 #if defined(Q_OS_WIN)
@@ -182,7 +181,7 @@ void rememberPasteTarget()
     Display* display = x11 ? x11->display() : nullptr;
     // On a Wayland session the X server only knows the XWayland windows: its "active window" would be wrong
     // for every other app, so say nothing rather than guess.
-    if (!display || qgetenv("XDG_SESSION_TYPE") == "wayland") {
+    if (!display || qgetenv("XDG_SESSION_TYPE") == "wayland" || !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
         g_target = PasteTarget::unsupported();
         return;
     }

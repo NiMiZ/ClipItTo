@@ -411,8 +411,10 @@ export default class ClipItToExtension extends Extension {
     // the popup. While the popup itself has the focus, the last other one.
     _focusedApp() {
         const win = global.display.focus_window;
-        if (win && !isPopupWindow(win))
-            this._lastFocused = focusedAppIds(win);
+        if (win && isPopupWindow(win))
+            return this._lastFocused ?? [];
+        // Nothing focused (empty desktop, overview): unknown, never an older answer.
+        this._lastFocused = win ? focusedAppIds(win) : null;
         return this._lastFocused ?? [];
     }
 

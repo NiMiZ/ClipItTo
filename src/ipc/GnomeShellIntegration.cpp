@@ -111,7 +111,7 @@ void GnomeShellIntegration::rememberPasteTarget()
         const QDBusPendingReply<QStringList> reply = *w;
         QStringList ids;
         for (const QString& id : reply.value()) {
-            if (!id.trimmed().isEmpty()) {
+            if (!id.trimmed().isEmpty() && ids.size() < 8) {
                 ids << id.trimmed().left(pastekeys::kMaxPatternLength * 2);
             }
         }

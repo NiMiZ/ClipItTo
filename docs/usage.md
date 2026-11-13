@@ -134,7 +134,7 @@ Where it works: **Windows** (executable name and window class), **X11** (`WM_CLA
 extension (log out and back in once after updating it; an older extension cannot say, then `paste_keys` is used).
 Where it cannot: **macOS** always pastes with Cmd+V (terminals included, so there is nothing to choose), and **other Wayland
 desktops** (KDE, wlroots) let no program ask which window has the focus; there `paste_keys` is used for every program and
-auto-paste itself needs the GNOME extension anyway. A terminal inside another program (VS Code's) is the program: add a
+auto-paste itself needs the GNOME extension anyway. Program names are matched whole (`xterm` does not match `xterm-256color`), a program can name its own window class, and the names in the config file are not secret. A terminal inside another program (VS Code's) is the program: add a
 rule for it.
 
 **Pinned** (`Ctrl+P`): up to 10 copies listed at the top, above *Recent*, in the order you

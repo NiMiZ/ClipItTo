@@ -56,6 +56,7 @@ private slots:
         QVERIFY(!validatePattern(QStringLiteral("   ")).isEmpty());
         QVERIFY(!validatePattern(QStringLiteral("a=b")).isEmpty());
         QVERIFY(!validatePattern(QStringLiteral("a\nb")).isEmpty());
+        QVERIFY(!validatePattern(QStringLiteral("*a*a*a*a")).isEmpty()); // too many wildcards
         QVERIFY(!validatePattern(QStringLiteral("*?*")).isEmpty()); // would match every program
         QVERIFY(!validatePattern(QString(kMaxPatternLength + 1, QLatin1Char('x'))).isEmpty());
     }

@@ -75,6 +75,9 @@ QString validatePattern(const QString& pattern)
             return QStringLiteral("the program name has a character that is not allowed (= or a quote)");
         }
     }
+    if (p.count(QLatin1Char('*')) + p.count(QLatin1Char('?')) > 3) {
+        return QStringLiteral("the program name has more than 3 wildcards (* or ?)");
+    }
     if (p.remove(QLatin1Char('*')).remove(QLatin1Char('?')).trimmed().isEmpty()) {
         return QStringLiteral("the program name must have a letter or digit besides * and ?");
     }
