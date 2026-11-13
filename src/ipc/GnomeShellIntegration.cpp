@@ -4,6 +4,7 @@
 
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QDBusPendingReply>
 #include <QDBusPendingCallWatcher>
 #include <QDBusServiceWatcher>
 #include <QLoggingCategory>
@@ -79,8 +80,43 @@ void GnomeShellIntegration::setClipboardImage(const QByteArray& png)
 
 void GnomeShellIntegration::paste(PasteKeys keys)
 {
-    call(QStringLiteral("Paste"),
-         {keys == PasteKeys::ShiftInsert ? QStringLiteral("shift+insert") : QStringLiteral("ctrl+v")});
+    // An extension older than ctrl+shift+v types plain ctrl+v for the name it does not know.
+    call(QStringLiteral("Paste"), {pastekeys::chordName(keys)});
+}
+
+void GnomeShellIntegration::rememberPasteTarget()
+{
+    const quint64 ask = ++m_targetAsk;
+    m_target = PasteTarget::unknown(); // never a stale answer from the previous time
+    if (!m_available) {
+        m_target = PasteTarget::unsupported();
+        return;
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(QString::fromLatin1(kShellServiceName),
+                                                      QString::fromLatin1(kShellObjectPath),
+                                                      QString::fromLatin1(kShellInterface),
+                                                      QStringLiteral("FocusedApp"));
+    msg.setAutoStartService(false);
+    auto* watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, ask](QDBusPendingCallWatcher* w) {
+        w->deleteLater();
+        if (ask != m_targetAsk) {
+            return;
+        }
+        if (w->isError()) {
+            // An older extension (still loaded in the shell until the next login) does not know the method.
+            m_target = w->error().type() == QDBusError::UnknownMethod ? PasteTarget::unsupported() : PasteTarget::unknown();
+            return;
+        }
+        const QDBusPendingReply<QStringList> reply = *w;
+        QStringList ids;
+        for (const QString& id : reply.value()) {
+            if (!id.trimmed().isEmpty()) {
+                ids << id.trimmed().left(pastekeys::kMaxPatternLength * 2);
+            }
+        }
+        m_target = ids.isEmpty() ? PasteTarget::unknown() : PasteTarget::known(ids);
+    });
 }
 
 } // namespace clipitto::ipc

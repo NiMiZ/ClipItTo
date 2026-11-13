@@ -292,7 +292,12 @@ Daemon::StartResult Daemon::start(QString* error)
     connect(m_popup.get(), &ui::PopupWindow::richActivated, this, &Daemon::onRichActivated);
     connect(m_popup.get(), &ui::PopupWindow::textEdited, this, &Daemon::onTextEdited);
     m_popup->setMaxItemBytes(m_config.maxItemBytes);
-    connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [] { rememberPasteTarget(); });
+    connect(m_popup.get(), &ui::PopupWindow::aboutToShow, this, [this] {
+        rememberPasteTarget();
+        if (integrationAvailable()) {
+            m_integration->rememberPasteTarget();
+        }
+    });
     // popup_position = last: where the popup closed, kept next to the history across runs.
     const QString positionFile = QFileInfo(m_options.databasePath).dir().filePath(QStringLiteral("popup-position"));
     if (QFile file(positionFile); file.open(QIODevice::ReadOnly)) {
@@ -597,10 +602,20 @@ void Daemon::pasteIfWanted(std::function<void(bool sent)> done)
     // Give the previously focused window time to get focus back after the popup hides.
     QTimer::singleShot(80, this, [this, done = std::move(done)] {
         bool sent = true;
+        const PasteTarget target = m_options.pasteTarget ? m_options.pasteTarget()
+                                   : integrationAvailable() ? m_integration->pasteTarget()
+                                                            : rememberedPasteTarget();
+        const pastekeys::Choice choice = pastekeys::choose(m_config.pasteKeys, m_config.pasteKeysPerApp,
+                                                           m_config.pasteKeysApps, target);
+        // Which rule decided, never the window or what is pasted.
+        qCDebug(lcDaemon).noquote() << "paste keys" << pastekeys::chordName(choice.keys)
+                                    << (choice.rule.isEmpty() ? QStringLiteral("(paste_keys)")
+                                        : choice.builtIn      ? QStringLiteral("(built-in rule %1)").arg(choice.rule)
+                                                              : QStringLiteral("(your rule %1)").arg(choice.rule));
         if (integrationAvailable()) {
-            m_integration->paste(m_config.pasteKeys); // a call over D-Bus with no answer: taken as sent
-        } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(m_config.pasteKeys)
-                                              : pasteWithSyntheticKeys(m_config.pasteKeys))) {
+            m_integration->paste(choice.keys); // a call over D-Bus with no answer: taken as sent
+        } else if (!(m_options.syntheticPaste ? m_options.syntheticPaste(choice.keys)
+                                              : pasteWithSyntheticKeys(choice.keys))) {
             qCInfo(lcDaemon) << "paste_on_enter is not supported in this session "
                                 "(needs the GNOME Shell extension on Wayland)";
             sent = false;
