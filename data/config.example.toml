@@ -94,3 +94,9 @@ auto_forget = []            # copies that remove themselves, quietly (up to 8 ru
 windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks
+panic_key = false           # PANIC KEY, off by default. true = the shortcut below works. Pressing it wipes the
+                            # history (like "Clear everything, also in groups"), locks the passwords and empties
+                            # the system clipboard, at once and WITHOUT asking. `clipitto --panic` always works
+panic_hotkey = ""           # the panic shortcut, e.g. "Ctrl+Alt+Shift+Delete"; empty = none. It must differ from
+                            # `hotkey`. Windows/macOS: ClipItTo registers it. GNOME: a second custom shortcut
+                            # (removed again when the key is off). Other desktops: bind "clipitto --panic" yourself

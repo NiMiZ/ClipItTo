@@ -128,6 +128,26 @@ public:
         }
     }
 
+    // Like hotkey(), but empty is allowed and means "none".
+    void optionalHotkey(const char* key, QString& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const auto value = node->value_exact<std::string>();
+        if (value && QString::fromStdString(*value).trimmed().isEmpty()) {
+            out.clear();
+            return;
+        }
+        const auto parsed = value ? parseHotkey(QString::fromStdString(*value)) : std::nullopt;
+        if (parsed) {
+            out = parsed->canonical;
+        } else {
+            warn(QStringLiteral("%1: expected a shortcut like \"Ctrl+Alt+Shift+Delete\" (or empty)").arg(QLatin1String(key)));
+        }
+    }
+
     // Item ids of a menu: "upper,-lower,pic_text" (see PasteAs.h). Unknown ids are dropped later, not here.
     void idList(const char* key, QString& out)
     {
@@ -326,6 +346,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("paste_once_clear_seconds", config.pasteOnceClearSeconds, 0, 60);
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
+    r.boolean("panic_key", config.panicKey);
+    r.optionalHotkey("panic_hotkey", config.panicHotkey);
     r.autoForget("auto_forget", config.autoForget);
     r.warnUnknownKeys();
     return config;
@@ -445,6 +467,8 @@ std::vector<Line> lines(const Config& c)
         {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},
+        {"panic_key", tomlBool(c.panicKey), "the panic shortcut below works: wipes the history, locks the passwords, empties the clipboard, no question"},
+        {"panic_hotkey", tomlString(c.panicHotkey.toStdString()), "the panic shortcut, e.g. \"Ctrl+Alt+Shift+Delete\"; empty = none"},
     };
 }
 
