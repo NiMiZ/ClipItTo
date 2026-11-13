@@ -191,6 +191,8 @@ private slots:
         QTest::newRow("Bitwarden (Windows, CanIncludeInClipboardHistory=0)")
             << QStringList{"text/plain", "CanIncludeInClipboardHistory=0", "CanUploadToCloudClipboard=0"} << QString();
         QTest::newRow("KeePass (Windows, Clipboard Viewer Ignore)") << QStringList{"text/plain", "Clipboard Viewer Ignore"} << QString();
+        QTest::newRow("KeeWeb (macOS, net.antelle.keeweb)")
+            << QStringList{"public.utf8-plain-text", "net.antelle.keeweb"} << QString();
         QTest::newRow("1Password (macOS, org.nspasteboard.ConcealedType)")
             << QStringList{"public.utf8-plain-text", "org.nspasteboard.ConcealedType"} << QString();
         QTest::newRow("1Password (com.agilebits.onepassword)") << QStringList{"public.utf8-plain-text", "com.agilebits.onepassword"} << QString();

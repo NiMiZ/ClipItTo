@@ -92,8 +92,11 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
 7. **DONE (except `app:`): Search filters:** `img:`, `text:`, `pin:`, `star:`, `group:`, `note:`, `today:`, `since:`.
    Still open: `app:chrome` and showing the source app and time on a row; both need the source app stored for
    every copy (it is captured only for password copies today).
-8. **Smart paste keys per app:** pick Ctrl+V / Shift+Insert / Ctrl+Shift+V automatically for terminals
-   instead of one global setting.
+8. **DONE: Smart paste keys per app:** ClipItTo picks Ctrl+V / Shift+Insert / Ctrl+Shift+V by the program that gets the
+   paste (`paste_keys_per_app`, on by default, a built-in list of terminals; your own `paste_keys_apps` rules, up to 16,
+   Settings › General). Supported: Windows (executable name + window class), X11 (`WM_CLASS`), GNOME Wayland with the
+   extension (`FocusedApp`: WM_CLASS / app id). Not possible: macOS (always Cmd+V) and KDE / wlroots Wayland (no way to
+   ask for the focused window; `paste_keys` is used). The core is `PasteKeys.{h,cpp}`.
 9. **Clean links:** strip tracking parameters (`utm_*`, `fbclid`) from copied URLs, optionally.
 10. **Text from pictures (OCR):** **DONE: copy the text out of a picture** (right-click › Paste text from picture;
     offline: Windows.Media.Ocr, Vision, Tesseract). Languages: a setting (`ocr_languages`). **DONE: search inside screenshots** (the text is read in the background when a picture is copied, `index_pictures`, on by default). Still open: picking the Tesseract language
@@ -151,12 +154,30 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     clearing mechanism of the password work: `ClipboardWriter::clearPasted()` (the old `clearPassword()`) now also handles Paste once
     text and pictures. The automatic rules (by pattern or app) are not done.
 18. **DONE: Auto-forget:** copies that expire (`auto_forget`, Settings › Passwords › *Auto-forget*). *Details below.*
-19. **Password-field copies on Windows and macOS.** Some browsers set no password-manager marker when a password is copied from a
+19. **PARTLY DONE: Password-field copies on Windows and macOS.**
+    *Research in [password-field-research.md](password-field-research.md). Done: the marker list is extended (KeeWeb as a secret; three more transient pasteboard types), with tests. Not done, on purpose: Windows UI Automation `IsPassword` and macOS `IsSecureEventInputEnabled` as signals (neither is reliable at copy time; no setting added).* Some browsers set no password-manager marker when a password is copied from a
     field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
     (the source window's class or title when it is a browser password field, a copy made right after an autofill) and see what
     each platform really offers; do nothing that reads more of the clipboard than now.
-20. **Panic key.** One hotkey (and `clipitto --panic`) that clears the history and locks the passwords at once, with no question.
-    Open: should it also clear the system clipboard, and is it kept off by default so it cannot be hit by mistake.
+20. **DONE: Panic key** (`panic_key`, `panic_hotkey`, `clipitto --panic`; Settings › Passwords). *Decided with the user:* ONE action, no
+    confirmation, that (1) wipes the history, (2) locks the passwords and (3) also empties the system clipboard; OFF by default.
+    - *Wipe* is the existing *Clear everything, also in groups* (`Repository::clearHistory(true)`, not a second code path): all copies
+      including pinned, starred, grouped and password copies, pictures, rich text, learned auto-grouping data, search index merged,
+      pages zeroed (`secure_delete`), WAL folded in; plus the popup's Paste once undo buffer, thumbnails and revealed passwords, and a
+      pending clipboard clear. *Kept:* the groups (empty), the settings, the vault and the master password (locked, not deleted).
+    - *Lock* is `PasswordKeeper::lock` (same as `--lock`); the "no master password" mode cannot lock (its copies are deleted anyway).
+    - *Clipboard:* `ClipboardWriter::clearAll()` empties it unconditionally (text, picture, files, anything; X11 primary too; macOS
+      `clearContents`; GNOME extension asked for an empty clipboard, no read-back). `Unsupported` where the system refuses
+      (Wayland without focus/helper), logged as a flag only.
+    - *Triggers:* the shortcut (only while `panic_key` is on and `panic_hotkey` is set and differs from `hotkey`; Windows/macOS in the
+      daemon with their own hotkey id, GNOME a second custom shortcut `clipitto-panic`, elsewhere bind the command; conflicts show in
+      `--status` as `panic_hotkey: unavailable: ...`), and `clipitto --panic` / D-Bus `Panic` / local socket `Panic`, which work
+      whatever the setting says and print `done`.
+    - *After:* popup hides and shows an empty list; translations, text-from-picture reads, picture decodes and queued captures that
+      were started before are ignored (a half-second quiet period for captures on their way); nothing logged but flags and a count;
+      a panic during an encryption conversion empties the clipboard and locks at once and wipes when the conversion ends.
+    - *Not done:* clearing other programs' clipboard histories (Windows' own Win+V history is unaffected by the clipboard clear
+      unless the OS honours it), and screen-lock triggers.
 
 ### Finding things
 21. **Source app and time on every row** (needed by the `app:` filter above and by auto grouping by app). ClipItTo stores the

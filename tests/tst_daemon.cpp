@@ -38,6 +38,7 @@ using clipitto::Config;
 using clipitto::ControlChannel;
 using clipitto::DesktopIntegration;
 using clipitto::PasteKeys;
+using clipitto::PasteTarget;
 using clipitto::SessionEnv;
 using clipitto::Daemon;
 using clipitto::DaemonOptions;
@@ -73,6 +74,8 @@ public:
     void setClipboard(const QString& text) override { clipboardTexts << text; }
     void setClipboardImage(const QByteArray& png) override { clipboardImages << png; }
     void paste(PasteKeys keys) override { pastes << keys; }
+    void rememberPasteTarget() override { ++targetAsks; }
+    PasteTarget pasteTarget() const override { return target; }
 
     void setAvailable(bool available)
     {
@@ -84,6 +87,8 @@ public:
     QStringList clipboardTexts;
     QList<QByteArray> clipboardImages;
     QList<PasteKeys> pastes;
+    int targetAsks = 0;
+    PasteTarget target = PasteTarget::unsupported();
 
 private:
     bool m_available;
@@ -1119,6 +1124,73 @@ private slots:
         emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
         QVERIFY(fake->pastes.isEmpty()); // only after the popup is gone
         QTRY_COMPARE(fake->pastes, QList<PasteKeys>{PasteKeys::ShiftInsert});
+    }
+
+    // The keys typed for a paste into `target`, through the synthetic path (no shell integration).
+    QList<PasteKeys> typedFor(const PasteTarget& target, const QByteArray& config)
+    {
+        writeConfig("paste_on_enter = true\n" + config);
+        QList<PasteKeys> typed;
+        DaemonOptions o = options();
+        o.pasteTarget = [&target] { return target; };
+        o.syntheticPaste = [&typed](PasteKeys keys) {
+            typed << keys;
+            return true;
+        };
+        Daemon d(o, std::make_unique<FakeControl>());
+        if (d.start() != Daemon::StartResult::Ok) {
+            return {};
+        }
+        emit d.control()->ingestRequested(QStringLiteral("paste me"), {});
+        emit d.control()->showRequested(QString());
+        emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
+        (void)QTest::qWaitFor([&typed] { return !typed.isEmpty(); }, 10000); // empty = nothing was typed
+        return typed;
+    }
+
+    void pasteUsesTheKeysOfTheProgramThatGetsIt()
+    {
+        const auto known = [](const char* id) { return PasteTarget::known({QString::fromLatin1(id)}); };
+        // A terminal gets ctrl+shift+v, an ordinary program the global keys.
+        QCOMPARE(typedFor(known("kitty"), ""), QList<PasteKeys>{PasteKeys::CtrlShiftV});
+        QCOMPARE(typedFor(known("notepad.exe"), ""), QList<PasteKeys>{PasteKeys::CtrlV});
+        QCOMPARE(typedFor(known("notepad.exe"), "paste_keys = \"shift+insert\"\n"), QList<PasteKeys>{PasteKeys::ShiftInsert});
+        // Your rule wins over the built-in one, and names a program the built-ins do not know.
+        QCOMPARE(typedFor(known("kitty"), "paste_keys_apps = [\"kitty = shift+insert\"]\n"), QList<PasteKeys>{PasteKeys::ShiftInsert});
+        QCOMPARE(typedFor(known("Code"), "paste_keys_apps = [\"code = ctrl+shift+v\"]\n"), QList<PasteKeys>{PasteKeys::CtrlShiftV});
+        // The switch off: the global keys for everyone, terminals and your rules included.
+        QCOMPARE(typedFor(known("kitty"), "paste_keys_per_app = false\npaste_keys_apps = [\"kitty = shift+insert\"]\n"),
+                 QList<PasteKeys>{PasteKeys::CtrlV});
+    }
+
+    void pasteFallsBackToTheGlobalKeysWhereTheProgramIsNotKnown()
+    {
+        // Unsupported platform (Wayland without the extension, macOS) and no window remembered.
+        QCOMPARE(typedFor(PasteTarget::unsupported(), "paste_keys = \"shift+insert\"\n"), QList<PasteKeys>{PasteKeys::ShiftInsert});
+        QCOMPARE(typedFor(PasteTarget::unknown(), "paste_keys_apps = [\"kitty = ctrl+shift+v\"]\n"), QList<PasteKeys>{PasteKeys::CtrlV});
+    }
+
+    void shellIntegrationIsAskedForTheProgramWhenThePopupOpensAndPastesItsKeys()
+    {
+        writeConfig("paste_on_enter = true\n");
+        auto integration = std::make_unique<FakeIntegration>(true);
+        FakeIntegration* fake = integration.get();
+        fake->target = PasteTarget::known({QStringLiteral("org.gnome.Terminal"), QStringLiteral("gnome-terminal-server")});
+        Daemon d(options(), std::make_unique<FakeControl>(), std::move(integration));
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        emit d.control()->ingestRequested(QStringLiteral("paste me"), {});
+        QCOMPARE(fake->targetAsks, 0);
+        emit d.control()->showRequested(QString());
+        QCOMPARE(fake->targetAsks, 1); // before the popup takes the focus
+        emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
+        QTRY_COMPARE(fake->pastes, QList<PasteKeys>{PasteKeys::CtrlShiftV});
+
+        // An older extension cannot say: the global keys.
+        fake->pastes.clear();
+        fake->target = PasteTarget::unsupported();
+        emit d.control()->showRequested(QString());
+        emit d.popup()->view()->activateRequested(d.popup()->model()->firstEntry());
+        QTRY_COMPARE(fake->pastes, QList<PasteKeys>{PasteKeys::CtrlV});
     }
 
     void captureBackendFollowsIntegration()

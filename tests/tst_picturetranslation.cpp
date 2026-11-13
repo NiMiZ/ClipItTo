@@ -727,6 +727,80 @@ private slots:
         QCOMPARE(tc::runCommand(f.fileName(), QString(), out, e), 2); // no packs at all
     }
 
+    // ---------------------------------------------------------------- the panic key: late answers are ignored
+
+    void aPanicWhileATextIsBeingTranslatedDropsTheAnswer()
+    {
+        Rig r;
+        auto hold = std::make_shared<std::atomic<bool>>(true);
+        auto finished = std::make_shared<std::atomic<int>>(0);
+        r.engine->reply = [hold, finished](const QString& text, QString*) {
+            while (*hold) {
+                QThread::msleep(2);
+            }
+            ++*finished;
+            return std::optional<QString>(text + QStringLiteral(" translated"));
+        };
+        const qint64 id = r.copyText(hebrew("שלום עולם"));
+        QVERIFY(r.show());
+        QSignalSpy pasted(r.popup(), &PopupWindow::textActivated);
+        QGuiApplication::clipboard()->clear();
+        QVERIFY(r.choose(id, QStringLiteral("Hebrew → English")));
+        QTRY_VERIFY(r.popup()->isBusy());
+        r.daemon->panic();
+        QVERIFY(!r.popup()->isBusy());
+        QCOMPARE(r.repo().count(), qint64(0));
+        *hold = false;
+        QTRY_COMPARE_WITH_TIMEOUT(int(*finished), 1, 5000);
+        QTest::qWait(300); // the answer is delivered on the GUI thread, and ignored
+        QCOMPARE(pasted.size(), 0);
+        QVERIFY(r.warnings.isEmpty());
+        QVERIFY(r.quiet.isEmpty());
+        QVERIFY(QGuiApplication::clipboard()->text().isEmpty());
+        QCOMPARE(r.repo().count(), qint64(0));
+        QVERIFY(!r.popup()->isBusy());
+    }
+
+    void aPanicWhileAPicturesTextIsBeingReadDropsTheAnswer()
+    {
+        Rig r;
+        const qint64 pic = r.copyPicture(11);
+        QTRY_COMPARE_WITH_TIMEOUT(int(r.ocr->calls), 1, 5000); // the read for the search
+        r.ocr->answer = hebrew("מכשול בדרך");
+        r.ocr->hold = true;
+        QVERIFY(r.show());
+        QSignalSpy pasted(r.popup(), &PopupWindow::textActivated);
+        QGuiApplication::clipboard()->clear();
+        QVERIFY(r.choose(pic, QStringLiteral("Hebrew → English"), QStringLiteral("Translate text from picture")));
+        QTRY_COMPARE_WITH_TIMEOUT(int(r.ocr->calls), 2, 5000);
+        QVERIFY(r.popup()->isBusy());
+        r.daemon->panic();
+        QVERIFY(!r.popup()->isBusy());
+        r.ocr->hold = false;
+        QTest::qWait(500);
+        QCOMPARE(pasted.size(), 0);
+        QCOMPARE(r.engine->calls(), 0); // never went on to translate
+        QVERIFY(r.warnings.isEmpty());
+        QVERIFY(r.quiet.isEmpty());
+        QVERIFY(QGuiApplication::clipboard()->text().isEmpty());
+        QCOMPARE(r.repo().count(), qint64(0));
+    }
+
+    void aPanicWhileAPictureIsBeingReadForTheSearchLeavesNothingBehind()
+    {
+        Rig r;
+        r.ocr->hold = true;
+        r.copyPicture(12);
+        QTRY_COMPARE_WITH_TIMEOUT(int(r.ocr->calls), 1, 5000);
+        r.daemon->panic();
+        QCOMPARE(r.repo().count(), qint64(0));
+        r.ocr->hold = false;
+        QTest::qWait(500);
+        QCOMPARE(r.repo().count(), qint64(0));
+        QVERIFY(r.repo().search(QStringLiteral("invoice")).empty());
+        QCOMPARE(int(r.ocr->calls), 1); // and no other picture is read afterwards
+    }
+
 private:
     static QString repo_content(Rig& r, qint64 id) { return r.repo().get(id)->content; }
 };

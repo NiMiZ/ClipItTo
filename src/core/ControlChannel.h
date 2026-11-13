@@ -41,6 +41,9 @@ signals:
     void ingestImageRequested(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void reloadRequested();
     void lockPasswordsRequested(); // clipitto --lock
+    // clipitto --panic (or the panic shortcut's command): wipe the history, lock the passwords, empty the clipboard.
+    // Connected directly, so the reply goes out after it is done.
+    void panicRequested();
     void quitRequested();
 
     // Emitted by the daemon when the popup is shown or hidden; implementations forward it to clients.

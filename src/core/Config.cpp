@@ -128,6 +128,26 @@ public:
         }
     }
 
+    // Like hotkey(), but empty is allowed and means "none".
+    void optionalHotkey(const char* key, QString& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const auto value = node->value_exact<std::string>();
+        if (value && QString::fromStdString(*value).trimmed().isEmpty()) {
+            out.clear();
+            return;
+        }
+        const auto parsed = value ? parseHotkey(QString::fromStdString(*value)) : std::nullopt;
+        if (parsed) {
+            out = parsed->canonical;
+        } else {
+            warn(QStringLiteral("%1: expected a shortcut like \"Ctrl+Alt+Shift+Delete\" (or empty)").arg(QLatin1String(key)));
+        }
+    }
+
     // Item ids of a menu: "upper,-lower,pic_text" (see PasteAs.h). Unknown ids are dropped later, not here.
     void idList(const char* key, QString& out)
     {
@@ -235,6 +255,33 @@ public:
         out = rules;
     }
 
+    // Up to pastekeys::kMaxRules strings "program = ctrl+v | shift+insert | ctrl+shift+v"; bad ones are skipped with a warning.
+    void pasteKeyRules(const char* key, QList<PasteKeyRule>& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const toml::array* array = node->as_array();
+        if (!array) {
+            warn(QStringLiteral("%1: expected a list of \"program = keys\" strings").arg(QLatin1String(key)));
+            return;
+        }
+        QList<PasteKeyRule> rules;
+        for (const toml::node& item : *array) {
+            const auto value = item.value_exact<std::string>();
+            PasteKeyRule rule;
+            if (!value || !pastekeys::parse(QString::fromStdString(*value), rule)) {
+                warn(QStringLiteral("%1: a rule is not like \"xterm = ctrl+shift+v\"; skipped").arg(QLatin1String(key)));
+            } else if (rules.size() >= pastekeys::kMaxRules) {
+                warn(QStringLiteral("%1: only %2 rules are used").arg(QLatin1String(key)).arg(pastekeys::kMaxRules));
+            } else {
+                rules << rule;
+            }
+        }
+        out = rules;
+    }
+
     void warnUnknownKeys()
     {
         for (const auto& [key, node] : m_table) {
@@ -304,6 +351,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("paste_on_enter", config.pasteOnEnter);
     r.boolean("latest_after_paste", config.latestAfterPaste);
     r.choice("paste_keys", config.pasteKeys, kPasteKeys);
+    r.boolean("paste_keys_per_app", config.pasteKeysPerApp);
+    r.pasteKeyRules("paste_keys_apps", config.pasteKeysApps);
     r.choice("click_to_copy", config.clickToCopy, kClickModes);
     r.boolean("hide_on_focus_loss", config.hideOnFocusLoss);
     r.integer("search_debounce_ms", config.searchDebounceMs, 0, 2000);
@@ -326,6 +375,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.integer("paste_once_clear_seconds", config.pasteOnceClearSeconds, 0, 60);
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
+    r.boolean("panic_key", config.panicKey);
+    r.optionalHotkey("panic_hotkey", config.panicHotkey);
     r.autoForget("auto_forget", config.autoForget);
     r.boolean("lock_on_screen_lock", config.lockOnScreenLock);
     r.warnUnknownKeys();
@@ -392,6 +443,15 @@ std::string tomlAutoForget(const QList<AutoForgetRule>& rules)
     return out + "]";
 }
 
+std::string tomlPasteKeyRules(const QList<PasteKeyRule>& rules)
+{
+    std::string out = "[";
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        out += (i ? ", " : "") + tomlString(pastekeys::format(rules.at(i)).toStdString());
+    }
+    return out + "]";
+}
+
 std::vector<Line> lines(const Config& c)
 {
     return {
@@ -419,7 +479,9 @@ std::vector<Line> lines(const Config& c)
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},
         {"latest_after_paste", tomlBool(c.latestAfterPaste), "a chosen copy becomes the latest"},
-        {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert"},
+        {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert; for programs no rule below names"},
+        {"paste_keys_per_app", tomlBool(c.pasteKeysPerApp), "terminals get ctrl+shift+v (shift+insert in Windows consoles); where the program is known"},
+        {"paste_keys_apps", tomlPasteKeyRules(c.pasteKeysApps), "your own \"program = ctrl+v | shift+insert | ctrl+shift+v\" rules, up to 16"},
         {"click_to_copy", tomlString(nameOf(kClickModes, c.clickToCopy)), "single | double"},
         {"hide_on_focus_loss", tomlBool(c.hideOnFocusLoss), ""},
         {"search_debounce_ms", std::to_string(c.searchDebounceMs), ""},
@@ -447,6 +509,8 @@ std::vector<Line> lines(const Config& c)
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},
         {"lock_on_screen_lock", tomlBool(c.lockOnScreenLock), "lock the passwords when the screen locks or the PC sleeps"},
+        {"panic_key", tomlBool(c.panicKey), "the panic shortcut below works: wipes the history, locks the passwords, empties the clipboard, no question"},
+        {"panic_hotkey", tomlString(c.panicHotkey.toStdString()), "the panic shortcut, e.g. \"Ctrl+Alt+Shift+Delete\"; empty = none"},
     };
 }
 

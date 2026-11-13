@@ -12,14 +12,16 @@ namespace clipitto {
 namespace {
 
 constexpr OSType kSignature = 'CLIP';
-constexpr UInt32 kHotkeyId = 1;
 
 OSStatus onHotKey(EventHandlerCallRef, EventRef event, void* userData)
 {
     EventHotKeyID id;
     if (GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, nullptr, sizeof id, nullptr, &id) == noErr
-        && id.signature == kSignature && id.id == kHotkeyId) {
+        && id.signature == kSignature) {
         auto* self = static_cast<MacHotkey*>(userData);
+        if (id.id != self->id()) {
+            return eventNotHandledErr; // another of our hotkeys: its own handler takes it
+        }
         // Queued: the popup is shown from the event loop, not from inside Carbon's dispatch.
         QMetaObject::invokeMethod(self, [self] { Q_EMIT self->activated(); }, Qt::QueuedConnection);
         return noErr;
@@ -29,7 +31,7 @@ OSStatus onHotKey(EventHandlerCallRef, EventRef event, void* userData)
 
 } // namespace
 
-MacHotkey::MacHotkey(QObject* parent) : QObject(parent)
+MacHotkey::MacHotkey(QObject* parent, unsigned id) : QObject(parent), m_id(id)
 {
     const EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
     EventHandlerRef handler = nullptr;
@@ -71,7 +73,7 @@ bool MacHotkey::setShortcut(const QString& shortcut, QString* error)
     }
     EventHotKeyRef ref = nullptr;
     const OSStatus status = RegisterEventHotKey(parsed->macKeyCode, parsed->macModifiers,
-                                                EventHotKeyID{kSignature, kHotkeyId}, GetApplicationEventTarget(), 0,
+                                                EventHotKeyID{kSignature, m_id}, GetApplicationEventTarget(), 0,
                                                 &ref);
     if (status != noErr) {
         if (error) {
@@ -83,6 +85,12 @@ bool MacHotkey::setShortcut(const QString& shortcut, QString* error)
     }
     m_hotKeyRef = ref;
     return true;
+}
+
+void MacHotkey::clear()
+{
+    unregister();
+    m_shortcut.clear();
 }
 
 void MacHotkey::unregister()

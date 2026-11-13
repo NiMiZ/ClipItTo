@@ -37,6 +37,7 @@
 // print to there.
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
 #include "GlobalHotkey.h"
+#include "PanicHotkey.h"
 
 #include <QMenu>
 #include <QMessageBox>
@@ -166,6 +167,25 @@ int main(int argc, char* argv[])
     QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &hotkey, registerHotkey);
     QObject::connect(&hotkey, &clipitto::GlobalHotkey::activated, daemon.popup(),
                      [&daemon] { daemon.popup()->togglePopup(); });
+
+    // The panic key: registered only while panic_key is on and a shortcut is set (a conflict is reported like the main one).
+    clipitto::GlobalHotkey panicHotkey(nullptr, 2);
+    const auto registerPanicHotkey = [&] {
+        const QString shown = clipitto::applyPanicHotkey(panicHotkey, daemon.config());
+        if (shown.isEmpty()) {
+            daemon.removeStatusValue(QStringLiteral("panic_hotkey"));
+        } else {
+            if (shown.startsWith(QLatin1String("unavailable"))) {
+                qWarning().noquote() << "panic hotkey:" << shown;
+            }
+            daemon.setStatusValue(QStringLiteral("panic_hotkey"), shown);
+        }
+    };
+    registerPanicHotkey();
+    QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &panicHotkey, registerPanicHotkey);
+    // Queued: the wipe runs from the event loop, not from inside the native hotkey dispatch.
+    QObject::connect(&panicHotkey, &clipitto::GlobalHotkey::activated, &daemon, [&daemon] { daemon.panic(); },
+                     Qt::QueuedConnection);
 #endif
 
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)

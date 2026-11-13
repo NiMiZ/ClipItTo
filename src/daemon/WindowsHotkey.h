@@ -12,7 +12,8 @@ class WindowsHotkey : public QObject, public QAbstractNativeEventFilter {
     Q_OBJECT
 
 public:
-    explicit WindowsHotkey(QObject* parent = nullptr);
+    // `id` tells several hotkeys of this process apart (the main one and the panic key).
+    explicit WindowsHotkey(QObject* parent = nullptr, int id = 0xC11);
     ~WindowsHotkey() override;
 
     // Replaces the current shortcut; spelled like the `hotkey` config key ("Ctrl+Alt+V").
@@ -20,6 +21,8 @@ public:
     bool setShortcut(const QString& shortcut, QString* error = nullptr);
     QString shortcut() const { return m_shortcut; }
     bool isRegistered() const { return m_registered; }
+    // Unregisters and forgets the shortcut (the panic key turned off).
+    void clear();
 
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
@@ -31,6 +34,7 @@ private:
 
     QString m_shortcut;
     bool m_registered = false;
+    int m_id;
 };
 
 } // namespace clipitto
