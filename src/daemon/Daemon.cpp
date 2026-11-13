@@ -986,6 +986,7 @@ void Daemon::applyPanicShortcut()
 {
     const QString key = QStringLiteral("panic_hotkey");
     if (m_options.session.display == SessionEnv::Display::Windows || m_options.session.display == SessionEnv::Display::MacOS) {
+        emit panicShortcutApplied();
         return;
     }
     if (!m_options.session.isGnome) {

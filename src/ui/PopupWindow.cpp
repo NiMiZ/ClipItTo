@@ -619,6 +619,7 @@ void PopupWindow::panicReset(bool hide, bool keepBusy)
         hidePopup();
     }
     if (keepBusy && isBusy()) {
+        m_model->setContent({}); // the old rows leave memory now; the list is read when the conversion is over
         return; // the file belongs to the conversion; the list is read when it is over
     }
     m_busyMessage.clear(); // a "Translating…" that will never be answered

@@ -175,7 +175,9 @@ ClipboardWriter::ClearResult ClipboardWriter::clearAll()
     m_clipboard->clear(QClipboard::Clipboard);
     // Read back: some systems accept the call and do nothing. Only whether anything is offered, never what.
     const QMimeData* now = m_clipboard->mimeData(QClipboard::Clipboard);
-    return (now && !now->formats().isEmpty()) ? ClearResult::Unsupported : ClearResult::Cleared;
+    const QMimeData* selection = m_clipboard->supportsSelection() ? m_clipboard->mimeData(QClipboard::Selection) : nullptr;
+    const bool left = (now && !now->formats().isEmpty()) || (selection && !selection->formats().isEmpty());
+    return left ? ClearResult::Unsupported : ClearResult::Cleared;
 }
 
 ClipboardWriter::ClearResult ClipboardWriter::clearPastedImage()

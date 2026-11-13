@@ -230,7 +230,10 @@ emptied and the passwords locked at once, and the history is wiped as soon as th
 *Shortcut:* Windows and macOS register it themselves; on GNOME ClipItTo adds a second custom shortcut ("ClipItTo panic") running
 `clipitto --panic` and removes it when the key is turned off; on other desktops bind `clipitto --panic` yourself in the keyboard
 settings. A shortcut another program already owns is reported like the main one (`clipitto --status`, line `panic_hotkey`). Importing
-a backup never changes the panic settings.
+a backup never changes the panic settings. Limits: Windows' own clipboard history (Win+V) and cloud clipboard are not
+ClipItTo's to empty; any program in your session that may call `clipitto --panic` (D-Bus or the local socket, the same trust as
+`--quit` and `--lock`) can trigger it; `done` means the daemon ran the steps, so check `clipitto --status` / the log if the clipboard
+matters on Wayland without the GNOME extension; on a very large history the wipe takes a moment, during which ClipItTo does not respond.
 
 **Text from a picture:** select a picture and press Shift+Enter (or right-click it › *Paste as*) for its choices: *Paste text from picture* first, *Text from picture, changed* (on one line, trimmed, collapsed spaces, upper / lower / Title case), and *Paste the picture*. *Paste text from picture* reads the text in it and puts it
 on the clipboard and into the window you came from. It runs on your computer only, with no network or cloud

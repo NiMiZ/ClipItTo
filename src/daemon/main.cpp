@@ -181,7 +181,9 @@ int main(int argc, char* argv[])
     };
     registerPanicHotkey();
     QObject::connect(&daemon, &clipitto::Daemon::configReloaded, &panicHotkey, registerPanicHotkey);
-    QObject::connect(&panicHotkey, &clipitto::GlobalHotkey::activated, &daemon, [&daemon] { daemon.panic(); });
+    // Queued: the wipe runs from the event loop, not from inside the native hotkey dispatch.
+    QObject::connect(&panicHotkey, &clipitto::GlobalHotkey::activated, &daemon, [&daemon] { daemon.panic(); },
+                     Qt::QueuedConnection);
 #endif
 
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
