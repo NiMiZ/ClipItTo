@@ -80,6 +80,9 @@ struct Config {
     bool windowsHello = false; // Windows: unlock with Windows Hello too
     QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
 
+    // Lock the password vault when the screen locks or the PC sleeps (default on: locking is the safe direction).
+    bool lockOnScreenLock = true;
+
     // Parse errors, unknown keys and out-of-range values are reported in warnings (if given)
     // and never fail: the affected values keep their defaults.
     static Config fromToml(std::string_view text, QStringList* warnings = nullptr);

@@ -159,6 +159,10 @@ qint64 Daemon::runAutoForget()
 
 Daemon::~Daemon()
 {
+    if (m_options.screenLockWatcher) {
+        m_options.screenLockWatcher->disconnect(this); // the test's watcher may outlive this daemon
+        m_options.screenLockWatcher->stop();
+    }
     clearPastedPassword(); // quit before the timer: leave nothing behind
     debuglog::stop(); // closes the log file (it stays on disk until the setting is turned off)
     hello::cancelPending(); // a Windows Hello prompt left open must not hold up quitting
@@ -233,6 +237,9 @@ Daemon::StartResult Daemon::start(QString* error)
     m_control->setPasswordsWantedProvider([this] { return m_pipeline && m_pipeline->keepsPasswords(); });
     connect(m_passwords.get(), &PasswordKeeper::vaultChanged, this, &Daemon::applyPasswordSettings);
     connect(m_control, &ControlChannel::lockPasswordsRequested, m_passwords.get(), &PasswordKeeper::lock);
+    if (m_options.screenLockWatcher) {
+        connect(m_options.screenLockWatcher.get(), &ScreenLockWatcher::locked, this, &Daemon::onScreenLocked);
+    }
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(),
             [this](const QString& text, const QStringList& mimeTypes, const QString& html) {
                 m_pipeline->process(text, mimeTypes, html);
@@ -355,6 +362,7 @@ Daemon::StartResult Daemon::start(QString* error)
         m_lastNameBox = outcome + QStringLiteral(" at ") + QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
     });
     applyPasswordSettings();
+    applyScreenLockWatch();
 
     if (m_removeKeyAfterStart) { // the history was decrypted and opened fine: the key is done
         QString removeError;
@@ -1210,6 +1218,36 @@ void Daemon::setWindowsHello(bool on, std::function<void(QString error)> done)
         });
 }
 
+void Daemon::applyScreenLockWatch()
+{
+    ScreenLockWatcher* watcher = m_options.screenLockWatcher.get();
+    if (!watcher) {
+        return;
+    }
+    if (m_config.lockOnScreenLock && !watcher->isWatching()) {
+        QString why;
+        if (watcher->start(&why)) {
+            qCInfo(lcDaemon) << "watching for screen lock and sleep";
+        } else {
+            qCInfo(lcDaemon).noquote() << "screen lock and sleep are not watched here:" << why;
+        }
+    } else if (!m_config.lockOnScreenLock && watcher->isWatching()) {
+        watcher->stop();
+        qCInfo(lcDaemon) << "no longer watching for screen lock and sleep (setting is off)";
+    }
+}
+
+// The same lock as `clipitto --lock` (PasswordKeeper::lock): wipes the key; does nothing when already locked or
+// without a master password (open mode never locks). A pasted password still on the clipboard is not touched here.
+void Daemon::onScreenLocked(const QString& reason)
+{
+    if (!m_config.lockOnScreenLock || !m_passwords) {
+        return;
+    }
+    qCInfo(lcDaemon).noquote() << "locking the passwords:" << reason;
+    m_passwords->lock();
+}
+
 void Daemon::applyPasswordSettings()
 {
     if (!m_pipeline || !m_passwords) {
@@ -1263,6 +1301,7 @@ void Daemon::reload(bool forceShortcut)
     }
     m_repo->setSecretsPerNote(m_config.passwordsPerNote);
     applyPasswordSettings();
+    applyScreenLockWatch();
     if (m_forgetter && m_config.autoForget != previous.autoForget) {
         m_forgetter->setRules(m_config.autoForget);
         runAutoForget(); // new rules take effect at once
@@ -1359,6 +1398,10 @@ QVariantMap Daemon::status() const
             passwords += QStringLiteral("; whole-password search while locked is off (%1)").arg(m_passwords->matchProblem());
         }
         s[QStringLiteral("passwords")] = passwords;
+        s[QStringLiteral("lock_on_screen_lock")] =
+            !m_config.lockOnScreenLock ? QStringLiteral("off")
+            : (m_options.screenLockWatcher && m_options.screenLockWatcher->isWatching()) ? QStringLiteral("on (watching)")
+                                                                                         : QStringLiteral("on (unsupported here)");
         const auto onOff = [](bool on) { return on ? QStringLiteral("on") : QStringLiteral("off"); };
         s[QStringLiteral("password_feature")] = QStringLiteral("ask_note %1, detect_secrets %2, detect_passwords %3, match key %4, last name box: %5")
                                                     .arg(onOff(m_config.passwordAskNote), onOff(m_config.detectSecrets),

@@ -8,6 +8,7 @@
 #include "Entry.h"
 #include "KeyStore.h"
 #include "PasswordKeeper.h"
+#include "ScreenLockWatcher.h"
 #include "SessionEnv.h"
 #include "Translate.h"
 #include "Translation.h"
@@ -71,6 +72,9 @@ struct DaemonOptions {
     std::function<bool(const QString&, const QString&)> notify;
     bool verbose = false; // --verbose: debug lines and the log file for the whole run, whatever the debug_log setting says
     QString debugLogPath; // the diagnostic log file; empty: paths::debugLogFile() (tests set one)
+    // Screen lock / sleep events for lock_on_screen_lock (ScreenLockWatcher.h). Null: none here, reported as
+    // unsupported (main.cpp passes the platform's; tests pass a FakeScreenLockWatcher).
+    std::shared_ptr<ScreenLockWatcher> screenLockWatcher;
     int autoForgetIntervalMs = 60000; // how often the auto_forget rules run (tests shorten it)
     std::function<QDateTime()> autoForgetClock; // what "now" is for the rules; null: the system clock (tests)
 };
@@ -136,6 +140,9 @@ private:
     void applyDesktopShortcut();
     // Password copies follow the settings and the vault: kept or not, which group, unlock time.
     void applyPasswordSettings();
+    // lock_on_screen_lock: starts or stops the watcher with the setting; a lock event locks the vault.
+    void applyScreenLockWatch();
+    void onScreenLocked(const QString& reason);
     void setUpWindowsHello(); // availability, and the popup's Hello unlock
     void setUpTranslation(); // the popup's Translate menus
     ui::TranslationSupport translationSupport();

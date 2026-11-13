@@ -94,3 +94,5 @@ auto_forget = []            # copies that remove themselves, quietly (up to 8 ru
 windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks
+lock_on_screen_lock = true   # lock the passwords when the screen locks or the PC sleeps (Windows, macOS, Linux
+                            # with systemd-logind or GNOME/KDE screensaver); false = only the timer and Lock now

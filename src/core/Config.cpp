@@ -327,6 +327,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
     r.autoForget("auto_forget", config.autoForget);
+    r.boolean("lock_on_screen_lock", config.lockOnScreenLock);
     r.warnUnknownKeys();
     return config;
 }
@@ -445,6 +446,7 @@ std::vector<Line> lines(const Config& c)
         {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},
+        {"lock_on_screen_lock", tomlBool(c.lockOnScreenLock), "lock the passwords when the screen locks or the PC sleeps"},
     };
 }
 
