@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <map>
+#include <tuple>
 
 #ifdef Q_OS_WIN
 #include <io.h>
@@ -641,6 +642,7 @@ Merger::~Merger() = default;
 bool Merger::step(int budget)
 {
     int done = 0;
+    m_unsaved[0].loaded = m_unsaved[1].loaded = false;
     m_repo.syncBatch([&] {
         while (done < budget && m_nextTomb < m_tombs.size()) {
             tombstone(m_tombs[m_nextTomb].first, m_tombs[m_nextTomb].second);
@@ -738,8 +740,12 @@ void Merger::item(const Item& it)
     const bool saved = !group.isEmpty() || it.favorite || it.pinned;
     if (!saved) {
         const int limit = it.image ? m_options.maxImages : m_options.maxHistory;
-        const auto [oldest, count] = m_repo.syncOldestUnsaved(it.image);
-        if (limit <= 0 || (count >= limit && !oldest.isEmpty() && it.lastUsed < oldest)) {
+        Unsaved& u = m_unsaved[it.image ? 1 : 0];
+        if (!u.loaded) {
+            std::tie(u.oldest, u.count) = m_repo.syncOldestUnsaved(it.image);
+            u.loaded = true;
+        }
+        if (limit <= 0 || (u.count >= limit && !u.oldest.isEmpty() && it.lastUsed < u.oldest)) {
             ++m_stats.skipped; // it would be pruned at once
             return;
         }
@@ -764,6 +770,12 @@ void Merger::item(const Item& it)
         image.pixelHash = it.pixelHash;
     }
     const qint64 id = m_repo.syncAdd(add, image);
+    if (!saved) {
+        Unsaved& u = m_unsaved[it.image ? 1 : 0];
+        if (u.count++ == 0 || it.lastUsed < u.oldest) {
+            u.oldest = it.lastUsed;
+        }
+    }
     if (it.pinned) {
         m_repo.syncSetMeta(id, note, group, it.favorite, true, it.metaChanged);
     }

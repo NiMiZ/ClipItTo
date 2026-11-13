@@ -1742,10 +1742,19 @@ qint64 Repository::syncAdd(const SyncItem& item, const ImageClip& image)
     if (!path.isEmpty()) {
         createGroup(path);
     }
-    Stmt s(m_db, "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, is_favorite = ?6, "
-                 "off_recent = ?7, meta_changed = ?8 WHERE id = ?1");
+    // The columns the search index covers are written only when there is something to write (see restoreFiling): an
+    // UPDATE that names them rewrites the row's index entries, which made a large merge slow.
+    const QString noteText = e.note.trimmed();
+    const bool filed = !noteText.isEmpty() || !path.isEmpty();
+    Stmt s(m_db, filed ? "UPDATE clips SET created_at = ?2, last_used = ?3, tag_or_note = ?4, group_name = ?5, is_favorite = ?6, "
+                         "off_recent = ?7, meta_changed = ?8 WHERE id = ?1"
+                       : "UPDATE clips SET created_at = ?2, last_used = ?3, is_favorite = ?6, off_recent = ?7, meta_changed = ?8 "
+                         "WHERE id = ?1");
     s.bindInt(1, id).bindText(2, isoStamp(e.createdAt.isValid() ? e.createdAt : e.lastUsed)).bindText(3, isoStamp(e.lastUsed));
-    s.bindTextOrNull(4, e.note.trimmed()).bindTextOrNull(5, path).bindInt(6, e.favorite ? 1 : 0).bindInt(7, item.offRecent ? 1 : 0);
+    if (filed) {
+        s.bindTextOrNull(4, noteText).bindTextOrNull(5, path);
+    }
+    s.bindInt(6, e.favorite ? 1 : 0).bindInt(7, item.offRecent ? 1 : 0);
     s.bindTextOrNull(8, item.metaChanged).run();
     return id;
 }

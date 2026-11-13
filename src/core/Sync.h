@@ -230,6 +230,12 @@ private:
     size_t m_nextTomb = 0;
     size_t m_nextItem = 0;
     bool m_scrubbed = false;
+    struct Unsaved {
+        QString oldest;
+        qint64 count = 0;
+        bool loaded = false;
+    };
+    Unsaved m_unsaved[2]; // text, pictures: read once per batch, then counted as copies are added
     MergeStats m_stats;
 };
 

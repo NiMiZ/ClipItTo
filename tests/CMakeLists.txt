@@ -53,6 +53,7 @@ clipitto_add_test(tst_searchfilter)
 clipitto_add_test(tst_translate clipitto_translate)
 clipitto_add_test(tst_picturetranslation clipitto_daemon_lib clipitto_ui clipitto_translate)
 clipitto_add_test(tst_backup)
+clipitto_add_test(tst_sync)
 clipitto_add_test(tst_loginitem clipitto_daemon_lib)
 if(APPLE)
     clipitto_add_test(tst_keystore_mac clipitto_daemon_lib) # the real Keychain
