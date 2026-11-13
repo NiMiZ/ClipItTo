@@ -1,6 +1,7 @@
 #include "Sync.h"
 
 #include "GroupPath.h"
+#include "SecretScan.h"
 #include "db/Repository.h"
 
 #include <QCryptographicHash>
@@ -32,7 +33,7 @@ namespace {
 
 const QByteArray kMagic = QByteArrayLiteral("CLIPSYNC");
 constexpr int kHeaderSize = 8 + 1 + 16 + 4 + 4;
-constexpr quint32 kMaxPlain = 1024u * 1024u * 1024u; // the announced size of the decompressed text
+constexpr quint32 kMaxPlain = 256u * 1024u * 1024u; // the announced size of the decompressed text
 constexpr qint64 kMaxPictureBytes = 64LL * 1024 * 1024;
 const QString kFormat = QStringLiteral("clipitto-sync");
 
@@ -56,7 +57,12 @@ QString normalizeStamp(const QString& text)
     if (!t.isValid()) {
         t = QDateTime::fromString(text, Qt::ISODate);
     }
-    return t.isValid() ? t.toUTC().toString(Qt::ISODateWithMs) : QString();
+    if (!t.isValid()) {
+        return {};
+    }
+    // A time from a file is never trusted to be in the future (a hostile or wrong clock would win every conflict).
+    const QDateTime limit = QDateTime::currentDateTimeUtc().addSecs(300);
+    return (t > limit ? limit : t).toUTC().toString(Qt::ISODateWithMs);
 }
 
 QString stamp(const QDateTime& time)
@@ -254,8 +260,19 @@ Decoded decode(const QByteArray& file, const Key& key)
     }
     const QJsonObject root = doc.object();
     Content& c = out.content;
-    c.deviceId = root.value(QStringLiteral("device")).toString();
-    c.deviceName = root.value(QStringLiteral("name")).toString();
+    c.deviceId = root.value(QStringLiteral("device")).toString().left(64);
+    for (const QChar ch : c.deviceId) {
+        if (!ch.isLetterOrNumber()) {
+            c.deviceId.clear(); // shown in the UI and used as a file name stem: letters and digits only
+            break;
+        }
+    }
+    c.deviceName = root.value(QStringLiteral("name")).toString().left(64);
+    for (QChar& ch : c.deviceName) {
+        if (ch.unicode() < 0x20 || ch.unicode() == 0x7f) {
+            ch = QLatin1Char(' ');
+        }
+    }
     c.written = normalizeStamp(root.value(QStringLiteral("written")).toString());
     for (const QJsonValue& v : root.value(QStringLiteral("items")).toArray()) {
         c.items.push_back(itemFromJson(v.toObject()));
@@ -293,9 +310,7 @@ FolderState checkFolder(const QString& folder)
     if (!info.isDir()) {
         return FolderState::NotDirectory;
     }
-    if (!info.isWritable() || !info.isExecutable()) {
-        return FolderState::NotWritable;
-    }
+    // Writability is found out by writing (QFileInfo::isWritable is wrong for synced folders on Windows).
     return FolderState::Ok;
 }
 
@@ -316,13 +331,15 @@ QString describe(FolderState state)
 
 namespace {
 
-void syncToDisk(QFile& file)
+bool syncToDisk(QFile& file)
 {
-    file.flush();
+    if (!file.flush()) {
+        return false;
+    }
 #ifdef Q_OS_WIN
-    _commit(file.handle());
+    return _commit(file.handle()) == 0;
 #else
-    ::fsync(file.handle());
+    return ::fsync(file.handle()) == 0;
 #endif
 }
 
@@ -368,8 +385,7 @@ bool writeAtomic(const QString& folder, const QString& fileName, const QByteArra
             return fail(QObject::tr("Can't write in %1: %2").arg(folder, file.errorString()));
         }
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        const bool wrote = file.write(data) == data.size();
-        syncToDisk(file);
+        const bool wrote = file.write(data) == data.size() && syncToDisk(file); // not published unless it reached the disk
         file.close(); // closed before the rename: Windows would refuse otherwise
         if (!wrote || file.error() != QFileDevice::NoError) {
             const QString why = file.errorString();
@@ -722,8 +738,12 @@ void Merger::item(const Item& it)
         }
         hash = m_repo.textHash(it.content);
     }
-    const QString note = it.note.trimmed();
-    const QString group = groups::normalize(it.group);
+    if (!it.image && !secretscan::kindOf(it.content).isEmpty()) {
+        ++m_stats.skipped; // a key or token is kept as a password copy or not at all, never as plain text from a file
+        return;
+    }
+    const QString note = it.note.trimmed().left(4096);
+    const QString group = groups::normalize(it.group.left(256));
     const QString remoteChange = changeTime(it.lastUsed, it.metaChanged);
 
     if (const auto id = m_repo.findByHash(hash)) {

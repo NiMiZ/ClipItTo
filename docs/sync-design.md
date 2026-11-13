@@ -186,6 +186,19 @@ and why), device name, and a plain statement of what is and is not synced. `clip
   Remove a retired device's file by hand.
 - Not tried with real sync clients on Windows or macOS (see `docs/untested.md`).
 
+## Review findings kept as known limits
+
+- **Rollback.** Someone who can write the folder can put an old copy of a device's file back (no key needed); deleted
+  copies then return. A per-device "last written" check is not built yet.
+- **Hostile group members / folder writers.** Times from a file are clamped to now + 5 minutes; keys and tokens in a
+  file are not imported; names are trimmed. Not yet capped: the number of saved (pinned/starred/grouped) items one file
+  may bring, the star caps on import, and pictures are not re-decoded or re-hashed. A file can make ClipItTo read up to
+  256 MiB per poll; a stalled share can delay quitting (workers are not cancelled).
+- **Keyring on the GUI thread.** Reading, writing and removing the key use the keyring from the GUI thread (like the
+  history key), once per session unless it errors.
+- **Wiping.** Key copies held by worker lambdas are not zeroed (Qt shares the buffers); the passphrase text from the
+  dialog is wiped after use.
+
 ## Alternatives rejected
 
 - *The database in the shared folder*: corrupts (above).

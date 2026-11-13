@@ -104,6 +104,7 @@ void SyncService::applyConfig(const Config& config, bool runSoon)
         return;
     }
     if (first || !previous.syncEnabled || previous.syncFolder != config.syncFolder) {
+        ++m_generation;
         m_known.clear();
         m_devices.clear();
         if (!m_watched.isEmpty()) {
@@ -201,6 +202,7 @@ void SyncService::setPassphrase(const QString& folder, QByteArray passphrase, bo
                  false);
             return;
         }
+        ++m_generation;
         m_key.wipe();
         m_key = r.key;
         m_keyLoaded = true;
@@ -248,6 +250,7 @@ void SyncService::removePassphrase()
             qCWarning(lcSync).noquote() << "could not remove the sync key from the keyring:" << error;
         }
     }
+    ++m_generation;
     m_key.wipe();
     m_key = {};
     m_keyLoaded = true;
@@ -312,12 +315,17 @@ void SyncService::run(bool manual)
     const sync::Key key = m_key;
     const QString own = m_deviceId;
     const QHash<QString, sync::Known> known = m_known;
+    m_readGeneration = m_generation;
     m_reading.setFuture(QtConcurrent::run([folder, key, own, known] {
         ReadJob job;
-        job.state = sync::checkFolder(folder);
-        if (job.state == sync::FolderState::Ok) {
-            job.files = sync::readFolder(folder, key, own, known);
-            job.ownFileExists = QFileInfo::exists(QDir(folder).filePath(sync::fileNameFor(own)));
+        try {
+            job.state = sync::checkFolder(folder);
+            if (job.state == sync::FolderState::Ok) {
+                job.files = sync::readFolder(folder, key, own, known);
+                job.ownFileExists = QFileInfo::exists(QDir(folder).filePath(sync::fileNameFor(own)));
+            }
+        } catch (const std::exception&) {
+            job.error = QObject::tr("The sync folder could not be read.");
         }
         return job;
     }));
@@ -325,7 +333,22 @@ void SyncService::run(bool manual)
 
 void SyncService::onRead()
 {
-    ReadJob job = m_reading.result();
+    ReadJob job;
+    try {
+        job = m_reading.result();
+    } catch (const std::exception&) {
+        job.state = sync::FolderState::Missing;
+        job.error = tr("The sync folder could not be read.");
+    }
+    if (m_readGeneration != m_generation) {
+        finishRun(); // the key or the folder changed meanwhile: this answer is stale, the next run starts afresh
+        scheduleRun(500);
+        return;
+    }
+    if (!job.error.isEmpty()) {
+        fail(job.error);
+        return;
+    }
     if (job.state != sync::FolderState::Ok) {
         fail(sync::describe(job.state));
         return;
@@ -472,7 +495,11 @@ void SyncService::stepCollect()
         WriteJob job;
         const QByteArray data = sync::encode(content, key, cost);
         job.bytes = data.size();
-        job.ok = !data.isEmpty() && sync::writeAtomic(folder, sync::fileNameFor(content.deviceId), data, &job.error);
+        try {
+            job.ok = !data.isEmpty() && sync::writeAtomic(folder, sync::fileNameFor(content.deviceId), data, &job.error);
+        } catch (const std::exception&) {
+            job.ok = false;
+        }
         if (data.isEmpty() && job.error.isEmpty()) {
             job.error = QObject::tr("The sync file could not be made.");
         }
@@ -482,7 +509,17 @@ void SyncService::stepCollect()
 
 void SyncService::onWritten()
 {
-    const WriteJob job = m_writing.result();
+    WriteJob job;
+    try {
+        job = m_writing.result();
+    } catch (const std::exception&) {
+        job.error = tr("The sync file could not be written.");
+    }
+    if (m_readGeneration != m_generation) {
+        finishRun();
+        scheduleRun(500);
+        return;
+    }
     if (!job.ok) {
         fail(job.error);
         return;
@@ -525,8 +562,8 @@ void SyncService::finishRun()
 void SyncService::watchFolder()
 {
     const QString folder = m_config.syncFolder.trimmed();
-    if (folder == m_watched) {
-        return;
+    if (folder == m_watched && m_watcher.directories().contains(folder)) {
+        return; // (a watch the system dropped, as when a share went away, is added again)
     }
     if (!m_watched.isEmpty()) {
         m_watcher.removePath(m_watched);

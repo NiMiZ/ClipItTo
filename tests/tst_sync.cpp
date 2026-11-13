@@ -504,6 +504,33 @@ private slots:
         QCOMPARE(a.repo->count(), qint64(0));
     }
 
+    void futureTimesFromAFileAreClampedAndTokensAreNotImported()
+    {
+        s::Content c;
+        c.deviceId = QStringLiteral("dev");
+        c.deviceName = QStringLiteral("name\nwith <b>markup</b>");
+        s::Item item;
+        item.content = QStringLiteral("normal");
+        item.created = item.lastUsed = item.metaChanged = QStringLiteral("2999-01-01T00:00:00.000Z");
+        c.items.push_back(item);
+        s::Item token;
+        token.content = QStringLiteral("ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789");
+        token.created = token.lastUsed = QStringLiteral("2026-01-01T00:00:00.000Z");
+        c.items.push_back(token);
+        c.tombstones.push_back({QStringLiteral("h"), QStringLiteral("2999-01-01T00:00:00.000Z")});
+        const s::Key key = makeKey();
+        const s::Decoded d = s::decode(s::encode(c, key, kCheap), key);
+        QCOMPARE(d.status, s::ReadStatus::Ok);
+        QVERIFY(QDateTime::fromString(d.content.items[0].lastUsed, Qt::ISODateWithMs) < QDateTime::currentDateTimeUtc().addSecs(600));
+        QVERIFY(QDateTime::fromString(d.content.tombstones[0].at, Qt::ISODateWithMs) < QDateTime::currentDateTimeUtc().addSecs(600));
+        QVERIFY(!d.content.deviceName.contains(QLatin1Char('\n')));
+        TestDb a;
+        const auto stats = mergeInto(a, {d.content});
+        QCOMPARE(stats.added, 1);
+        QCOMPARE(stats.skipped, 1); // the token
+        QVERIFY(!a.repo->findByHash(hashOf(a, token.content)));
+    }
+
     void picturesAreMerged()
     {
         TestDb a;

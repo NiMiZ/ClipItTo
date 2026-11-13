@@ -839,6 +839,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_syncNowButton = new QPushButton(tr("Sync now"), syncPage);
     m_syncStatus = new QLabel(syncPage);
     m_syncStatus->setWordWrap(true);
+    m_syncStatus->setTextFormat(Qt::PlainText); // device names come from files in the folder
     m_syncStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
     auto* nowRow = new QHBoxLayout;
     nowRow->addWidget(m_syncNowButton);
@@ -1104,7 +1105,7 @@ void SettingsDialog::setSyncPassphrase()
         m_notify(this, tr("The sync passphrase needs at least %1 characters.").arg(kMinSyncPassphrase));
         return;
     }
-    QByteArray bytes = PasswordVault::passwordBytes(*typed);
+    QByteArray bytes = PasswordVault::passwordBytes(*typed); // wipes `typed`
     startSyncPassphrase(folder, std::move(bytes), /*startNew=*/false);
 }
 

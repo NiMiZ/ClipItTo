@@ -69,6 +69,7 @@ signals:
 private:
     struct ReadJob {
         sync::FolderState state = sync::FolderState::Ok;
+        QString error; // the worker failed
         bool ownFileExists = false;
         std::vector<sync::RemoteFile> files;
     };
@@ -121,6 +122,8 @@ private:
     QFileSystemWatcher m_watcher;
     QString m_watched;
 
+    quint64 m_generation = 0; // bumped when the key or the folder changes: an answer from before is dropped
+    quint64 m_readGeneration = 0;
     bool m_running = false;
     bool m_again = false;
     int m_backoffMs = 0; // 0: not failing
