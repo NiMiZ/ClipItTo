@@ -399,6 +399,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("panic_key", config.panicKey);
     r.optionalHotkey("panic_hotkey", config.panicHotkey);
     r.autoForget("auto_forget", config.autoForget);
+    r.boolean("lock_on_screen_lock", config.lockOnScreenLock);
     r.boolean("sync_enabled", config.syncEnabled);
     r.text("sync_folder", config.syncFolder, 1024);
     r.text("sync_device_name", config.syncDeviceName, 64);
@@ -542,6 +543,7 @@ std::vector<Line> lines(const Config& c)
         {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},
+        {"lock_on_screen_lock", tomlBool(c.lockOnScreenLock), "lock the passwords when the screen locks or the PC sleeps"},
         {"panic_key", tomlBool(c.panicKey), "the panic shortcut below works: wipes the history, locks the passwords, empties the clipboard, no question"},
         {"panic_hotkey", tomlString(c.panicHotkey.toStdString()), "the panic shortcut, e.g. \"Ctrl+Alt+Shift+Delete\"; empty = none"},
     };

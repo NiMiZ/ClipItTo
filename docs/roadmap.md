@@ -46,8 +46,10 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
 
 ## Known gaps
 
-- **Passwords don't lock with the screen.** Today: `clipitto --lock` from a screen-lock hook, or a short
-  unlock time. Wanted: lock on screen lock and on sleep (logind / `NSWorkspace` / `WTS` session events).
+- **DONE: Passwords lock with the screen** (`lock_on_screen_lock`, on by default): on screen lock and on sleep
+  (Windows WTS session and power events, macOS screen-lock and sleep notifications, Linux logind and screensaver
+  D-Bus signals). Not yet tried on real sessions (see untested.md). Touch ID is still only a gate: binding the
+  Keychain item to the fingerprint needs a paid Apple Developer ID certificate, not code.
 - **Linux has no fingerprint unlock and no "Forgot it…" reset.** fprintd and polkit only answer yes or no
   and hold no key. A copy of the unlock key in the system keyring is possible but only as strong as the
   login session; it would be off by default with a warning.

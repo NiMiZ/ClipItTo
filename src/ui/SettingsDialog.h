@@ -241,6 +241,7 @@ public:
     QCheckBox* passwordsInGroupBox() const { return m_passwordsInGroup; }
     QCheckBox* passwordsInRecentBox() const { return m_passwordsInRecent; }
     QCheckBox* askNoteBox() const { return m_askNote; }
+    QCheckBox* lockOnScreenLockBox() const { return m_lockOnScreenLock; }
     QSpinBox* unlockMinutesBox() const { return m_unlockMinutes; }
     QSpinBox* clearSecondsBox() const { return m_clearSeconds; }
     QSpinBox* pasteOnceClearSecondsBox() const { return m_pasteOnceClearSeconds; }
@@ -401,6 +402,7 @@ private:
     QCheckBox* m_passwordsInGroup;
     QCheckBox* m_passwordsInRecent;
     QCheckBox* m_askNote;
+    QCheckBox* m_lockOnScreenLock;
     QSpinBox* m_unlockMinutes;
     QSpinBox* m_clearSeconds;
     QSpinBox* m_pasteOnceClearSeconds;

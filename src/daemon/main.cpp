@@ -2,6 +2,7 @@
 #include "AppIcon.h"
 #include "Theme.h"
 #include "Daemon.h"
+#include "ScreenLockWatcher.h"
 #include "MacApp.h"
 #include "Paths.h"
 #include "PopupWindow.h"
@@ -105,6 +106,7 @@ int main(int argc, char* argv[])
     auto keyringNotice = std::make_shared<std::function<void(const QString&)>>();
     options.keyStore = std::make_shared<clipitto::AnnouncingKeyStore>(
         clipitto::createSystemKeyStore(), QStringLiteral("history"), keyringNotice);
+    options.screenLockWatcher = clipitto::createScreenLockWatcher();
     options.matchKeyStore = std::make_shared<clipitto::AnnouncingKeyStore>(
         clipitto::createSystemKeyStore(QStringLiteral("password-match-key")), QStringLiteral("passwords"), keyringNotice);
 

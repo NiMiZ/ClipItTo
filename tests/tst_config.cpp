@@ -165,6 +165,7 @@ private slots:
         QCOMPARE(defaults.passwordClearSeconds, 2);
         QCOMPARE(defaults.pasteOnceClearSeconds, 2);
         QVERIFY(!defaults.windowsHello);
+        QVERIFY(defaults.lockOnScreenLock); // locking is the safe direction: on by default
         QCOMPARE(defaults.passwordSearchKeyword, QStringLiteral("p[]"));
 
         const Config c = Config::fromToml("keep_passwords = false\npasswords_in_group = true\n"
@@ -213,6 +214,28 @@ private slots:
         QStringList more;
         QCOMPARE(Config::fromToml("password_search_keyword = \"\"", &more).passwordSearchKeyword, QStringLiteral("p[]"));
         QCOMPARE(more.size(), 1);
+    }
+
+    void lockOnScreenLockRoundTripsAndWarnsOnABadValue()
+    {
+        QStringList warnings;
+        QVERIFY(Config::fromToml("", &warnings).lockOnScreenLock); // default on
+        QVERIFY(warnings.isEmpty());
+        Config off;
+        off.lockOnScreenLock = false;
+        QVERIFY(off.toToml().find("lock_on_screen_lock = false") != std::string::npos);
+        QVERIFY(!Config::fromToml(off.toToml(), &warnings).lockOnScreenLock);
+        QVERIFY(warnings.isEmpty());
+        QVERIFY(Config::fromToml(off.toToml()) == off);
+        // Merged into an existing file: the other lines stay.
+        const std::string merged = off.mergeInto("# mine\nrecent_count = 7\n");
+        QVERIFY(merged.find("# mine") != std::string::npos);
+        QVERIFY(merged.find("lock_on_screen_lock = false") != std::string::npos);
+        // Not a boolean: warned about, and the safe default (on) stays.
+        QStringList bad;
+        QVERIFY(Config::fromToml("lock_on_screen_lock = \"no\"\n", &bad).lockOnScreenLock);
+        QCOMPARE(bad.size(), 1);
+        QVERIFY(bad.at(0).contains(QLatin1String("lock_on_screen_lock")));
     }
 
     void pasteKeysPerAppRules()

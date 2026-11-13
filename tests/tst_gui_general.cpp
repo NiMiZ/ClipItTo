@@ -239,6 +239,7 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"password_clear_seconds", [](SettingsDialog& d) { d.clearSecondsBox()->setValue(12); }},
         {"paste_once_clear_seconds", [](SettingsDialog& d) { d.pasteOnceClearSecondsBox()->setValue(9); }},
         {"password_search_keyword", [](SettingsDialog& d) { d.keywordEdit()->setText(QStringLiteral("pw[]")); }},
+        {"lock_on_screen_lock", [](SettingsDialog& d) { toggle(d.lockOnScreenLockBox()); }},
         {"sync_enabled", [](SettingsDialog& d) { toggle(d.syncEnabledBox()); }},
         {"sync_folder", [](SettingsDialog& d) { d.syncFolderEdit()->setText(QStringLiteral("/srv/clipitto-sync")); }},
         {"sync_device_name", [](SettingsDialog& d) { d.syncNameEdit()->setText(QStringLiteral("Laptop")); }},
@@ -404,6 +405,7 @@ private slots:
             {"password_clear_seconds", "2"}, {"paste_once_clear_seconds", "2"},
             {"sync_enabled", "false"},    {"sync_folder", "\"\""},     {"sync_max_copies", "2000"}, {"sync_pictures", "true"},
             {"sync_picture_max_kb", "2048"}, {"sync_tombstone_days", "30"}, {"password_search_keyword", "\"p[]\""}, {"backend", "\"auto\""},
+            {"lock_on_screen_lock", "true"},
             {"panic_key", "false"},       {"panic_hotkey", "\"\""},
         };
         for (const auto& [key, expected] : rows) {

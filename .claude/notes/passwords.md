@@ -67,10 +67,23 @@ Settings shows a red "Not secure" notice; Windows Hello is disabled; `--status`:
 whether to include them as CLEAR TEXT (`passwords.clear = true` in the JSON, items' `data` = base64 plain);
 "No" exports without them (`PasswordExport::Omit`). Import of a clear file needs only a vault here (either mode).
 
+## Lock with the screen (`lock_on_screen_lock`, default on)
+`ScreenLockWatcher` (src/daemon/ScreenLockWatcher.h) is the one interface; `start()` returns false = unsupported,
+signal `locked(reason)`. Implementations: `_win.cpp` (hidden top-level window, WTSRegisterSessionNotification for this
+session, WM_WTSSESSION_CHANGE lock/console+remote disconnect, WM_POWERBROADCAST PBT_APMSUSPEND; the window procedure only
+queues the signal), `_mac.mm` (screenIsLocked, will-sleep, screens-did-sleep; not run on a real Mac), `_dbus.cpp`
+(`DbusScreenLockWatcher`: logind `Session.Lock` on the user's own session found by GetSessionByPID then XDG_SESSION_ID,
+`Manager.PrepareForSleep(true)`, `org.gnome.ScreenSaver` / `org.freedesktop.ScreenSaver` ActiveChanged(true); unlock
+signals ignored), `_none.cpp`. `DaemonOptions::screenLockWatcher` (main.cpp passes the platform's; null = reported
+unsupported; tests pass `FakeScreenLockWatcher`). `Daemon::applyScreenLockWatch` starts/stops it with the setting;
+`onScreenLocked` calls `PasswordKeeper::lock()` (same as `--lock`: nothing in open mode, nothing when already locked;
+the pasted-password clear timer is untouched). `--status`: `lock_on_screen_lock: on (watching) | on (unsupported here) | off`.
+Tests: tst_daemon (fake watcher), tst_config, tst_gui_general, tst_screenlock (fake logind/screensaver on a private bus).
+
 ## Limits to remember
 Protects the file at rest and other people at your session while locked; not programs running as the user
 (they can read the clipboard) and on GNOME the password crosses D-Bus from the extension to the daemon.
-No auto-lock on screen lock yet. GNOME extension can put only one format on the clipboard (no markers there).
+GNOME extension can put only one format on the clipboard (no markers there).
 Not yet hands-on verified: Windows Hello prompt, real KeePass/Bitwarden source-app names, macOS Keychain.
 Code: `src/core/{PasswordVault,PasswordKeeper,CapturePipeline,ClipFilter}.cpp`, `src/daemon/WindowsHello_*.cpp`.
 Tests: `tst_vault`, `tst_repository`, `tst_pipeline`/popup/search tests, `tst_backup`.

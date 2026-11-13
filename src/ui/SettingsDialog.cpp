@@ -173,6 +173,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_passwordsInGroup(new QCheckBox(tr("Put new password copies in the \"Passwords\" group"), this))
     , m_passwordsInRecent(new QCheckBox(tr("Show passwords entries in Recent"), this))
     , m_askNote(new QCheckBox(tr("After copying a password, ask for a name"), this))
+    , m_lockOnScreenLock(new QCheckBox(tr("Lock the passwords when the screen locks or the PC sleeps"), this))
     , m_unlockMinutes(new QSpinBox(this))
     , m_clearSeconds(new QSpinBox(this))
     , m_pasteOnceClearSeconds(new QSpinBox(this))
@@ -671,6 +672,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_unlockMinutes->setSuffix(tr(" min"));
     m_unlockMinutes->setValue(config.passwordUnlockMinutes);
     passwordsForm->addRow(tr("An unlock lasts:"), m_unlockMinutes);
+    // Lock with the screen (separate block).
+    m_lockOnScreenLock->setChecked(config.lockOnScreenLock);
+    m_lockOnScreenLock->setToolTip(
+        QStringLiteral("<p>%1</p>")
+            .arg(tr("Locks the passwords at once when your screen locks or the PC goes to sleep, as Lock now does. "
+                    "Works on Windows (session lock, disconnect, sleep), macOS (screen lock, sleep) and on Linux "
+                    "through systemd-logind and the GNOME or freedesktop screensaver; on Linux it depends on "
+                    "those being there, and ClipItTo can't tell when they are not (Settings and --status say "
+                    "when this system gives no such events). It has no effect without a master password.")));
+    passwordsForm->addRow(QString(), m_lockOnScreenLock);
     m_clearSeconds->setRange(0, 60);
     m_clearSeconds->setSuffix(tr(" s"));
     m_clearSeconds->setSpecialValueText(tr("Never"));
@@ -1143,6 +1154,7 @@ Config SettingsDialog::config() const
     c.keepPasswords = m_keepPasswords->isChecked();
     c.passwordsInGroup = m_passwordsInGroup->isChecked();
     c.passwordAskNote = m_askNote->isChecked();
+    c.lockOnScreenLock = m_lockOnScreenLock->isChecked();
     c.passwordUnlockMinutes = m_unlockMinutes->value();
     c.passwordClearSeconds = m_clearSeconds->value();
     c.pasteOnceClearSeconds = m_pasteOnceClearSeconds->value();
@@ -1812,6 +1824,7 @@ void SettingsDialog::updatePasswordPage()
     m_useOpen->setEnabled(keeper && !m_busy);
     m_openWarning->setVisible(open);
     m_askNote->setEnabled(setUp);
+    m_lockOnScreenLock->setEnabled(setUp);
     m_detectSecrets->setEnabled(setUp);
     m_detectPasswords->setEnabled(setUp);
     m_rulesPanel->setEnabled(setUp);

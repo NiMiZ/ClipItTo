@@ -117,6 +117,8 @@ sync_tombstone_days = 30    # how long a deletion is announced to the other PCs 
 windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks
+lock_on_screen_lock = true   # lock the passwords when the screen locks or the PC sleeps (Windows, macOS, Linux
+                            # with systemd-logind or GNOME/KDE screensaver); false = only the timer and Lock now
 panic_key = false           # PANIC KEY, off by default. true = the shortcut below works. Pressing it wipes the
                             # history (like "Clear everything, also in groups"), locks the passwords and empties
                             # the system clipboard, at once and WITHOUT asking. `clipitto --panic` always works
