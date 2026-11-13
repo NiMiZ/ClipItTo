@@ -635,6 +635,55 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                            "you copy something else."));
     passwordsForm->addRow(tr("Clear a Paste once copy after:"), m_pasteOnceClearSeconds);
 
+    // Panic key: off by default. The shortcut wipes everything at once, with no question.
+    m_shortcutsEditable = shortcut.editable;
+    m_panicHotkey = config.panicHotkey;
+    m_panicKey = new QCheckBox(tr("Panic key: wipe everything without asking"), this);
+    m_panicKey->setChecked(config.panicKey);
+    const QString panicHelp = tr("Pressing the panic shortcut deletes the whole history (also pinned, starred, grouped and "
+                                 "password copies, like \"Clear everything, also in groups\"), locks the password copies "
+                                 "and empties the system clipboard, at once and WITHOUT asking. It cannot be undone. Your "
+                                 "groups, settings and master password stay. Off by default. The command "
+                                 "\"clipitto --panic\" does the same and works whatever this box says.");
+    m_panicKey->setToolTip(panicHelp);
+    passwordsForm->addRow(QString(), m_panicKey);
+    auto* panicRow = new QHBoxLayout;
+    m_panicShortcut = new QKeySequenceEdit(this);
+    m_panicShortcut->setKeySequence(sequenceFor(m_panicHotkey));
+    m_panicShortcut->setToolTip(panicHelp);
+    auto* panicNone = new QPushButton(tr("None"), this);
+    panicNone->setToolTip(tr("Remove the panic shortcut"));
+    panicRow->addWidget(m_panicShortcut, 1);
+    panicRow->addWidget(panicNone);
+    passwordsForm->addRow(tr("Panic shortcut:"), panicRow);
+    m_panicStatus = new QLabel(this);
+    m_panicStatus->setWordWrap(true);
+    m_panicStatus->setEnabled(false); // dim
+    passwordsForm->addRow(QString(), m_panicStatus);
+    const auto syncPanic = [this] {
+        const bool on = m_panicKey->isChecked() && m_shortcutsEditable;
+        m_panicShortcut->setEnabled(on);
+        if (!m_shortcutsEditable) {
+            setNote(m_panicStatus, tr("Bind \"clipitto --panic\" to a shortcut in your desktop's keyboard settings."));
+        } else if (m_panicKey->isChecked() && m_panicHotkey.isEmpty()) {
+            setNote(m_panicStatus, tr("Panic key is on, but no shortcut is set: choose one."));
+        } else if (m_panicKey->isChecked()) {
+            setNote(m_panicStatus, tr("Wipes everything without asking: %1").arg(m_panicHotkey));
+        } else {
+            setNote(m_panicStatus, QString());
+        }
+    };
+    connect(m_panicKey, &QCheckBox::toggled, this, syncPanic);
+    connect(panicNone, &QPushButton::clicked, this, [this, syncPanic] {
+        m_panicHotkey.clear();
+        QSignalBlocker block(m_panicShortcut);
+        m_panicShortcut->clear();
+        syncPanic();
+    });
+    connect(m_panicShortcut, &QKeySequenceEdit::keySequenceChanged, this, [this] { onPanicShortcutEdited(); });
+    panicNone->setEnabled(m_shortcutsEditable);
+    syncPanic();
+
     // Auto-forget: copies that remove themselves. Pinned, starred, grouped and password copies are never touched.
     m_forgetPanel = new QWidget(this);
     auto* forgetOuter = new QVBoxLayout(m_forgetPanel);
@@ -928,6 +977,8 @@ Config SettingsDialog::config() const
     c.passwordUnlockMinutes = m_unlockMinutes->value();
     c.passwordClearSeconds = m_clearSeconds->value();
     c.pasteOnceClearSeconds = m_pasteOnceClearSeconds->value();
+    c.panicKey = m_panicKey->isChecked();
+    c.panicHotkey = m_panicHotkey;
     c.windowsHello = m_passwordSupport.keeper && m_passwordSupport.keeper->helloEnabled();
     if (m_keyword->hasAcceptableInput()) {
         c.passwordSearchKeyword = m_keyword->text();
@@ -1080,6 +1131,8 @@ void SettingsDialog::finishImport(const QString& path, const backup::Info& info,
         Config merged = *report->settings;
         const Config mine = config();
         merged.hotkey = mine.hotkey;
+        merged.panicKey = mine.panicKey; // a file never turns the panic key on
+        merged.panicHotkey = mine.panicHotkey;
         merged.backend = mine.backend;
         merged.encryptHistory = mine.encryptHistory;
         merged.windowsHello = mine.windowsHello;
@@ -1642,7 +1695,12 @@ void SettingsDialog::onShortcutEdited()
         m_shortcut->setKeySequence(first);
     }
     const auto parsed = parseHotkey(swapMacModifiers(first.toString(QKeySequence::PortableText), /*toQt=*/false));
-    if (parsed) {
+    if (parsed && !m_panicHotkey.isEmpty() && parsed->canonical == m_panicHotkey) {
+        QSignalBlocker block(m_shortcut);
+        m_shortcut->setKeySequence(sequenceFor(m_hotkey));
+        setNote(m_shortcutStatus, tr("%1 is the panic shortcut: choose another one. Keeping %2.")
+                                      .arg(parsed->canonical, m_hotkey));
+    } else if (parsed) {
         m_hotkey = parsed->canonical;
         setNote(m_shortcutStatus, tr("Opens the popup: %1").arg(m_hotkey));
     } else {
@@ -1655,6 +1713,38 @@ void SettingsDialog::onShortcutEdited()
                                      "F-key or ` - = [ ] ; ' , . /. Keeping %3.")
                                       .arg(first.toString(QKeySequence::NativeText), modifiers, m_hotkey));
     }
+}
+
+void SettingsDialog::onPanicShortcutEdited()
+{
+    const QKeySequence sequence = m_panicShortcut->keySequence();
+    if (sequence.isEmpty()) {
+        return;
+    }
+    const QKeySequence first(sequence[0]);
+    if (sequence.count() > 1) {
+        QSignalBlocker block(m_panicShortcut);
+        m_panicShortcut->setKeySequence(first);
+    }
+    const auto parsed = parseHotkey(swapMacModifiers(first.toString(QKeySequence::PortableText), /*toQt=*/false));
+    const auto popup = parseHotkey(m_hotkey);
+    QString note;
+    if (!parsed) {
+        note = tr("%1 can't be used as a shortcut. Keeping %2.").arg(first.toString(QKeySequence::NativeText),
+                                                                    m_panicHotkey.isEmpty() ? tr("none") : m_panicHotkey);
+    } else if (popup && popup->canonical == parsed->canonical) {
+        note = tr("%1 already opens the popup: choose another shortcut for the panic key. Keeping %2.")
+                   .arg(parsed->canonical, m_panicHotkey.isEmpty() ? tr("none") : m_panicHotkey);
+    }
+    if (!note.isEmpty()) {
+        QSignalBlocker block(m_panicShortcut);
+        m_panicShortcut->setKeySequence(sequenceFor(m_panicHotkey));
+        setNote(m_panicStatus, note);
+        return;
+    }
+    m_panicHotkey = parsed->canonical;
+    setNote(m_panicStatus, m_panicKey->isChecked() ? tr("Wipes everything without asking: %1").arg(m_panicHotkey)
+                                                   : tr("Saved, but the panic key is off."));
 }
 
 QString SettingsDialog::selectedGroup() const

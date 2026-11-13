@@ -193,6 +193,9 @@ public:
     QSpinBox* unlockMinutesBox() const { return m_unlockMinutes; }
     QSpinBox* clearSecondsBox() const { return m_clearSeconds; }
     QSpinBox* pasteOnceClearSecondsBox() const { return m_pasteOnceClearSeconds; }
+    QCheckBox* panicKeyBox() const { return m_panicKey; }
+    QKeySequenceEdit* panicShortcutEdit() const { return m_panicShortcut; }
+    QLabel* panicShortcutStatus() const { return m_panicStatus; }
     QCheckBox* helloBox() const { return m_hello; }
     QLineEdit* keywordEdit() const { return m_keyword; }
     QLabel* masterStatus() const { return m_masterStatus; }
@@ -216,6 +219,7 @@ public:
 
 private:
     void onShortcutEdited();
+    void onPanicShortcutEdited();
     void reloadGroups(const QString& select = {});
     void createGroup(const QString& parentPath);
     void addRuleRow(const PasswordRule& rule);
@@ -244,6 +248,11 @@ private:
     QCheckBox* m_pasteAsOthers = nullptr;
     db::Repository& m_repo;
     QString m_hotkey; // last valid shortcut, canonical spelling
+    QString m_panicHotkey; // the panic shortcut: last valid one, canonical spelling; empty = none
+    bool m_shortcutsEditable = true; // this session lets ClipItTo set shortcuts itself
+    QCheckBox* m_panicKey = nullptr;
+    QKeySequenceEdit* m_panicShortcut = nullptr;
+    QLabel* m_panicStatus = nullptr;
     bool m_groupsChanged = false;
     QCheckBox* m_autoGroup = nullptr;
     QPushButton* m_forgetLearned = nullptr;
