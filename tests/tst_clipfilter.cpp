@@ -105,7 +105,7 @@ private slots:
         ClipFilter f(1024);
         const auto expected = sensitive ? Verdict::Sensitive : transient ? Verdict::Transient : Verdict::Accept;
         QVERIFY(f.check(QStringLiteral("some text"), types) == expected);
-        const ImageClip none;
+        const clipitto::ImageClip none;
         if (sensitive || transient) {
             QVERIFY(f.checkImage(none, types) == expected);
         }
