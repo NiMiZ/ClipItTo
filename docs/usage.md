@@ -147,7 +147,7 @@ text. *Keep copies that look like generated passwords as password copies* (Passw
 `detect_passwords`, off by default; needs a master password or *Use without one…*) keeps a
 single-line copy of 8 to 64 characters without spaces that mixes three of lower case, upper case,
 digits and symbols as a password copy. It is a guess by shape and will take some ordinary copies
-(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md).
+(*Not a password* in the right-click menu undoes it); see [passwords.md](passwords.md). A copy from an actual password field is not detected by where it came from: browsers set no marker for it, and the focus-based signals of Windows and macOS are not reliable (see [password-field-research.md](password-field-research.md)).
 
 **Your own password rules:** Settings › Passwords › *Password rules* (`password_rules`, up to 5)
 keeps a copy as a password copy when it fits a rule you define: a length range, minimum counts of

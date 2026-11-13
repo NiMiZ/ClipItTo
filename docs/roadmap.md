@@ -149,7 +149,7 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     clearing mechanism of the password work: `ClipboardWriter::clearPasted()` (the old `clearPassword()`) now also handles Paste once
     text and pictures. The automatic rules (by pattern or app) are not done.
 18. **DONE: Auto-forget:** copies that expire (`auto_forget`, Settings › Passwords › *Auto-forget*). *Details below.*
-19. **Password-field copies on Windows and macOS.** Some browsers set no password-manager marker when a password is copied from a
+19. **PARTLY DONE: Password-field copies on Windows and macOS.** *Research in [password-field-research.md](password-field-research.md). Done: the marker list is extended (KeeWeb as a secret; three more transient pasteboard types), with tests. Not done, on purpose: Windows UI Automation `IsPassword` and macOS `IsSecureEventInputEnabled` as signals (neither is reliable at copy time; no setting added).* Some browsers set no password-manager marker when a password is copied from a
     field. Today only the generated-password rule (off by default) and the user's own rules catch those. Look for other signals
     (the source window's class or title when it is a browser password field, a copy made right after an autofill) and see what
     each platform really offers; do nothing that reads more of the clipboard than now.
