@@ -130,6 +130,11 @@ void DbusControlChannel::LockPasswords()
     emit lockPasswordsRequested();
 }
 
+void DbusControlChannel::SyncNow()
+{
+    emit syncRequested();
+}
+
 void DbusControlChannel::Quit()
 {
     emit quitRequested();

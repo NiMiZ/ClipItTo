@@ -107,6 +107,9 @@ int main(int argc, char* argv[])
     options.matchKeyStore = std::make_shared<clipitto::AnnouncingKeyStore>(
         clipitto::createSystemKeyStore(QStringLiteral("password-match-key")), QStringLiteral("passwords"), keyringNotice);
 
+    options.syncKeyStore = std::make_shared<clipitto::AnnouncingKeyStore>(
+        clipitto::createSystemKeyStore(QStringLiteral("sync-key")), QStringLiteral("sync"), keyringNotice);
+
 #ifdef CLIPITTO_USE_DBUS
     clipitto::Daemon daemon(options,
                             std::make_unique<clipitto::ipc::DbusControlChannel>(QDBusConnection::sessionBus()),

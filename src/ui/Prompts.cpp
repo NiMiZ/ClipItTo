@@ -349,4 +349,56 @@ MasterPasswordPrompt defaultMasterPasswordPrompt()
     };
 }
 
+SyncPassphrasePrompt defaultSyncPassphrasePrompt()
+{
+    return [](QWidget* parent, bool change) -> std::optional<QString> {
+        const auto tr = [](const char* text) { return QCoreApplication::translate("clipitto::ui::SettingsDialog", text); };
+        QDialog dialog(parent);
+        dialog.setWindowTitle(change ? tr("Change the sync passphrase") : tr("Set a sync passphrase"));
+        auto* form = new QFormLayout;
+        const auto field = [&dialog] {
+            auto* edit = new QLineEdit(&dialog);
+            edit->setEchoMode(QLineEdit::Password);
+            edit->setInputMethodHints(Qt::ImhSensitiveData | Qt::ImhNoPredictiveText | Qt::ImhHiddenText);
+            return edit;
+        };
+        QLineEdit* chosen = field();
+        QLineEdit* repeat = field();
+        form->addRow(tr("Sync passphrase:"), chosen);
+        form->addRow(tr("Repeat it:"), repeat);
+        auto* state = new QLabel(&dialog);
+        auto* note = new QLabel(tr("The same passphrase on every PC that shares the folder. It encrypts the sync files and "
+                                   "is never stored or shown; the key made from it is kept in the system keyring. It is "
+                                   "not your master password. Use at least %1 characters: a few unrelated words make a "
+                                   "strong one.").arg(kMinSyncPassphrase),
+                                &dialog);
+        note->setWordWrap(true);
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        auto* layout = new QVBoxLayout(&dialog);
+        layout->addLayout(form);
+        layout->addWidget(state);
+        layout->addWidget(note);
+        layout->addWidget(buttons);
+        QPushButton* ok = buttons->button(QDialogButtonBox::Ok);
+        const auto update = [=] {
+            const bool longEnough = chosen->text().size() >= kMinSyncPassphrase;
+            const bool same = !chosen->text().isEmpty() && chosen->text() == repeat->text();
+            state->setText(!longEnough ? tr("Too short.") : (!same ? tr("The two fields differ.") : QString()));
+            ok->setEnabled(longEnough && same);
+        };
+        QObject::connect(chosen, &QLineEdit::textChanged, &dialog, update);
+        QObject::connect(repeat, &QLineEdit::textChanged, &dialog, update);
+        update();
+        QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        std::optional<QString> answer;
+        if (dialog.exec() == QDialog::Accepted) {
+            answer = chosen->text();
+        }
+        chosen->clear();
+        repeat->clear();
+        return answer;
+    };
+}
+
 } // namespace clipitto::ui

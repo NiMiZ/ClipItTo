@@ -49,6 +49,9 @@
     <!-- Locks the password copies now (the CLI's lock option). -->
     <method name="LockPasswords"/>
 
+    <!-- Runs one sync through the shared folder now (the CLI's sync option); does nothing when sync is off. -->
+    <method name="SyncNow"/>
+
     <!-- Exits the daemon. Under systemd, prefer stopping the clipitto.service user unit. -->
     <method name="Quit"/>
 

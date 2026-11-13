@@ -77,6 +77,14 @@ struct Config {
     int passwordClearSeconds = 2; // a pasted password leaves the clipboard this long after the paste (0..60); 0 = stays
     int pasteOnceClearSeconds = 2; // a "Paste once" copy leaves the clipboard this long after its paste (0..60); 0 = stays
     QList<AutoForgetRule> autoForget; // rules (up to 8) for copies that remove themselves; none = nothing is removed
+    // Sync through a folder the user syncs (Sync.h, docs/sync-design.md). The passphrase is not a setting: it is never stored.
+    bool syncEnabled = false;
+    QString syncFolder;
+    QString syncDeviceName; // empty: the computer's name
+    int syncMaxCopies = 2000; // unsaved copies in this PC's sync file; every saved copy is in it besides
+    bool syncPictures = true;
+    int syncPictureMaxKb = 2048; // larger pictures are not synced
+    int syncTombstoneDays = 30; // a deletion is announced this long
     bool windowsHello = false; // Windows: unlock with Windows Hello too
     QString passwordSearchKeyword = QStringLiteral("p[]"); // "p[] " starts a password search
 

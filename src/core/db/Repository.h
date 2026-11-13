@@ -262,6 +262,9 @@ public:
         QByteArray png; // a picture
     };
     std::optional<SyncItem> syncItem(qint64 id);
+    // What the last written sync file was made from (Collector::fingerprint), so an unchanged history is not written again.
+    QString syncFingerprint();
+    void setSyncFingerprint(const QString& fingerprint);
     struct Tombstone {
         QString hash;
         QString deletedAt;

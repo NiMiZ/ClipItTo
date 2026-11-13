@@ -68,6 +68,54 @@ private slots:
         QCOMPARE(warnings.size(), 1);
     }
 
+    void syncSettings()
+    {
+        const Config defaults;
+        QVERIFY(!defaults.syncEnabled); // off until the user turns it on
+        QVERIFY(defaults.syncFolder.isEmpty());
+        QVERIFY(defaults.syncDeviceName.isEmpty());
+        QCOMPARE(defaults.syncMaxCopies, 2000);
+        QVERIFY(defaults.syncPictures);
+        QCOMPARE(defaults.syncPictureMaxKb, 2048);
+        QCOMPARE(defaults.syncTombstoneDays, 30);
+
+        QStringList warnings;
+        const Config c = Config::fromToml("sync_enabled = true\nsync_folder = \"/home/me/Sync/clipitto\"\n"
+                                          "sync_device_name = \"Desk\"\nsync_max_copies = 500\nsync_pictures = false\n"
+                                          "sync_picture_max_kb = 300\nsync_tombstone_days = 7\n",
+                                          &warnings);
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1String("; "))));
+        QVERIFY(c.syncEnabled);
+        QCOMPARE(c.syncFolder, QStringLiteral("/home/me/Sync/clipitto"));
+        QCOMPARE(c.syncDeviceName, QStringLiteral("Desk"));
+        QCOMPARE(c.syncMaxCopies, 500);
+        QVERIFY(!c.syncPictures);
+        QCOMPARE(c.syncPictureMaxKb, 300);
+        QCOMPARE(c.syncTombstoneDays, 7);
+        QVERIFY(Config::fromToml(c.toToml()) == c); // round trip
+        // A Windows path with backslashes survives the round trip too.
+        Config win;
+        win.syncFolder = QStringLiteral("C:\\Users\\me\\OneDrive\\ClipItTo");
+        QVERIFY(Config::fromToml(win.toToml()).syncFolder == win.syncFolder);
+
+        // Out of range or the wrong type: reported, the default stays.
+        for (const char* bad : {"sync_max_copies = 5\n", "sync_max_copies = 999999\n", "sync_picture_max_kb = 1\n",
+                                "sync_tombstone_days = 0\n", "sync_tombstone_days = 4000\n", "sync_enabled = \"yes\"\n",
+                                "sync_folder = 5\n", "sync_device_name = \"bell\\u0007\"\n"}) {
+            warnings.clear();
+            const Config d = Config::fromToml(bad, &warnings);
+            QCOMPARE(warnings.size(), 1);
+            QVERIFY2(d == Config{}, bad);
+        }
+        // A folder or name that is too long.
+        warnings.clear();
+        const std::string longName = "sync_device_name = \"" + std::string(65, 'x') + "\"\n";
+        QVERIFY(Config::fromToml(longName, &warnings).syncDeviceName.isEmpty());
+        QCOMPARE(warnings.size(), 1);
+        // The passphrase is not a setting: no such key is written, and one in the file is just an unknown key.
+        QVERIFY(Config().toToml().find("passphrase") == std::string::npos);
+    }
+
     void keyboardLayouts()
     {
         QVERIFY(Config().keyboardLayouts.isEmpty());

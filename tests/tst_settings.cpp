@@ -476,7 +476,7 @@ private slots:
             return answer;
         });
 
-        QCOMPARE(d.tabs()->count(), 5);
+        QCOMPARE(d.tabs()->count(), 6);
         QCOMPARE(d.setMasterButton()->text(), QStringLiteral("Set…"));
         QVERIFY(!d.removeMasterButton()->isEnabled());
         QVERIFY(!d.keepPasswordsBox()->isEnabled()); // nothing to keep them with yet

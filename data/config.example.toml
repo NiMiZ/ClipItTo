@@ -91,6 +91,19 @@ auto_forget = []            # copies that remove themselves, quietly (up to 8 ru
                             #   it was copied; also key, card (a card number) and secret (any of them)
                             # ["match 5m contains \"Bearer \""]: text containing that (any letter case)
                             # (by program is not possible yet: the source app is not stored)
+
+# Sync through a folder you already sync yourself (Syncthing, Nextcloud, OneDrive, a network share). ClipItTo makes
+# no network connection; it writes one small encrypted file of its own into the folder and reads the other PCs'
+# files. history.db itself is never put there. The sync passphrase is set in Settings > Sync and is never stored
+# in this file. Never synced: password copies, copies kept by the secret detection, Paste once copies.
+sync_enabled = false        # off by default
+sync_folder = ""            # the folder; it is never created by ClipItTo (an unplugged share stays unplugged)
+sync_device_name = ""       # this PC's name in the other PCs' lists; empty = the computer's name
+sync_max_copies = 2000      # unsaved copies in this PC's sync file (100-20000); every saved copy is in it besides
+sync_pictures = true        # sync pictures too
+sync_picture_max_kb = 2048  # pictures larger than this are not synced (64-20480)
+sync_tombstone_days = 30    # how long a deletion is announced to the other PCs (1-365)
+
 windows_hello = false       # Windows / macOS: unlock with Windows Hello / Touch ID too (set up in Settings)
 password_search_keyword = "p[]" # type it with a space after it to search inside passwords;
                             # what follows is shown as asterisks

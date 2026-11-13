@@ -41,6 +41,7 @@ signals:
     void ingestImageRequested(const QByteArray& data, const QString& mimeType, const QStringList& mimeTypes);
     void reloadRequested();
     void lockPasswordsRequested(); // clipitto --lock
+    void syncRequested(); // clipitto --sync: one sync run through the shared folder
     void quitRequested();
 
     // Emitted by the daemon when the popup is shown or hidden; implementations forward it to clients.

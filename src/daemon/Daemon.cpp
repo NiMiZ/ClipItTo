@@ -11,6 +11,7 @@
 #include "MacPaste.h"
 #include "Notify.h"
 #include "SettingsDialog.h"
+#include "SyncService.h"
 #include "Theme.h"
 #include "ClipboardWriter.h"
 #include "PopupWindow.h"
@@ -212,6 +213,12 @@ Daemon::StartResult Daemon::start(QString* error)
         m_forgetter->setRules(m_config.autoForget);
         runAutoForget();
         m_forgetTimer->start();
+        m_sync = std::make_unique<SyncService>(*m_repo, m_options.syncKeyStore);
+        m_sync->setBlockedCheck([this] { return m_converting; });
+        if (m_options.syncPollMs > 0) {
+            m_sync->setIntervals(m_options.syncPollMs, m_options.syncDebounceMs);
+        }
+        m_sync->applyConfig(m_config);
     } catch (const db::DbError& e) {
         m_repo.reset();
         m_db.reset();
@@ -313,6 +320,8 @@ Daemon::StartResult Daemon::start(QString* error)
         }
     });
     connect(m_pipeline.get(), &CapturePipeline::stored, m_popup.get(), &ui::PopupWindow::historyChanged);
+    connect(m_sync.get(), &SyncService::historyChanged, m_popup.get(), &ui::PopupWindow::historyChanged);
+    connect(m_control, &ControlChannel::syncRequested, m_sync.get(), &SyncService::syncNow);
     connect(m_pipeline.get(), &CapturePipeline::autoFiled, m_popup.get(), &ui::PopupWindow::historyChanged);
     connect(m_pipeline.get(), &CapturePipeline::passwordSkipped, this, [this] {
         if (m_passwordNoticeShown) {
@@ -542,11 +551,15 @@ void Daemon::announceKeyring(const QString& purpose)
         return;
     }
     const bool history = purpose == QLatin1String("history");
+    const bool syncing = purpose == QLatin1String("sync");
     qCInfo(lcDaemon) << "asking the system keyring for the" << purpose << "key";
     const QString title = QStringLiteral("ClipItTo");
     const QString body = history
         ? tr("ClipItTo asks your keyring for the key that protects your history. If the keyring asks you to unlock "
              "it, that is why. (Turn off encryption in Settings to stop this.)")
+        : syncing
+        ? tr("ClipItTo asks your keyring for the key of your sync files; it is made from your sync passphrase, which is "
+             "not stored. If the keyring asks you to unlock it, that is why. (Turn off sync in Settings to stop this.)")
         : tr("ClipItTo asks your keyring for the key that finds a copied password again; it is not your master "
              "password. If the keyring asks you to unlock it, that is why.");
     const bool shown = m_options.notify ? m_options.notify(title, body) : desktopNotify(title, body);
@@ -872,7 +885,26 @@ void Daemon::openSettings()
         startup.enabled = loginItem().isEnabled();
         startup.set = [this](bool on, QString* error) { return loginItem().setEnabled(on, error); };
     }
-    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup, translationSupport());
+    ui::SyncSupport syncing;
+    if (m_sync) {
+        SyncService* service = m_sync.get();
+        syncing.available = service->available(&syncing.reason);
+        syncing.hasPassphrase = [service] { return service->hasPassphrase(); };
+        syncing.setPassphrase = [service](const QString& folder, QByteArray passphrase, bool startNew,
+                                          std::function<void(QString, bool)> done) {
+            service->setPassphrase(folder, std::move(passphrase), startNew, std::move(done));
+        };
+        syncing.removePassphrase = [service] { service->removePassphrase(); };
+        syncing.syncNow = [this, service] {
+            // The folder typed in the dialog is only used once Settings is accepted: sync what is saved.
+            service->applyConfig(m_config);
+            service->syncNow();
+        };
+        syncing.status = [service] { return service->statusText(); };
+        syncing.computerName = [] { return QSysInfo::machineHostName(); };
+    }
+    ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup, translationSupport(),
+                              std::move(syncing));
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
@@ -1263,6 +1295,9 @@ void Daemon::reload(bool forceShortcut)
     }
     m_repo->setSecretsPerNote(m_config.passwordsPerNote);
     applyPasswordSettings();
+    if (m_sync && !m_converting) {
+        m_sync->applyConfig(m_config);
+    }
     if (m_forgetter && m_config.autoForget != previous.autoForget) {
         m_forgetter->setRules(m_config.autoForget);
         runAutoForget(); // new rules take effect at once
@@ -1365,6 +1400,9 @@ QVariantMap Daemon::status() const
                                                          onOff(m_config.detectPasswords),
                                                          m_passwords->canMatch() ? QStringLiteral("available") : QStringLiteral("not available"),
                                                          m_lastNameBox.isEmpty() ? QStringLiteral("none yet") : m_lastNameBox);
+    }
+    if (m_sync) {
+        s[QStringLiteral("sync")] = m_sync->statusLine();
     }
     if (m_repo && !m_converting) { // during a conversion the database belongs to the worker
         try {

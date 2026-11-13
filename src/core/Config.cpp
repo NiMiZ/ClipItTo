@@ -162,6 +162,27 @@ public:
         }
     }
 
+    // Free text of at most `maxLength` characters without control characters (a folder path, a device name); trimmed.
+    void text(const char* key, QString& out, int maxLength)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const auto value = node->value_exact<std::string>();
+        const QString word = value ? QString::fromStdString(*value).trimmed() : QString();
+        bool clean = value.has_value() && word.size() <= maxLength;
+        for (const QChar c : word) {
+            clean = clean && !c.isNonCharacter() && c.unicode() >= 0x20 && c.unicode() != 0x7f;
+        }
+        if (!clean) {
+            warn(QStringLiteral("%1: expected text of at most %2 characters without control characters")
+                     .arg(QLatin1String(key)).arg(maxLength));
+        } else {
+            out = word;
+        }
+    }
+
     // A short word without spaces (the password search keyword).
     void keyword(const char* key, QString& out)
     {
@@ -327,6 +348,13 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("windows_hello", config.windowsHello);
     r.keyword("password_search_keyword", config.passwordSearchKeyword);
     r.autoForget("auto_forget", config.autoForget);
+    r.boolean("sync_enabled", config.syncEnabled);
+    r.text("sync_folder", config.syncFolder, 1024);
+    r.text("sync_device_name", config.syncDeviceName, 64);
+    r.integer("sync_max_copies", config.syncMaxCopies, 100, 20'000);
+    r.boolean("sync_pictures", config.syncPictures);
+    r.integer("sync_picture_max_kb", config.syncPictureMaxKb, 64, 20'480);
+    r.integer("sync_tombstone_days", config.syncTombstoneDays, 1, 365);
     r.warnUnknownKeys();
     return config;
 }
@@ -442,6 +470,13 @@ std::vector<Line> lines(const Config& c)
         {"password_clear_seconds", std::to_string(c.passwordClearSeconds), "a pasted password leaves the clipboard this many seconds after the paste (0-60); 0 = never"},
         {"paste_once_clear_seconds", std::to_string(c.pasteOnceClearSeconds), "a Paste once copy leaves the clipboard this many seconds after its paste (0-60); 0 = never"},
         {"auto_forget", tomlAutoForget(c.autoForget), "copies that remove themselves, up to 8 rules; none = nothing is removed"},
+        {"sync_enabled", tomlBool(c.syncEnabled), "keep the history of your PCs in step through a folder you sync yourself (needs a sync passphrase)"},
+        {"sync_folder", tomlString(c.syncFolder.toStdString()), "the folder (the history file itself is never put there, only small encrypted sync files)"},
+        {"sync_device_name", tomlString(c.syncDeviceName.toStdString()), "this PC's name in the other PCs' lists; empty = the computer name"},
+        {"sync_max_copies", std::to_string(c.syncMaxCopies), "unsaved copies in this PC's sync file (100-20000); every saved copy is in it besides"},
+        {"sync_pictures", tomlBool(c.syncPictures), "sync pictures too"},
+        {"sync_picture_max_kb", std::to_string(c.syncPictureMaxKb), "pictures larger than this many KB are not synced (64-20480)"},
+        {"sync_tombstone_days", std::to_string(c.syncTombstoneDays), "how long a deletion is announced to the other PCs (1-365 days)"},
         {"windows_hello", tomlBool(c.windowsHello), "Windows / macOS: unlock passwords with Windows Hello / Touch ID too"},
         {"password_search_keyword", tomlString(c.passwordSearchKeyword.toStdString()),
          "typed with a space first, searches passwords"},

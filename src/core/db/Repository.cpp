@@ -1680,6 +1680,17 @@ std::optional<Repository::SyncItem> Repository::syncItem(qint64 id)
     return item;
 }
 
+QString Repository::syncFingerprint()
+{
+    Stmt s(m_db, "SELECT value FROM meta WHERE key = 'sync_fingerprint'");
+    return s.step() ? s.colText(0) : QString();
+}
+
+void Repository::setSyncFingerprint(const QString& fingerprint)
+{
+    setMeta(m_db, "sync_fingerprint", fingerprint);
+}
+
 std::vector<Repository::Tombstone> Repository::syncSharedTombstones(const QString& since)
 {
     Stmt s(m_db, "SELECT t.content_hash, t.deleted_at FROM sync_tombstones t WHERE t.shared = 1 AND t.deleted_at >= ?1 "
