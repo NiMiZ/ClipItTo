@@ -31,12 +31,14 @@ private slots:
         }
         const QList<Item> text = textItems();
         QCOMPARE(text.first().id, QStringLiteral("upper"));
-        QCOMPARE(text.at(text.size() - 4).id, QStringLiteral("layout"));
-        QCOMPARE(text.at(text.size() - 3).id, QStringLiteral("translate"));
-        QCOMPARE(text.at(text.size() - 2).id, QStringLiteral("rich")); // offered only for a copy that has a formatted version
-        QCOMPARE(text.last().id, QStringLiteral("number")); // offered only for a copy that is a number
-        QCOMPARE(text.size(), 16);
-        QCOMPARE(pictureItems().size(), 4);
+        QCOMPARE(text.at(text.size() - 5).id, QStringLiteral("layout"));
+        QCOMPARE(text.at(text.size() - 4).id, QStringLiteral("translate"));
+        QCOMPARE(text.at(text.size() - 3).id, QStringLiteral("rich")); // offered only for a copy that has a formatted version
+        QCOMPARE(text.at(text.size() - 2).id, QStringLiteral("number")); // offered only for a copy that is a number
+        QCOMPARE(text.last().id, QStringLiteral("once")); // Paste once, a toggle
+        QCOMPARE(text.size(), 17);
+        QCOMPARE(pictureItems().size(), 5);
+        QCOMPARE(pictureItems().last().id, QStringLiteral("once"));
     }
 
     void emptySettingIsTheDefault()
@@ -53,10 +55,10 @@ private slots:
     {
         const QList<Item> items = pictureItems();
         const QList<Choice> c = resolve(QStringLiteral("pic_paste, -pic_text,bogus,pic_paste"), items);
-        QCOMPARE(ids(c), (QStringList{"pic_paste", "-pic_text", "pic_changed", "pic_translate"}));
+        QCOMPARE(ids(c), (QStringList{"pic_paste", "-pic_text", "pic_changed", "pic_translate", "once"}));
         QCOMPARE(shownIds(QStringLiteral("pic_paste,-pic_text"), items),
-                 (QStringList{"pic_paste", "pic_changed", "pic_translate"}));
-        QCOMPARE(serialize(c, items), QStringLiteral("pic_paste,-pic_text,pic_changed,pic_translate"));
+                 (QStringList{"pic_paste", "pic_changed", "pic_translate", "once"}));
+        QCOMPARE(serialize(c, items), QStringLiteral("pic_paste,-pic_text,pic_changed,pic_translate,once"));
         QVERIFY(resolve(serialize(c, items), items) == c); // round trip
     }
 

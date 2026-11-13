@@ -1094,7 +1094,11 @@ private slots:
         QCOMPARE(pasted.size(), 2);
         QCOMPARE(pasted.at(1).at(0).toString(), QStringLiteral("line one line two"));
         QSignalSpy picturePasted(f.popup.get(), &PopupWindow::entryActivated);
-        menu->actions().last()->trigger();
+        for (QAction* a : menu->actions()) {
+            if (a->text().remove(QLatin1Char('&')).startsWith(QLatin1String("Paste the picture"))) {
+                a->trigger();
+            }
+        }
         QCOMPARE(picturePasted.size(), 1);
         QCOMPARE(picturePasted.at(0).at(0).value<Entry>().id, id);
     }
@@ -1138,8 +1142,8 @@ private slots:
 
         // One layout: a single entry, the opposite of the text's language, with a preview of the result.
         layouts("he");
-        QVERIFY(texts(typed).last().contains(QStringLiteral("As Hebrew keyboard: סבבה")));
-        QVERIFY(texts(hebrew).last().contains(QStringLiteral("As English keyboard: xccv")));
+        QVERIFY(texts(typed).join(QLatin1Char('|')).contains(QStringLiteral("As Hebrew keyboard: סבבה")));
+        QVERIFY(texts(hebrew).join(QLatin1Char('|')).contains(QStringLiteral("As English keyboard: xccv")));
 
         // Several: a submenu of them.
         layouts("he, ru");
@@ -1214,7 +1218,7 @@ private slots:
         }
 
         // Everything hidden: a disabled hint, no error.
-        set("-upper,-lower,-title,-trim,-collapse,-oneline,-json_pretty,-json_minify,-url_encode,-url_decode,-base64_encode,-base64_decode,-layout,-translate");
+        set("-upper,-lower,-title,-trim,-collapse,-oneline,-json_pretty,-json_minify,-url_encode,-url_decode,-base64_encode,-base64_decode,-layout,-translate,-once");
         custom = texts(text);
         QCOMPARE(custom.size(), 1);
         QVERIFY(custom.first().contains(QLatin1String("No items selected")));

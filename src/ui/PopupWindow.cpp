@@ -1553,7 +1553,7 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     }
 
     menu->addAction(entry.note.isEmpty() ? tr("Add note…\tF2") : tr("Edit note…\tF2"), this, [this, id] { editNote(id); });
-    {
+    if (entry.secret) { // text and pictures have it in their Paste as menu (Settings › Paste as); a password has no such menu
         QAction* once = menu->addAction(platformKeys(tr("Paste once\tCtrl+Shift+Enter")), this,
                                         [this, id] { togglePasteOnce(id); });
         once->setCheckable(true);
@@ -1644,6 +1644,8 @@ QMenu* PopupWindow::createPictureMenu(const Entry& picture, QWidget* parent)
                 }
                 changed->addAction(info.label, this, [this, id, kind] { pasteTextFromPicture(id, kind); });
             }
+        } else if (itemId == QLatin1String(pasteas::kPasteOnce)) {
+            action = addPasteOnceItem(target, label, picture);
         } else if (itemId == QLatin1String(pasteas::kPictureTranslate)) {
             // Read the text, then translate it with a pack.
             const int before = int(target->actions().size());
@@ -1754,6 +1756,8 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
             addTranslateMenu(target, tr("Tran&slate"), text,
                              [this, text](const QString& packId) { translateAndPaste(packId, text); },
                              /*withPreview=*/true);
+        } else if (itemId == QLatin1String(pasteas::kPasteOnce)) {
+            addPasteOnceItem(target, tr("Paste on&ce"), entry);
         } else if (itemId == QLatin1String(pasteas::kRich)) {
             if (entry.rich) { // a copy without a formatted version has nothing to offer here
                 target->addAction(tr("With &formatting"), this, [this, entry] {
@@ -1796,14 +1800,18 @@ QMenu* PopupWindow::createPasteAsMenu(const Entry& entry, QWidget* parent)
     return menu;
 }
 
-// "Paste once" (a toggle) at the end of the Shift+Enter menu (the right-click menu has it at the top level).
-void PopupWindow::addPasteOnceAction(QMenu* menu, const Entry& entry)
+// The "Paste once" toggle, an item of the Paste as list like the others (Settings › Paste as: shown in the menu or under
+// "Others", and its place). Ticked while the copy is marked.
+QAction* PopupWindow::addPasteOnceItem(QMenu* menu, const QString& label, const Entry& entry)
 {
     const qint64 id = entry.id;
-    menu->addSeparator();
-    QAction* once = menu->addAction(tr("Paste on&ce"), this, [this, id] { togglePasteOnce(id); });
+    QAction* once = menu->addAction(label, this, [this, id] { togglePasteOnce(id); });
     once->setCheckable(true);
     once->setChecked(entry.pasteOnce);
+    once->setToolTip(platformKeys(tr("Forgotten from the history right after it is pasted from ClipItTo (Ctrl+Shift+Enter pastes "
+                                     "and forgets in one go). Pinned and starred copies are kept; their mark is removed.")));
+    menu->setToolTipsVisible(true);
+    return once;
 }
 
 // One mnemonic letter per shown item: the later of two items with the same letter loses it.
@@ -2037,7 +2045,6 @@ void PopupWindow::pasteAs(const QModelIndex& index)
             break;
         }
     }
-    addPasteOnceAction(menu, *e);
     const QRect row = m_view->visualRect(index);
     {
         ModalGuard guard(m_modalDepth); // the menu takes the focus; the popup must not hide because of it

@@ -48,8 +48,8 @@ the menu shows only "No items selected". Stored as `paste_as_text` and `paste_as
 comma list of item ids in menu order, `-` before an id hides it (`"lower,upper,-title"`); empty or missing is
 the built-in list, unknown ids are ignored, and items added in later versions appear at the end, shown. Text
 ids: `upper`, `lower`, `title`, `trim`, `collapse`, `oneline`, `json_pretty`, `json_minify`, `url_encode`,
-`url_decode`, `base64_encode`, `base64_decode`, `layout` (keyboard layout), `translate`. Picture ids:
-`pic_text`, `pic_changed`, `pic_translate`, `pic_paste`.
+`url_decode`, `base64_encode`, `base64_decode`, `layout` (keyboard layout), `translate`, `once` (Paste once). Picture ids:
+`pic_text`, `pic_changed`, `pic_translate`, `pic_paste`, `once`.
 
 **Paste with formatting.** ClipItTo keeps plain text, which is what is pasted by default. When a copy also has
 formatting (bold, italics, links, lists, tables, headings, pictures in the page), the formatted (HTML) version is kept
@@ -167,7 +167,10 @@ deleted for good, like *Clear history* (nothing is left in the history file).
 
 **Paste once.** For a one-time code, or a password you type into a stranger's form: a copy marked *Paste once* is removed
 from the history right after you paste it from ClipItTo, and taken off the system clipboard if it still holds it.
-- *Mark it* with *Paste once* in the right-click menu or the Shift+Enter menu (a toggle: choose it again to unmark); the
+- *Mark it* with *Paste once* in the **Paste as** menu (Shift+Enter, or the right-click › *Paste as* submenu; a toggle: choose it
+  again to unmark). It is an item of the Paste as list like the others, so Settings › *Paste as* decides whether it is shown in the
+  menu, under *Others*, or not at all, and where it comes first, last or between (id `once`; at the end by default). A password
+  copy has no Paste as menu: its right-click menu has *Paste once* at the top level. The
   row then wears a small **once** tag. Or press `Ctrl+Shift+Enter` on any copy: it is pasted and forgotten in one go,
   marked or not. Undo shortcut: `Ctrl+Shift+Z`.
 - A copy is stored like any other (encrypted with the history when that is on) and survives a restart until it is used.
