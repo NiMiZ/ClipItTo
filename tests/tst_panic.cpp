@@ -168,7 +168,7 @@ class TestPanic : public QObject {
         f.grouped = ingest(d, QStringLiteral("panic-grouped-text-0004"));
         repo->createGroup(QStringLiteral("Work"));
         repo->setGroup(f.grouped, QStringLiteral("Work")); // learns, as the user's moves do
-        f.rich = ingest(d, QStringLiteral("panic-rich-text-0005"), QStringLiteral("<p><b>panic-rich-html-0005</b></p>"));
+        f.rich = ingest(d, QStringLiteral("panic-rich-text-0005"), QStringLiteral("<p><b>panic-rich-text-0005</b></p>"));
         emit d.control()->ingestImageRequested(pngBytes(), QStringLiteral("image/png"), {QStringLiteral("image/png")});
         for (int i = 0; i < 500 && repo->countImages() == 0; ++i) {
             QTest::qWait(10);
@@ -228,11 +228,12 @@ private slots:
         // The system clipboard.
         QVERIFY(QGuiApplication::clipboard()->text().isEmpty());
         // What survives: the groups (empty) and the settings.
-        QCOMPARE(repo->groups(), QStringList{QStringLiteral("Work")});
+        QVERIFY(repo->groups().contains(QStringLiteral("Work"))); // and the Passwords group the password copy made
+        QVERIFY(repo->groups().contains(QStringLiteral("Passwords")));
         QVERIFY(QFile::exists(options().configPath));
         // Nothing of it is left in the file or its write-ahead log.
         for (const char* needle : {"panic-plain-text-0001", "panic-pinned-text-0002", "panic-starred-text-0003",
-                                   "panic-grouped-text-0004", "panic-rich-text-0005", "panic-rich-html-0005",
+                                   "panic-grouped-text-0004", "panic-rich-text-0005",
                                    "panic-on-the-clipboard-0007"}) {
             QVERIFY2(!historyFileHolds(needle), needle);
         }
