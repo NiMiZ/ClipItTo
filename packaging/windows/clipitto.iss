@@ -34,6 +34,13 @@ SetupIconFile=ClipItTo.ico
 UninstallDisplayIcon={app}\bin\clipitto-daemon.exe
 UninstallDisplayName=ClipItTo
 
+[Messages]
+; Say plainly what the installer does with a running ClipItTo (it quits it, see StopClipItTo below), so nobody has to
+; close it by hand first.
+WelcomeLabel2=This will install [name/ver] on your computer.%n%nIf ClipItTo is running, the installer closes it first (no need to quit it yourself) and offers to start it again at the end.
+ReadyLabel2a=Click Install to continue. A running ClipItTo is closed first. Click Back if you want to review or change any settings.
+ConfirmUninstall=Remove %1 and all of its components? A running ClipItTo is closed first. Your history and settings are kept.
+
 [Tasks]
 Name: autostart; Description: "Start ClipItTo when I sign in"; GroupDescription: "Startup:"
 
