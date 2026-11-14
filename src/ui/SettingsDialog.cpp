@@ -369,7 +369,11 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_pasteKeysPanel->setEnabled(config.pasteKeysPerApp);
     connect(m_pasteKeysPerApp, &QCheckBox::toggled, m_pasteKeysPanel, &QWidget::setEnabled);
     connect(m_pasteKeysPerApp, &QCheckBox::toggled, this, [this] { updateOkButton(); });
-    form->addRow(tr("Programs:"), m_pasteKeysPanel);
+    m_pasteKeysWindow = addRulesWindow(form, tr("Programs:"), tr("Paste keys per program"), m_pasteKeysPanel,
+                                       tr("Edit programs…"));
+    m_pasteKeysWindow.button->setEnabled(config.pasteKeysPerApp);
+    connect(m_pasteKeysPerApp, &QCheckBox::toggled, m_pasteKeysWindow.button, &QWidget::setEnabled);
+    refreshPasteKeys();
 
     m_position->addItem(tr("Near the mouse pointer"), int(PopupPosition::Cursor));
     m_position->addItem(tr("Center of the screen"), int(PopupPosition::Center));
@@ -653,11 +657,11 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_ruleTryResult->setWordWrap(true);
     rulesOuter->addWidget(m_ruleTryResult);
     connect(m_ruleTry, &QLineEdit::textChanged, this, &SettingsDialog::refreshRules);
+    m_rulesWindow = addRulesWindow(passwordsForm, tr("Password rules:"), tr("Password rules"), m_rulesPanel, tr("Edit rules…"));
     for (const PasswordRule& rule : config.passwordRules) {
         addRuleRow(rule);
     }
     refreshRules();
-    passwordsForm->addRow(tr("Password rules:"), m_rulesPanel);
     m_passwordsPerNote->setChecked(config.passwordsPerNote);
     m_passwordsPerNote->setToolTip(QStringLiteral("<p>%1</p>")
                                        .arg(tr("Off: copying a password you already have only moves it to the top, "
@@ -779,11 +783,11 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_forgetError->setStyleSheet(QStringLiteral("color: #c0392b;"));
     m_forgetError->hide();
     forgetOuter->addWidget(m_forgetError);
+    m_forgetWindow = addRulesWindow(passwordsForm, tr("Auto-forget:"), tr("Auto-forget rules"), m_forgetPanel, tr("Edit rules…"));
     for (const AutoForgetRule& rule : config.autoForget) {
         addForgetRow(rule);
     }
     refreshForget();
-    passwordsForm->addRow(tr("Auto-forget:"), m_forgetPanel);
     auto* helloRow = new QHBoxLayout;
     helloRow->addWidget(m_hello);
     auto* helloInfo = makeInfoButton(this);
@@ -1578,6 +1582,7 @@ void SettingsDialog::refreshRules()
     }
     setNote(m_ruleError, errors.join(QLatin1Char(' ')));
     m_ruleError->setEnabled(true);
+    showRulesSummary(m_rulesWindow, tr("%n rule(s)", "", int(rules.size())), !errors.isEmpty());
     m_addRule->setEnabled(rules.size() < passwordrules::kMaxRules);
     updateOkButton();
     // "Try it": which rule keeps the sample. Only the verdict is shown, never the text.
@@ -1719,8 +1724,56 @@ void SettingsDialog::refreshForget()
     }
     setNote(m_forgetError, errors.join(QLatin1Char(' ')));
     m_forgetError->setEnabled(true);
+    showRulesSummary(m_forgetWindow, tr("%n rule(s)", "", int(rules.size())), !errors.isEmpty());
     m_addForget->setEnabled(rules.size() < autoforget::kMaxRules);
     updateOkButton();
+}
+
+// A rules editor in its own window: the page only has the row "Label:  [Edit…]  2 rules". The window is created now (so
+// every widget exists and config() reads it as before) and is opened by the button.
+SettingsDialog::RulesWindow SettingsDialog::addRulesWindow(QFormLayout* form, const QString& label, const QString& title,
+                                                           QWidget* panel, const QString& buttonText)
+{
+    RulesWindow w;
+    w.dialog = new QDialog(this);
+    w.dialog->setWindowTitle(title);
+    auto* layout = new QVBoxLayout(w.dialog);
+    layout->addWidget(panel, 1);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, w.dialog);
+    connect(buttons, &QDialogButtonBox::rejected, w.dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::accepted, w.dialog, &QDialog::accept);
+    layout->addWidget(buttons);
+    w.dialog->setMinimumWidth(600);
+    w.button = new QPushButton(buttonText, this);
+    w.button->setAutoDefault(false);
+    QDialog* dialog = w.dialog;
+    connect(w.button, &QPushButton::clicked, this, [dialog] {
+        dialog->open();
+        dialog->raise();
+    });
+    w.summary = new QLabel(this);
+    w.summary->setEnabled(false); // dim
+    auto* row = new QHBoxLayout;
+    row->addWidget(w.button);
+    row->addWidget(w.summary, 1);
+    form->addRow(label, row);
+    return w;
+}
+
+void SettingsDialog::showRulesSummary(const RulesWindow& window, const QString& text, bool problem)
+{
+    if (!window.summary) {
+        return;
+    }
+    if (problem) { // the editor's own message is in the window; the page must not hide that OK is waiting for a fix
+        window.summary->setEnabled(true);
+        window.summary->setStyleSheet(QStringLiteral("color: #c0392b;"));
+        window.summary->setText(tr("A rule is not valid: open the editor to fix it."));
+    } else {
+        window.summary->setEnabled(false);
+        window.summary->setStyleSheet(QString());
+        window.summary->setText(text);
+    }
 }
 
 void SettingsDialog::updateOkButton()
@@ -1810,6 +1863,7 @@ void SettingsDialog::refreshPasteKeys()
     }
     setNote(m_pasteKeysError, errors.join(QLatin1Char(' ')));
     m_pasteKeysError->setEnabled(true);
+    showRulesSummary(m_pasteKeysWindow, tr("%n program(s)", "", int(rules.size())), !errors.isEmpty());
     m_addPasteKeys->setEnabled(rules.size() < pastekeys::kMaxRules);
     updateOkButton();
 }
@@ -1858,6 +1912,7 @@ void SettingsDialog::updatePasswordPage()
     m_detectSecrets->setEnabled(setUp);
     m_detectPasswords->setEnabled(setUp);
     m_rulesPanel->setEnabled(setUp);
+    m_rulesWindow.button->setEnabled(setUp);
     m_passwordsPerNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
                        static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),

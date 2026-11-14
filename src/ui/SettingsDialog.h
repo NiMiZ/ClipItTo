@@ -18,6 +18,7 @@ class QComboBox;
 class QDialogButtonBox;
 class QKeySequenceEdit;
 class QLabel;
+class QFormLayout;
 class QListWidget;
 class QLineEdit;
 class QPushButton;
@@ -209,6 +210,10 @@ public:
     QCheckBox* detectPasswordsBox() const { return m_detectPasswords; }
     // Own password rules (Passwords tab): rows can be added/removed; `Try it` tests a sample against them.
     QWidget* rulesPanel() const { return m_rulesPanel; }
+    QDialog* rulesDialog() const { return m_rulesWindow.dialog; }
+    QDialog* forgetDialog() const { return m_forgetWindow.dialog; }
+    QDialog* pasteKeysDialog() const { return m_pasteKeysWindow.dialog; }
+    QLabel* rulesSummary() const { return m_rulesWindow.summary; }
     QPushButton* addRuleButton() const { return m_addRule; }
     QLabel* ruleErrorLabel() const { return m_ruleError; }
     QLineEdit* ruleTryEdit() const { return m_ruleTry; }
@@ -365,6 +370,18 @@ private:
         QComboBox* chord = nullptr;
         QPushButton* remove = nullptr;
     };
+    // A rules editor lives in its own window (opened by a button on the page), not in the page itself.
+    struct RulesWindow {
+        QDialog* dialog = nullptr;
+        QPushButton* button = nullptr;
+        QLabel* summary = nullptr;
+    };
+    RulesWindow addRulesWindow(QFormLayout* form, const QString& label, const QString& title, QWidget* panel,
+                               const QString& buttonText);
+    void showRulesSummary(const RulesWindow& window, const QString& text, bool problem);
+    RulesWindow m_rulesWindow;
+    RulesWindow m_forgetWindow;
+    RulesWindow m_pasteKeysWindow;
     QWidget* m_pasteKeysPanel = nullptr;
     QVBoxLayout* m_pasteKeysLayout = nullptr;
     std::vector<PasteKeysRow> m_pasteKeysRows;

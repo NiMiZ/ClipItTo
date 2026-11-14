@@ -58,6 +58,24 @@ private:
     }
 
 private slots:
+    // The rules editors do not inflate the Settings page: each is in its own window, opened by a button, and the
+    // page shows how many rules there are.
+    void rulesEditorsAreInTheirOwnWindows()
+    {
+        TestDb t;
+        Config c;
+        c.passwordRules = {clipitto::PasswordRule()};
+        SettingsDialog d(c, *t.repo, {});
+        QVERIFY(d.rulesDialog() && d.forgetDialog() && d.pasteKeysDialog());
+        QCOMPARE(d.rulesPanel()->window(), static_cast<QWidget*>(d.rulesDialog()));
+        QCOMPARE(d.forgetPanel()->window(), static_cast<QWidget*>(d.forgetDialog()));
+        QCOMPARE(d.pasteKeysPanel()->window(), static_cast<QWidget*>(d.pasteKeysDialog()));
+        QVERIFY(!d.rulesDialog()->isVisible()); // closed until the button is pressed
+        QCOMPARE(d.ruleRowCount(), 1); // the editor holds the rule,
+        QVERIFY(d.rulesSummary()->text().contains(QLatin1String("1"))); // the page says "1 rule(s)",
+        QCOMPARE(d.config().passwordRules.size(), 1); // and config() still reads it from the window
+    }
+
     // Opening Settings must not touch the keyring for a feature that is off (it can show the keyring's window).
     void openingSettingsDoesNotAskTheKeyringWhileSyncIsOff()
     {
