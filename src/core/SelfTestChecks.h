@@ -27,6 +27,7 @@ struct DbFacts {
     int expectedSchema = -1;
     bool writable = false;
     QString writeError;
+    bool writeBusy = false; // another connection (the daemon itself) held the write lock
     qint64 freeBytes = -1; // free on the disk that holds the file; -1 unknown
     qint64 fileBytes = -1;
     bool encrypted = false;
@@ -62,10 +63,10 @@ struct OcrFacts {
 enum class ExtensionAnswer { Answers, TooOld, NotAnswering };
 
 // What the live capture test found.
-enum class CaptureOutcome { Seen, NotSeen, CannotWrite, Paused, NoHistory };
+enum class CaptureOutcome { Seen, SeenNotRemoved, NotSeen, CannotWrite, Paused, NoHistory, HistoryFull };
 
 // What the live paste test found (the Settings window's test box).
-enum class PasteOutcome { Received, NotReceived, CannotType, Disabled };
+enum class PasteOutcome { Received, NotReceived, CannotType, Disabled, NoFocus };
 
 struct SyncFacts {
     bool folderSet = false;

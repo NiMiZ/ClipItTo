@@ -28,7 +28,7 @@
 namespace {
 
 constexpr int kCallTimeoutMs = 5000; // generous: the first call may start the daemon
-constexpr int kSelfTestTimeoutMs = 180000; // every check has its own limit (a locked keyring may wait for the user)
+constexpr int kSelfTestTimeoutMs = 300000; // every check has its own limit (a locked keyring may wait for the user)
 constexpr int kPanicTimeoutMs = 60000; // a big history is wiped (and the file scrubbed) before the daemon replies
 
 int timeoutFor(const QString& method)

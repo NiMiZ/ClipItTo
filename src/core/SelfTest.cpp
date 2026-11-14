@@ -161,7 +161,17 @@ void Runner::next()
                 finishCheck(index, std::move(result));
             }
         });
-        watcher->setFuture(QtConcurrent::run(workerPool(), [run = check.run] { return run(); }));
+        watcher->setFuture(QtConcurrent::run(workerPool(), [run = check.run] {
+            try {
+                return run();
+            } catch (const std::exception& e) {
+                return Result::fail(QStringLiteral("the check failed unexpectedly: %1").arg(QString::fromUtf8(e.what())),
+                                    QStringLiteral("Turn on the diagnostic log in Settings and run the check again."));
+            } catch (...) {
+                return Result::fail(QStringLiteral("the check failed unexpectedly"),
+                                    QStringLiteral("Turn on the diagnostic log in Settings and run the check again."));
+            }
+        }));
     } else if (check.start) {
         check.start([self = QPointer<Runner>(this), serial, index](Result result) {
             if (self && serial == self->m_serial && self->m_running && index == self->m_index) {

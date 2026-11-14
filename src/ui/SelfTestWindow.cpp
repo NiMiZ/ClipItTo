@@ -79,6 +79,9 @@ void SelfTestWindow::run()
         }
     };
     pasteBox.text = [box] { return box ? box->toPlainText() : QString(); };
+    pasteBox.hasFocus = [box, window = QPointer<SelfTestWindow>(this)] {
+        return box && window && box->hasFocus() && window->isActiveWindow();
+    };
     selftest::Runner* runner = m_support.create(pasteBox);
     if (!runner) {
         return;

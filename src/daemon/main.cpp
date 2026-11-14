@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QLoggingCategory>
+#include <QPointer>
 
 #include <chrono>
 #include <cstdlib>
@@ -121,7 +122,12 @@ int main(int argc, char* argv[])
     clipitto::Daemon daemon(options, std::make_unique<clipitto::localipc::LocalControlChannel>());
 #endif
 
-    *keyringNotice = [&daemon](const QString& purpose) { daemon.announceKeyring(purpose); };
+    // A keyring read on a worker thread (the self-test) may still be running at quit: a guarded pointer, not a reference.
+    *keyringNotice = [guard = QPointer<clipitto::Daemon>(&daemon)](const QString& purpose) {
+        if (guard) {
+            guard->announceKeyring(purpose);
+        }
+    };
 
     QString error;
     switch (daemon.start(&error)) {

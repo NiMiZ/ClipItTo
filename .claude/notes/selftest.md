@@ -15,7 +15,7 @@ User view: `docs/usage.md` "Check this installation". `clipitto --selftest`, Set
   `probePaste` (types the paste keys into the Settings window's box), `selfTestSupport` (what Settings needs).
 - Control channel: `ControlChannel::setSelfTestProvider` / `runSelfTest(reply)`; D-Bus method `SelfTest` is a delayed reply
   (`setDelayedReply`; a call inside one connection cannot be delayed, tests use a second connection), the local socket answers the line
-  later. The CLI waits up to 180 s; exit 1 only when `fail` > 0.
+  later. The CLI waits up to 300 s; exit 1 only when `fail` > 0.
 - `ui/SelfTestWindow`: the list, *Copy report* (through `Daemon`'s writer so it is an own write and not captured), the paste test box.
 
 ## Rules

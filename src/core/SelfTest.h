@@ -58,6 +58,7 @@ using Done = std::function<void(Result)>;
 struct PasteBox {
     std::function<void()> prepare;
     std::function<QString()> text;
+    std::function<bool()> hasFocus; // the box is focused in the active window; empty: not checked
 };
 
 struct Check {

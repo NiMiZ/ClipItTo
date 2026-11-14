@@ -6,6 +6,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileDevice>
 #include <QFileInfo>
 #include <QStorageInfo>
 
@@ -78,6 +79,7 @@ DbFacts probeDatabase(const QString& path, const QByteArray& key)
             facts.writable = true;
         } catch (const db::DbError& e) {
             facts.writeError = QString::fromUtf8(e.what());
+            facts.writeBusy = (e.code() & 0xff) == 5 || (e.code() & 0xff) == 6; // SQLITE_BUSY, SQLITE_LOCKED
         }
     } catch (const db::DbError& e) {
         facts.opened = false;
@@ -106,6 +108,7 @@ LogFacts probeLogFile(const QString& path)
         facts.error = file.errorString();
         return facts;
     }
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     const bool wrote = file.write("ok\n") == 3;
     file.close(); // Windows: closed before it is deleted
     QFile::remove(probe);
@@ -175,6 +178,12 @@ Result captureCopyResult(CaptureOutcome outcome)
     switch (outcome) {
     case CaptureOutcome::Seen:
         return Result::pass(QStringLiteral("a test text put on the clipboard was recorded, and removed from the history again"));
+    case CaptureOutcome::SeenNotRemoved:
+        return Result::warn(QStringLiteral("the test copy was recorded, but it could not be removed from the history again"),
+                            QStringLiteral("Delete the copy that starts with \"ClipItTo self-test copy\" yourself."));
+    case CaptureOutcome::HistoryFull:
+        return Result::skipped(QStringLiteral("the history is full: a test copy would push your oldest copy out. Not tested; "
+                                              "raise max_history or clear some copies to run it"));
     case CaptureOutcome::NotSeen:
         return Result::fail(QStringLiteral("a test text was put on the clipboard, but ClipItTo did not record it"),
                             QStringLiteral("Capture does not see copies. See the capture backend check above; on GNOME Wayland "
@@ -243,6 +252,9 @@ Result pasteResult(PasteOutcome outcome, const Env& env)
         return Result::warn(QStringLiteral("this session cannot type the paste keys"),
                             QStringLiteral("On GNOME Wayland install and enable the ClipItTo extension. Elsewhere on Wayland "
                                            "choosing a copy puts it on the clipboard and you press Ctrl+V yourself."));
+    case PasteOutcome::NoFocus:
+        return Result::skipped(QStringLiteral("the Settings window could not take the keyboard focus, so nothing was typed (to "
+                                              "avoid pasting into another program)"));
     case PasteOutcome::Disabled:
         return Result::skipped(QStringLiteral("paste_on_enter is off: choosing a copy does not paste it"));
     }
@@ -290,6 +302,9 @@ Result databaseResult(const DbFacts& facts, const Env& env)
     if (facts.expectedSchema > 0 && facts.schema > facts.expectedSchema) {
         return Result::fail(detail, QStringLiteral("The history was made by a newer ClipItTo than this one (%1). Update ClipItTo.")
                                         .arg(env.version));
+    }
+    if (!facts.writable && facts.writeBusy) {
+        return Result::warn(detail, QStringLiteral("The history is busy right now (ClipItTo is writing to it). Check again in a moment."));
     }
     if (!facts.writable) {
         return Result::fail(detail + QStringLiteral(" (%1)").arg(facts.writeError),
@@ -443,8 +458,9 @@ Result pasteTargetCheck(const Env& env)
         ? QStringLiteral("no rule matched, the global %1 is used").arg(pastekeys::chordName(choice.keys))
         : QStringLiteral("%1 rule \"%2\" matched: %3").arg(choice.builtIn ? QStringLiteral("built-in") : QStringLiteral("your"),
                                                            choice.rule, pastekeys::chordName(choice.keys));
-    return Result::pass(QStringLiteral("the program in front when the popup last opened was recognized (%1); paste_keys_per_app "
-                                       "is %2; %3").arg(target.ids.value(0), onOff(env.config.pasteKeysPerApp), rule));
+    // The program's own name is not put in the report (it shows what the user was doing); the rule that matched is enough.
+    return Result::pass(QStringLiteral("the program in front when the popup last opened was recognized; paste_keys_per_app "
+                                       "is %1; %2").arg(onOff(env.config.pasteKeysPerApp), rule));
 }
 
 Result gnomeExtensionResult(ExtensionAnswer answer)

@@ -243,7 +243,7 @@ private slots:
         Daemon daemon(o, std::make_unique<FakeControl>());
         QVERIFY(daemon.start() == Daemon::StartResult::Ok);
         QString text;
-        selftest::PasteBox box{[] {}, [&text] { return text; }};
+        selftest::PasteBox box{[] {}, [&text] { return text; }, nullptr};
         Report report = runToEnd(daemon, &box);
         QCOMPARE(report.find(QStringLiteral("paste"))->outcome, Outcome::Warn); // this session cannot type
         canType = true; // typed, but the box stays empty

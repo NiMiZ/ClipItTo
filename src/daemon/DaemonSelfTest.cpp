@@ -211,6 +211,16 @@ void Daemon::probeCapture(std::function<void(selftest::CaptureOutcome)> done)
         done(CaptureOutcome::Paused);
         return;
     }
+    // Storing the test copy would push the oldest copy out of a full history, and removing it again does not bring that back.
+    try {
+        if (m_repo->count() >= m_config.maxHistory) {
+            done(CaptureOutcome::HistoryFull);
+            return;
+        }
+    } catch (const db::DbError&) {
+        done(CaptureOutcome::NoHistory);
+        return;
+    }
     const QString marker = uniqueMarker(QStringLiteral("self-test copy"));
     const QString hash = db::Repository::hashOf(marker);
 
@@ -227,6 +237,7 @@ void Daemon::probeCapture(std::function<void(selftest::CaptureOutcome)> done)
         }
         state->finished = true;
         QObject::disconnect(state->stored);
+        QObject::disconnect(&state->timer, nullptr, nullptr, nullptr); // its lambda holds `state`: break the cycle
         state->timer.stop();
         if (!integrationAvailable()) {
             // Our test text is taken off the clipboard again, but only if we still own it: something copied meanwhile stays.
@@ -242,19 +253,20 @@ void Daemon::probeCapture(std::function<void(selftest::CaptureOutcome)> done)
         if (state->finished || !m_repo) {
             return;
         }
+        bool removed = false;
         try {
             const std::optional<qint64> ours = m_repo->findByHash(hash);
             if (!ours || *ours != id) {
                 return;
             }
-            m_repo->forgetNow(id); // secure delete: pages zeroed, search index and write-ahead log folded in
+            removed = m_repo->forgetNow(id); // secure delete: pages zeroed, search index and write-ahead log folded in
         } catch (const db::DbError& e) {
             qCWarning(lcSelfTest) << "the test copy could not be removed:" << e.what();
         }
         if (m_popup) {
             m_popup->historyChanged();
         }
-        finish(CaptureOutcome::Seen);
+        finish(removed ? CaptureOutcome::Seen : CaptureOutcome::SeenNotRemoved);
     });
     QObject::connect(&state->timer, &QTimer::timeout, this, [this, state, hash, finish] {
         // Not seen in time. Take the test copy out anyway if it did get in (a late capture must not stay in the history).
@@ -262,6 +274,9 @@ void Daemon::probeCapture(std::function<void(selftest::CaptureOutcome)> done)
             if (m_repo) {
                 if (const auto ours = m_repo->findByHash(hash)) {
                     m_repo->forgetNow(*ours);
+                    if (m_popup) {
+                        m_popup->historyChanged();
+                    }
                 }
             }
         } catch (const db::DbError&) {
@@ -297,6 +312,11 @@ void Daemon::probePaste(const selftest::PasteBox& box, std::function<void(selfte
     m_writer->setText(marker); // an own write: the capture does not record it as a copy
     // The box needs a moment to hold the focus; then the keys go to whatever has it (that is, the box).
     QTimer::singleShot(250, this, [this, box, marker, done = std::move(done)]() mutable {
+        if (box.hasFocus && !box.hasFocus()) {
+            // The window could not take the focus (the system refused): typing now would paste into another program.
+            done(PasteOutcome::NoFocus);
+            return;
+        }
         rememberPasteTarget(); // Windows brings the remembered window back first: that must be the Settings window
         bool sent = true;
         if (integrationAvailable()) {

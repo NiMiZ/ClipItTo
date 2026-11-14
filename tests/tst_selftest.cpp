@@ -286,6 +286,8 @@ private slots:
         QCOMPARE(captureCopyResult(CaptureOutcome::CannotWrite).outcome, Outcome::Warn);
         QCOMPARE(captureCopyResult(CaptureOutcome::Paused).outcome, Outcome::Skipped);
         QCOMPARE(captureCopyResult(CaptureOutcome::NoHistory).outcome, Outcome::Skipped);
+        QCOMPARE(captureCopyResult(CaptureOutcome::HistoryFull).outcome, Outcome::Skipped); // would push a real copy out
+        QCOMPARE(captureCopyResult(CaptureOutcome::SeenNotRemoved).outcome, Outcome::Warn);
     }
 
     void hotkey()
@@ -318,6 +320,7 @@ private slots:
         QCOMPARE(pasteResult(PasteOutcome::NotReceived, env).outcome, Outcome::Fail);
         QCOMPARE(pasteResult(PasteOutcome::CannotType, env).outcome, Outcome::Warn);
         QCOMPARE(pasteResult(PasteOutcome::Disabled, env).outcome, Outcome::Skipped);
+        QCOMPARE(pasteResult(PasteOutcome::NoFocus, env).outcome, Outcome::Skipped); // nothing typed
         // Without the Settings window's box (the CLI): skipped, and it says where to run it.
         const Result cli = pasteWithoutBoxCheck(env);
         QCOMPARE(cli.outcome, Outcome::Skipped);
@@ -357,6 +360,9 @@ private slots:
         DbFacts newer = good;
         newer.schema = 99;
         QCOMPARE(databaseResult(newer, env).outcome, Outcome::Fail);
+        DbFacts busy = readOnly;
+        busy.writeBusy = true;
+        QCOMPARE(databaseResult(busy, env).outcome, Outcome::Warn); // the daemon itself was writing
         DbFacts closed;
         closed.error = QStringLiteral("file is not a database");
         QCOMPARE(databaseResult(closed, env).outcome, Outcome::Fail);
@@ -485,6 +491,20 @@ private slots:
         QVERIFY(pasteTargetCheck(env).detail.contains(QLatin1String("no rule matched")));
         env.config.pasteKeysApps = {{QStringLiteral("someeditor"), PasteKeys::ShiftInsert}};
         QVERIFY(pasteTargetCheck(env).detail.contains(QLatin1String("your rule")));
+    }
+
+    void aCheckThatThrowsBecomesAFail()
+    {
+        Check c;
+        c.id = QStringLiteral("boom");
+        c.title = QStringLiteral("Boom");
+        c.run = []() -> Result { throw std::runtime_error("kaboom"); };
+        Runner runner({c}, QString());
+        QSignalSpy done(&runner, &Runner::finished);
+        runner.start();
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 20000);
+        const Report report = qvariant_cast<Report>(done.first().at(0));
+        QCOMPARE(report.results.at(0).outcome, Outcome::Fail);
     }
 
     void gnomeExtension()
