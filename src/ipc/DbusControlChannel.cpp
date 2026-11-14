@@ -150,4 +150,19 @@ QVariantMap DbusControlChannel::Status()
     return status();
 }
 
+QVariantMap DbusControlChannel::SelfTest()
+{
+    if (!calledFromDBus()) {
+        return {{QStringLiteral("error"), QStringLiteral("must be called over D-Bus")}};
+    }
+    setDelayedReply(true);
+    const QDBusMessage request = message();
+    const QDBusConnection bus = connection();
+    runSelfTest([request, bus](const QVariantMap& result) {
+        QDBusMessage reply = request.createReply(QVariant(result));
+        bus.send(reply);
+    });
+    return {};
+}
+
 } // namespace clipitto::ipc

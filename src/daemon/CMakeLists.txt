@@ -1,6 +1,7 @@
 # Daemon logic as a portable library, so tests can drive it in-process on every platform.
 add_library(clipitto_daemon_lib STATIC
     Daemon.cpp Daemon.h
+    DaemonSelfTest.cpp
     GnomeShortcut.cpp GnomeShortcut.h
     LoginItem.cpp LoginItem.h
     SyncService.cpp SyncService.h

@@ -28,6 +28,7 @@ public:
     void paste(PasteKeys keys) override;
     void rememberPasteTarget() override;
     PasteTarget pasteTarget() const override { return m_target; }
+    void probeFocusedApp(std::function<void(FocusedAppAnswer)> done) override;
 
 private:
     void call(const QString& method, const QVariantList& args = {}, const std::function<void()>& ifUnknown = {});

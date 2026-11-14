@@ -119,4 +119,25 @@ void GnomeShellIntegration::rememberPasteTarget()
     });
 }
 
+void GnomeShellIntegration::probeFocusedApp(std::function<void(FocusedAppAnswer)> done)
+{
+    if (!m_available) {
+        done(FocusedAppAnswer::NotAnswering);
+        return;
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(QString::fromLatin1(kShellServiceName),
+                                                      QString::fromLatin1(kShellObjectPath),
+                                                      QString::fromLatin1(kShellInterface),
+                                                      QStringLiteral("FocusedApp"));
+    msg.setAutoStartService(false);
+    auto* watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(msg, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [done = std::move(done)](QDBusPendingCallWatcher* w) {
+        w->deleteLater();
+        // The answer itself (a program name) is not looked at: only whether there is one.
+        done(!w->isError() ? FocusedAppAnswer::Answers
+             : w->error().type() == QDBusError::UnknownMethod ? FocusedAppAnswer::TooOld
+                                                              : FocusedAppAnswer::NotAnswering);
+    });
+}
+
 } // namespace clipitto::ipc

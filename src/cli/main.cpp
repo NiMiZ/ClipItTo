@@ -28,11 +28,14 @@
 namespace {
 
 constexpr int kCallTimeoutMs = 5000; // generous: the first call may start the daemon
+constexpr int kSelfTestTimeoutMs = 180000; // every check has its own limit (a locked keyring may wait for the user)
 constexpr int kPanicTimeoutMs = 60000; // a big history is wiped (and the file scrubbed) before the daemon replies
 
 int timeoutFor(const QString& method)
 {
-    return method == QLatin1String("Panic") ? kPanicTimeoutMs : kCallTimeoutMs;
+    return method == QLatin1String("Panic")      ? kPanicTimeoutMs
+           : method == QLatin1String("SelfTest") ? kSelfTestTimeoutMs
+                                                 : kCallTimeoutMs;
 }
 
 struct Result {
@@ -64,7 +67,7 @@ Result send(const QString& method, const QVariantList& args)
         return {false, {}, reply.errorMessage()};
     }
     Result result{true, {}, {}};
-    if (method == QLatin1String("Status") && !reply.arguments().isEmpty()) {
+    if ((method == QLatin1String("Status") || method == QLatin1String("SelfTest")) && !reply.arguments().isEmpty()) {
         const QVariantMap map = qdbus_cast<QVariantMap>(reply.arguments().constFirst());
         for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
             result.status.insert(it.key(), unwrap(it.value()));
@@ -91,6 +94,12 @@ Result send(const QString& method, const QVariantList& args)
 }
 #endif
 
+// 0: nothing failed (warnings and skipped checks do not count); 1: at least one check failed.
+int selfTestExitCode(const QVariantMap& reply)
+{
+    return reply.value(QStringLiteral("fail")).toInt() > 0 ? 1 : 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -109,13 +118,15 @@ int main(int argc, char* argv[])
     const QCommandLineOption status(QStringLiteral("status"), QStringLiteral("Print daemon status."));
     const QCommandLineOption reload(QStringLiteral("reload"), QStringLiteral("Reload the configuration file."));
     const QCommandLineOption syncNow(QStringLiteral("sync"), QStringLiteral("Sync through the shared folder now."));
+    const QCommandLineOption selfTest(QStringLiteral("selftest"),
+                                      QStringLiteral("Check this installation: what works and what does not. Exits 1 if a check fails."));
     const QCommandLineOption quit(QStringLiteral("quit"), QStringLiteral("Stop the daemon."));
     const QCommandLineOption lock(QStringLiteral("lock"), QStringLiteral("Lock the password copies now."));
     const QCommandLineOption panic(QStringLiteral("panic"),
                                    QStringLiteral("Wipe the history, lock the passwords and empty the clipboard, now, without asking."));
     const QCommandLineOption ingest(QStringLiteral("ingest"), QStringLiteral("Add <text> to the history."),
                                     QStringLiteral("text"));
-    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest, syncNow};
+    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest, syncNow, selfTest};
     parser.addOptions(actions);
     parser.process(app);
 
@@ -139,6 +150,8 @@ int main(int argc, char* argv[])
         method = QStringLiteral("Hide");
     } else if (parser.isSet(status)) {
         method = QStringLiteral("Status");
+    } else if (parser.isSet(selfTest)) {
+        method = QStringLiteral("SelfTest");
     } else if (parser.isSet(reload)) {
         method = QStringLiteral("ReloadConfig");
     } else if (parser.isSet(quit)) {
@@ -162,6 +175,15 @@ int main(int argc, char* argv[])
     QTextStream out(stdout);
     if (parser.isSet(panic)) {
         out << "done\n"; // the daemon replies only after the wipe, the lock and the clipboard clear are over
+    }
+    if (parser.isSet(selfTest)) {
+        out << result.status.value(QStringLiteral("report")).toString();
+        out.flush();
+        if (result.status.contains(QStringLiteral("error"))) {
+            err << "clipitto: " << result.status.value(QStringLiteral("error")).toString() << '\n';
+            return 1;
+        }
+        return selfTestExitCode(result.status);
     }
     for (auto it = result.status.constBegin(); it != result.status.constEnd(); ++it) {
         out << it.key() << ": " << it.value().toString() << '\n';

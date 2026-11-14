@@ -35,6 +35,8 @@ public slots: // D-Bus methods
     void Panic();
     void Quit();
     QVariantMap Status();
+    // The reply is sent when the checks are done (a delayed reply); the return value is not used.
+    QVariantMap SelfTest();
     bool WantsPasswords();
 
 signals:

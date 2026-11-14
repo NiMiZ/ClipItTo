@@ -53,6 +53,13 @@ QString privacyNote();
 
 using Done = std::function<void(Result)>;
 
+// The test box of the Settings window, as the paste check sees it: `prepare` empties it and gives it the focus,
+// `text` says what it holds now. The CLI has none.
+struct PasteBox {
+    std::function<void()> prepare;
+    std::function<QString()> text;
+};
+
 struct Check {
     QString id;
     QString title;

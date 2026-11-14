@@ -4,6 +4,8 @@
 
 #include <QObject>
 
+#include <functional>
+
 namespace clipitto {
 
 // Optional helper living inside the desktop shell (on Linux: the ClipItTo GNOME Shell
@@ -34,6 +36,11 @@ public:
     // goes to (PasteKeys.h). pasteTarget() is what was noted; Unsupported where the shell cannot say.
     virtual void rememberPasteTarget() {}
     virtual PasteTarget pasteTarget() const { return PasteTarget::unsupported(); }
+
+    // Self-test: does the helper answer the question "which program has focus"? (Asked, answered at once or later on the GUI
+    // thread; nothing of the answer is kept.) Integrations without such a question say NotAnswering.
+    enum class FocusedAppAnswer { Answers, TooOld, NotAnswering };
+    virtual void probeFocusedApp(std::function<void(FocusedAppAnswer)> done) { done(FocusedAppAnswer::NotAnswering); }
 
 signals:
     void availabilityChanged(bool available);
