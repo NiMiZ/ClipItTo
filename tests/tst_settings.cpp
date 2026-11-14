@@ -58,6 +58,34 @@ private:
     }
 
 private slots:
+    // "Wipe everything now…" is the panic action on a button: it asks first, and does nothing on No.
+    void theWipeNowButtonAsksBeforeThePanicAction()
+    {
+        TestDb t;
+        int panics = 0;
+        clipitto::ui::PasswordSupport support;
+        support.panicNow = [&] { ++panics; };
+        SettingsDialog d(Config{}, *t.repo, {}, {}, nullptr, support);
+        QVERIFY(d.wipeNowButton());
+        QVERIFY(d.wipeNowButton()->isEnabled());
+        QVERIFY(d.wipeNowButton()->toolTip().contains(QLatin1String("Cannot be undone")));
+        QString asked;
+        bool yes = false;
+        d.setConfirmPrompt([&](QWidget*, const QString& question) {
+            asked = question;
+            return yes;
+        });
+        d.wipeNowButton()->click();
+        QCOMPARE(panics, 0); // No: nothing happens
+        QVERIFY(asked.contains(QLatin1String("cannot be undone")));
+        yes = true;
+        d.wipeNowButton()->click();
+        QCOMPARE(panics, 1); // Yes: at once, not on OK
+        // Where the action does not exist the button is off.
+        SettingsDialog none(Config{}, *t.repo, {});
+        QVERIFY(!none.wipeNowButton()->isEnabled());
+    }
+
     // The rules editors do not inflate the Settings page: each is in its own window, opened by a button, and the
     // page shows how many rules there are.
     void rulesEditorsAreInTheirOwnWindows()

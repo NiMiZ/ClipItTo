@@ -63,6 +63,8 @@ struct PasswordSupport {
     // Unlocks with Windows Hello (the prompt); `done(true)` once unlocked. Lets a forgotten
     // master password be replaced.
     std::function<void(std::function<void(bool unlocked)> done)> helloUnlock;
+    // The panic action, at once (the same as the panic shortcut and "clipitto --panic"). Null: not offered here.
+    std::function<void()> panicNow;
 };
 
 // Sync through a folder (Settings > Sync, roadmap 13). The sync passphrase is set, changed and removed right away (like
@@ -253,6 +255,7 @@ public:
     QCheckBox* panicKeyBox() const { return m_panicKey; }
     QKeySequenceEdit* panicShortcutEdit() const { return m_panicShortcut; }
     QLabel* panicShortcutStatus() const { return m_panicStatus; }
+    QPushButton* wipeNowButton() const { return m_wipeNow; }
     QCheckBox* helloBox() const { return m_hello; }
     QLineEdit* keywordEdit() const { return m_keyword; }
     QLabel* masterStatus() const { return m_masterStatus; }
@@ -315,6 +318,7 @@ private:
     QCheckBox* m_panicKey = nullptr;
     QKeySequenceEdit* m_panicShortcut = nullptr;
     QLabel* m_panicStatus = nullptr;
+    QPushButton* m_wipeNow = nullptr;
     bool m_groupsChanged = false;
     QCheckBox* m_autoGroup = nullptr;
     QPushButton* m_forgetLearned = nullptr;

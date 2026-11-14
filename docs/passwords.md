@@ -186,7 +186,7 @@ noticed, and `clipitto --status` cannot tell. `lock_on_screen_lock: on (unsuppor
 gives no such events at all (no D-Bus); then use `clipitto --lock` from your screen-lock hook or a short unlock time.
 On a Mac, Touch ID is still only a gate (see above).
 
-**Panic key.** `clipitto --panic` (and the optional panic shortcut, off by default, Settings › Passwords) locks the password
+**Panic key.** `clipitto --panic` (the optional panic shortcut, off by default, and the **Wipe everything now…** button, both in Settings › Passwords; the button asks first, the others do not) locks the password
 copies, empties the system clipboard and deletes the whole history, including every password copy, with no confirmation. The
 vault and the master password are not deleted: they are locked, like `--lock`, and the master password opens the (now empty) vault
 again. In the "no master password" mode nothing can be locked; its password copies are deleted with the rest. See

@@ -971,6 +971,7 @@ void Daemon::openSettings()
     passwords.helloName = hello::displayName();
     passwords.setHello = [this](bool on, std::function<void(QString)> done) { setWindowsHello(on, std::move(done)); };
     passwords.helloUnlock = [this](std::function<void(bool)> done) { helloUnlock(std::move(done)); };
+    passwords.panicNow = [this] { panic(); };
     ui::StartupSupport startup;
     if (m_options.session.display == SessionEnv::Display::MacOS) {
         startup.available = true;
