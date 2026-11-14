@@ -1016,14 +1016,7 @@ void Daemon::openSettings()
     }
     ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup, translationSupport(),
                               std::move(syncing));
-    ui::SelfTestSupport selfTest;
-    selfTest.create = [this](const selftest::PasteBox& box) { return createSelfTest(&box); };
-    selfTest.copyText = [this](const QString& text) {
-        if (m_writer) {
-            m_writer->setText(text); // an own write: the capture does not record the report as a copy
-        }
-    };
-    dialog.setSelfTest(std::move(selfTest));
+    dialog.setSelfTest(selfTestSupport());
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {

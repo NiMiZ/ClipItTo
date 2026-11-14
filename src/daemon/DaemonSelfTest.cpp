@@ -175,6 +175,18 @@ selftest::Env Daemon::selfTestEnv(const selftest::PasteBox* box)
     return env;
 }
 
+ui::SelfTestSupport Daemon::selfTestSupport()
+{
+    ui::SelfTestSupport support;
+    support.create = [this](const selftest::PasteBox& box) { return createSelfTest(&box); };
+    support.copyText = [this](const QString& text) {
+        if (m_writer) {
+            m_writer->setText(text); // an own write: the capture does not record the report as a copy
+        }
+    };
+    return support;
+}
+
 selftest::Runner* Daemon::createSelfTest(const selftest::PasteBox* box)
 {
     if (m_selfTest && m_selfTest->isRunning()) {

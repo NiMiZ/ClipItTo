@@ -11,6 +11,7 @@
 #include "PasswordKeeper.h"
 #include "ScreenLockWatcher.h"
 #include "SelfTestChecks.h"
+#include "SelfTestWindow.h"
 #include "SessionEnv.h"
 #include "Translate.h"
 #include "Translation.h"
@@ -152,6 +153,8 @@ public:
     // paste test box; without it the paste check is skipped. The runner is the daemon's child and deletes itself when done.
     selftest::Runner* createSelfTest(const selftest::PasteBox* box = nullptr);
     selftest::Env selfTestEnv(const selftest::PasteBox* box);
+    // What Settings > Check this installation needs (the runner, and copying the report as an own write).
+    ui::SelfTestSupport selfTestSupport();
 
 signals:
     void configReloaded();
