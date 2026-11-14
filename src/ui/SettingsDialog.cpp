@@ -25,6 +25,10 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGuiApplication>
+#include <QScreen>
+#include <QScrollArea>
+#include <QStyle>
+#include <QTabBar>
 #include <QHBoxLayout>
 #include <QHash>
 #include <QHeaderView>
@@ -969,19 +973,31 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     auto* syncRefresh = new QTimer(this);
     syncRefresh->setInterval(2000);
     connect(syncRefresh, &QTimer::timeout, this, [this] {
-        if (isVisible() && m_tabs->currentWidget() == m_syncStatus->parentWidget()) {
+        if (isVisible() && m_tabs->currentWidget() && m_tabs->currentWidget()->isAncestorOf(m_syncStatus)) {
             refreshSync();
         }
     });
     syncRefresh->start();
     refreshSync();
+    connect(m_syncEnabled, &QCheckBox::toggled, this, [this] { refreshSync(); }); // ticking it is what first asks the keyring
 
     // --- Dialog ------------------------------------------------------------------------
-    m_tabs->addTab(general, tr("General"));
-    m_tabs->addTab(groupsPage, tr("Groups"));
-    m_tabs->addTab(passwordsPage, tr("Passwords"));
-    m_tabs->addTab(backupPage, tr("Backup"));
-    m_tabs->addTab(syncPage, tr("Sync"));
+    // Every page scrolls: the Passwords page in particular is taller than a small screen, and a window cut off at the
+    // bottom hid its last settings. `pageHint` is the biggest page, to size the window (below).
+    QSize pageHint;
+    const auto addPage = [this, &pageHint](QWidget* page, const QString& title) {
+        pageHint = pageHint.expandedTo(page->sizeHint());
+        auto* area = new QScrollArea(m_tabs);
+        area->setWidgetResizable(true);
+        area->setFrameShape(QFrame::NoFrame);
+        area->setWidget(page);
+        m_tabs->addTab(area, title);
+    };
+    addPage(general, tr("General"));
+    addPage(groupsPage, tr("Groups"));
+    addPage(passwordsPage, tr("Passwords"));
+    addPage(backupPage, tr("Backup"));
+    addPage(syncPage, tr("Sync"));
     {
         // --- Paste as: which items the Shift+Enter menu shows, and in what order ---------------------------
         auto* page = new QWidget(this);
@@ -997,7 +1013,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         m_pasteAsOthers = new QCheckBox(tr("Show the other items in the menu, under \"Others\""), page);
         m_pasteAsOthers->setChecked(config.pasteAsOthers);
         box->addWidget(m_pasteAsOthers);
-        m_tabs->addTab(page, tr("Paste as"));
+        addPage(page, tr("Paste as"));
     }
     m_translation = std::move(translation);
     if (m_translation.builtIn) {
@@ -1057,7 +1073,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         connect(m_packList, &QListWidget::currentRowChanged, this,
                 [this](int row) { m_removePack->setEnabled(row >= 0); });
         reloadPacks();
-        m_tabs->addTab(page, tr("Translation"));
+        addPage(page, tr("Translation"));
     }
     // Group edits are already saved, so Cancel would promise an undo it can't give: the
     // Groups tab only offers Close (which also keeps any General changes, like OK).
@@ -1088,7 +1104,18 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     layout->addLayout(bottom);
     // As tall as the contents need (wrapped notes included), instead of a fixed size that
     // cut text off with larger fonts.
-    resize(qMax(520, sizeHint().width()), sizeHint().height());
+    // The window is as tall as the tallest page, but never taller than the screen (the pages scroll).
+    const int chrome = m_tabs->tabBar()->sizeHint().height() + m_buttons->sizeHint().height() + 70;
+    int wantHeight = pageHint.height() + chrome;
+    int wantWidth = qMax(520, pageHint.width() + 30);
+    if (const QScreen* screen = QGuiApplication::primaryScreen()) {
+        const int most = screen->availableGeometry().height() * 9 / 10;
+        if (wantHeight > most) {
+            wantHeight = most;
+            wantWidth += style()->pixelMetric(QStyle::PM_ScrollBarExtent); // room for the scroll bar
+        }
+    }
+    resize(wantWidth, wantHeight);
 }
 
 Config SettingsDialog::config() const
@@ -1184,7 +1211,10 @@ void SettingsDialog::browseSyncFolder()
 
 void SettingsDialog::refreshSync()
 {
-    const bool has = m_syncSupport.hasPassphrase && m_syncSupport.hasPassphrase();
+    // The keyring is asked only once sync is on (or a folder is chosen): opening Settings must not touch it, because
+    // that can show the keyring's unlock window or ClipItTo's note about it for a feature that is off.
+    const bool lookUp = (m_syncEnabled && m_syncEnabled->isChecked()) || !m_syncFolder->text().trimmed().isEmpty();
+    const bool has = lookUp && m_syncSupport.hasPassphrase && m_syncSupport.hasPassphrase();
     const bool folder = !m_syncFolder->text().trimmed().isEmpty();
     m_syncPassphraseState->setText(!m_syncSupport.available
                                        ? tr("Needs the system keyring: %1").arg(m_syncSupport.reason)
