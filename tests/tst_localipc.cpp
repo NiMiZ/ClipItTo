@@ -211,7 +211,7 @@ private slots:
         QVERIFY(channel.start() == ControlChannel::StartResult::Ok);
         auto [code, output] = runCli({QStringLiteral("--selftest")});
         QCOMPARE(code, 0); // warnings do not count
-        QCOMPARE(output, QStringLiteral("the report text\n"));
+        QCOMPARE(QString(output).replace(QStringLiteral("\r\n"), QStringLiteral("\n")), QStringLiteral("the report text\n")); // Windows writes CRLF
         failures = 1;
         std::tie(code, output) = runCli({QStringLiteral("--selftest")});
         QCOMPARE(code, 1);
