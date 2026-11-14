@@ -23,6 +23,12 @@ bool isSupportedImageType(const QString& mimeType);
 // The largest picture handled, in pixels (checked before decoding when possible).
 inline constexpr qint64 kMaxImagePixels = 80LL * 1000 * 1000;
 
+// A picture from outside the program that cannot be trusted at all (a phone on the local network, "Receive from phone"):
+// the format is found from the content and must be JPEG, PNG, WebP, GIF or BMP; the size in the header is checked before any
+// pixel is read (more than kMaxImagePixels is refused); Qt's allocation limit is set; the EXIF orientation is applied. A null
+// image with `error` set (a short sentence for the user, translated) when it cannot be used. Safe on any thread.
+QImage decodeUntrusted(const QByteArray& data, QString* error = nullptr);
+
 // The sha256 (hex) of the picture's pixels, independent of its encoding.
 QString pixelHash(const QImage& image);
 

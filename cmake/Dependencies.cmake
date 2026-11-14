@@ -3,11 +3,11 @@
 #   Windows:      Qt 6.5+ (MSVC) plus vcpkg in manifest mode (see vcpkg.json and the
 #                 "windows" preset), which provides SQLite (with FTS5) and toml++.
 
-set(CLIPITTO_QT_COMPONENTS Core Gui Widgets Concurrent) # Concurrent: encoding copied pictures off the GUI thread
+# Concurrent: encoding copied pictures off the GUI thread. Network: the local socket of the control channel (Windows) and
+# "Receive from phone", which listens on the local network only while the user has its window open.
+set(CLIPITTO_QT_COMPONENTS Core Gui Widgets Concurrent Network)
 if(CLIPITTO_DBUS)
     list(APPEND CLIPITTO_QT_COMPONENTS DBus)
-else()
-    list(APPEND CLIPITTO_QT_COMPONENTS Network) # QLocalServer/QLocalSocket
 endif()
 if(BUILD_TESTING)
     list(APPEND CLIPITTO_QT_COMPONENTS Test)
