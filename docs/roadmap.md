@@ -209,9 +209,15 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
 30. **Thumbnails of copied picture files** and files copied on GNOME (the extension reads text only). Open items from previews.
 
 ### Quality and trust
-31. **A self-test** (*Check this installation*): is the hotkey registered, is the keyring reachable, does capture see a test
-    copy, is the diagnostic log writable, does paste work into a test box. It would have shortened the name-box investigation.
-32. **A small log viewer** for the diagnostic log (Settings), with a button that copies it to the clipboard for sharing.
+31. **DONE: A self-test** (*Check this installation*): `clipitto --selftest` and Settings › General › *Check this installation…*
+    (a window with PASS / WARN / FAIL / SKIPPED per check, a reason and what to do, and *Copy report*). Checks the program and
+    session, capture backend and a live test copy (securely deleted again), the shortcut, paste into a test box (Settings window
+    only), the history database, the settings file, the diagnostic log, the three keyrings, the password chain, paste-key
+    detection, the GNOME extension, the screen-lock watcher, translation packs, text recognition, sync, auto-forget / panic key,
+    Windows Hello / Touch ID. Each check has a time limit. The report never holds clipboard contents, window titles, passwords or
+    keys. See [usage.md](usage.md#when-something-does-not-work-check-this-installation).
+32. **A small log viewer** for the diagnostic log (Settings), with a button that copies it to the clipboard for sharing. Still open;
+    separate from the self-test (item 31), which does not show the log.
 33. **Longest GUI pause in `--status`** since the program started, so a stall report has a number.
 
 ### Paste once (17): details

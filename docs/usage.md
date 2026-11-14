@@ -346,8 +346,37 @@ finds them by note, group or "image".
 
 Saving keeps your own comments and layout in `config.toml`.
 
+## When something does not work: Check this installation
+
+Start here. *Check this installation* tells you what works and what does not, one line per check, each with **PASS**, **WARN**,
+**FAIL** or **SKIPPED**, a plain reason and what to do about it.
+
+- **In Settings:** *General › Check this installation…* opens a window with the results and a *Copy report* button (it puts the
+  report text on the clipboard, without ClipItTo recording it as a copy). Here the paste check also works: it types the paste keys
+  into the small test box in the window and looks whether the text arrived.
+- **From a command line:** `clipitto --selftest` prints the same report and exits with 1 when any check FAILed (warnings and
+  skipped checks do not count), 0 otherwise. It needs the daemon to be running; it does not test typing a paste (no box), so that
+  line says SKIPPED.
+
+What it checks: the program and session; the capture backend and whether it is degraded (with the fix, for example the GNOME
+extension); that capture really sees a copy (a short test text is put on the clipboard, must appear in the history, and is then
+deleted again, securely); the global shortcut and the reason if it is taken; paste; the history database (opens, integrity check,
+schema, writable, free disk space); the settings file (the same warnings the daemon logs); the diagnostic log (can be written, its
+path); the keyrings (history key, password match key, sync key), asking the real keyring only where encryption, a master password
+or sync is on; the password chain (name box, match key, master password state, the `detect_*` switches, the last name box); which
+paste keys a program in front gets (only the rule that matched); the GNOME extension answering; the screen-lock watcher;
+translation packs and text recognition; sync (folder, passphrase, last result); auto-forget and the panic key; Windows Hello /
+Touch ID. A check that does not apply on your system says SKIPPED and why. Every check has a time limit: one that does not answer
+(a locked keyring waiting for you, a network folder that is gone) shows as FAIL *did not answer in N s*, and the others go on.
+
+**Privacy.** The report holds versions, the platform, on/off settings, counts, language-pack ids and the paths of ClipItTo's
+own files (settings, history, log). It never holds what you copied, window titles, passwords, keys or the names of copies, so it
+is meant to be pasted into a bug report. The test copy is taken out of the history right away; the clipboard may still hold it
+(short text starting "ClipItTo self-test copy"). This is not the log viewer (the diagnostic log below stays a file you send).
+
 ## When something does not work: the diagnostic log
 
+(Run *Check this installation* above first; the log is for what it cannot tell you.)
 `clipitto --status` shows the daemon's state in a few lines (the password feature has its own `password_feature` line:
 which settings are on, whether the key that recognises copied passwords is available, and what the last "name this
 password" box did).
