@@ -7,9 +7,11 @@ class FakeKeyStore : public clipitto::KeyStore {
 public:
     bool isAvailable = true;
     bool failWrites = false; // e.g. the keyring refuses or disappears
+    bool asks = true; // mayAsk(): false = like Windows' Credential Manager, which never shows a window
     bool loseWrites = false; // reports success but keeps nothing (session-only keyring)
     std::optional<QByteArray> stored;
 
+    bool mayAsk() const override { return asks; }
     bool available(QString* why) override
     {
         if (!isAvailable && why) {

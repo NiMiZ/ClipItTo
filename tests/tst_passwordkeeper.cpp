@@ -64,6 +64,25 @@ private slots:
 
     // A locked keyring must not be asked about at every start: the match key is read when a password is first
     // copied or searched.
+    // The note about the keyring comes only before a call that can show a window; a probe and a keyring that never
+    // asks (Windows' Credential Manager) get none.
+    void noWordIsSaidForAProbeOrForAKeyringThatNeverAsks()
+    {
+        auto keys = std::make_shared<FakeKeyStore>();
+        int spoke = 0;
+        auto notice = std::make_shared<std::function<void(const QString&)>>([&](const QString&) { ++spoke; });
+        clipitto::AnnouncingKeyStore store(keys, QStringLiteral("sync"), notice);
+        QVERIFY(store.available());
+        QCOMPARE(spoke, 0); // only a probe
+        store.read();
+        QCOMPARE(spoke, 1); // a real call: the keyring may ask
+        keys->asks = false;
+        QVERIFY(store.write(QByteArray("k")));
+        store.read();
+        store.remove();
+        QCOMPARE(spoke, 1); // never asks: nothing to explain
+    }
+
     void theKeyringIsFirstAskedWhenTheMatchKeyIsNeeded()
     {
         Fixture f;

@@ -15,6 +15,9 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScreen>
+#include <QScrollArea>
+#include <QGuiApplication>
 #include <QSpinBox>
 #include <QFile>
 #include <QTemporaryDir>
@@ -71,6 +74,44 @@ private slots:
         QCOMPARE(d.ruleRowCount(), 1); // the editor holds the rule,
         QVERIFY(d.rulesSummary()->text().contains(QLatin1String("1"))); // the page says "1 rule(s)",
         QCOMPARE(d.config().passwordRules.size(), 1); // and config() still reads it from the window
+    }
+
+    // Opening Settings must not touch the keyring for a feature that is off (it can show the keyring's window).
+    void openingSettingsDoesNotAskTheKeyringWhileSyncIsOff()
+    {
+        TestDb t;
+        int asked = 0;
+        clipitto::ui::SyncSupport support;
+        support.available = true;
+        support.hasPassphrase = [&] { ++asked; return false; };
+        Config off;
+        SettingsDialog d(off, *t.repo, {}, {}, nullptr, {}, {}, {}, support);
+        QCOMPARE(asked, 0);
+        d.syncEnabledBox()->setChecked(true); // turning it on is what first asks
+        QVERIFY(asked >= 1);
+    }
+
+    // Every page scrolls and the window never grows taller than the screen, so the last settings are reachable.
+    void everyPageScrollsAndTheWindowFitsTheScreen()
+    {
+        TestDb t;
+        SettingsDialog d(Config{}, *t.repo, {});
+        QVERIFY(d.tabs()->count() >= 5);
+        for (int i = 0; i < d.tabs()->count(); ++i) {
+            QVERIFY2(qobject_cast<QScrollArea*>(d.tabs()->widget(i)), qPrintable(d.tabs()->tabText(i)));
+        }
+        const QScreen* screen = QGuiApplication::primaryScreen();
+        QVERIFY(screen);
+        QVERIFY(d.height() <= screen->availableGeometry().height());
+        // The Passwords page holds the Auto-forget rules; they are inside a scrolling page, not cut off.
+        QWidget* passwords = nullptr;
+        for (int i = 0; i < d.tabs()->count(); ++i) {
+            if (d.tabs()->tabText(i) == QLatin1String("Passwords")) {
+                passwords = d.tabs()->widget(i);
+            }
+        }
+        QVERIFY(passwords);
+        QVERIFY(passwords->findChild<QPushButton*>(QString(), Qt::FindChildrenRecursively) != nullptr);
     }
 
     void pasteAsTabChecksMovesAndResets()
