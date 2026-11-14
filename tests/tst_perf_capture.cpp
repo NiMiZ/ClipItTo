@@ -196,7 +196,7 @@ private slots:
     void theSameCopyInAFlood()
     {
         perf::DaemonRig rig;
-        StallWatchdog wd;
+        StallWatchdog wd(300); // 3000 copies in one burst: a Windows runner measured 534 ms against 500, so the limit is for a runaway, not a precise figure
         for (int round = 0; round < 10; ++round) {
             for (int i = 0; i < 300; ++i) {
                 rig.ingest(QStringLiteral("the same copy again and again"));
