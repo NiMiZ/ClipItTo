@@ -120,7 +120,7 @@ until you use *Not a password* in the right-click menu. That is why it is off. L
 needs a master password (or *Use without one…*); otherwise the box is disabled.
 
 **Your own rules.** When the guess is too loose or too strict, define what counts as a password yourself
-(Settings › Passwords › *Password rules*, config key `password_rules`, up to 5). A rule is a length range
+(Settings › Passwords › *Password rules* › *Edit rules…*, which opens the editor in its own window; config key `password_rules`, up to 5). A rule is a length range
 (6 to 256; shorter rules would catch ordinary words), minimum counts of lower case letters, upper case letters, digits and symbols, and *digits at the
 end*. Counts are minimums: "2 digits" means at least 2, and with a length of 3 or more it is not satisfied
 by two digits alone. A single-line copy without spaces that fits any rule is kept as a password copy with
