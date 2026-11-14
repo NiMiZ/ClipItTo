@@ -729,6 +729,24 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     panicRow->addWidget(m_panicShortcut, 1);
     panicRow->addWidget(panicNone);
     passwordsForm->addRow(tr("Panic shortcut:"), panicRow);
+    // The same action on a button (with a question, because a button is easy to press by mistake). It happens at
+    // once, not when OK is pressed: like "Clear everything", it is not a setting.
+    m_wipeNow = new QPushButton(tr("Wipe everything now…"), this);
+    m_wipeNow->setAutoDefault(false);
+    m_wipeNow->setEnabled(static_cast<bool>(m_passwordSupport.panicNow));
+    m_wipeNow->setToolTip(tr("Deletes the whole history now (also pinned, starred, grouped and password copies), locks the "
+                             "password copies and empties the system clipboard. Cannot be undone. Happens at once, "
+                             "whether or not you press OK."));
+    connect(m_wipeNow, &QPushButton::clicked, this, [this] {
+        if (!m_passwordSupport.panicNow
+            || !m_confirm(this, tr("Wipe everything now?\n\nThis deletes every copy in the history (also pinned, starred, "
+                                   "grouped and password copies), locks the password copies and empties the clipboard. "
+                                   "It cannot be undone. Your settings, groups and master password stay."))) {
+            return;
+        }
+        m_passwordSupport.panicNow();
+    });
+    passwordsForm->addRow(QString(), m_wipeNow);
     m_panicStatus = new QLabel(this);
     m_panicStatus->setWordWrap(true);
     m_panicStatus->setEnabled(false); // dim
