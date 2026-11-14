@@ -63,6 +63,13 @@
       <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QVariantMap"/>
     </method>
 
+    <!-- Runs the self-test checks (the CLI's selftest option) and replies when they are done, which may take many
+         seconds: the reply is delayed. Keys: report (text), pass, warn, fail, skipped. -->
+    <method name="SelfTest">
+      <arg name="result" type="a{sv}" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QVariantMap"/>
+    </method>
+
     <signal name="VisibilityChanged">
       <arg name="visible" type="b"/>
     </signal>

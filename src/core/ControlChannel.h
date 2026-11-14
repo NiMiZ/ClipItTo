@@ -31,6 +31,20 @@ public:
     void setPasswordsWantedProvider(std::function<bool()> provider) { m_passwordsWanted = std::move(provider); }
     bool passwordsWanted() const { return m_passwordsWanted && m_passwordsWanted(); }
 
+    // The self-test (clipitto --selftest, roadmap 31): the daemon runs its checks and calls `reply` with the report when they
+    // are done, which may be many seconds later (the channel answers the caller then, not before). The map holds "report" (the
+    // text) and the counts "pass", "warn", "fail", "skipped".
+    using SelfTestReply = std::function<void(const QVariantMap&)>;
+    void setSelfTestProvider(std::function<void(SelfTestReply)> provider) { m_selfTest = std::move(provider); }
+    void runSelfTest(SelfTestReply reply)
+    {
+        if (m_selfTest) {
+            m_selfTest(std::move(reply));
+        } else if (reply) {
+            reply(QVariantMap{{QStringLiteral("error"), QStringLiteral("the self-test is not available")}});
+        }
+    }
+
 signals:
     void toggleRequested(const QString& activationToken);
     void showRequested(const QString& activationToken);
@@ -53,6 +67,7 @@ signals:
 private:
     std::function<QVariantMap()> m_statusProvider;
     std::function<bool()> m_passwordsWanted;
+    std::function<void(SelfTestReply)> m_selfTest;
 };
 
 } // namespace clipitto

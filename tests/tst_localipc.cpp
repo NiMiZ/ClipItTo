@@ -8,6 +8,7 @@
 #include <QProcess>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
 
 #include <future>
 
@@ -170,6 +171,61 @@ private slots:
         QVERIFY2(code == 0, qPrintable(output));
         QCOMPARE(output.trimmed(), QStringLiteral("done"));
         QCOMPARE(panic.size(), 2);
+    }
+
+    // The self-test is answered when the checks are done, not when the request arrives (roadmap 31).
+    void selfTestReplyComesLaterOverTheSameConnection()
+    {
+        LocalControlChannel channel(m_name);
+        channel.setSelfTestProvider([](ControlChannel::SelfTestReply reply) {
+            QTimer::singleShot(150, [reply] {
+                reply({{QStringLiteral("report"), QStringLiteral("[PASS] A: fine\n")}, {QStringLiteral("fail"), 0}});
+            });
+        });
+        QVERIFY(channel.start() == ControlChannel::StartResult::Ok);
+        const Reply reply = call({QStringLiteral("SelfTest"), {}});
+        QVERIFY(reply.ok);
+        QCOMPARE(reply.result.toObject().value(QStringLiteral("report")).toString(), QStringLiteral("[PASS] A: fine\n"));
+    }
+
+    void selfTestWithoutAProviderIsAnErrorMapNotAHang()
+    {
+        LocalControlChannel channel(m_name);
+        QVERIFY(channel.start() == ControlChannel::StartResult::Ok);
+        const Reply reply = call({QStringLiteral("SelfTest"), {}});
+        QVERIFY(reply.ok);
+        QVERIFY(reply.result.toObject().contains(QStringLiteral("error")));
+    }
+
+    void cliSelfTestPrintsTheReportAndExitsNonZeroOnlyForAFail()
+    {
+        LocalControlChannel channel(m_name);
+        int failures = 0;
+        channel.setSelfTestProvider([&failures](ControlChannel::SelfTestReply reply) {
+            QTimer::singleShot(50, [reply, failures] {
+                reply({{QStringLiteral("report"), QStringLiteral("the report text\n")},
+                       {QStringLiteral("fail"), failures},
+                       {QStringLiteral("warn"), 2}});
+            });
+        });
+        QVERIFY(channel.start() == ControlChannel::StartResult::Ok);
+        auto [code, output] = runCli({QStringLiteral("--selftest")});
+        QCOMPARE(code, 0); // warnings do not count
+        QCOMPARE(QString(output).replace(QStringLiteral("\r\n"), QStringLiteral("\n")), QStringLiteral("the report text\n")); // Windows writes CRLF
+        failures = 1;
+        std::tie(code, output) = runCli({QStringLiteral("--selftest")});
+        QCOMPARE(code, 1);
+        QVERIFY(output.contains(QLatin1String("the report text")));
+        // Exactly one action may be given.
+        std::tie(code, output) = runCli({QStringLiteral("--selftest"), QStringLiteral("--status")});
+        QCOMPARE(code, 2);
+    }
+
+    void cliSelfTestReportsAMissingDaemon()
+    {
+        const auto [code, output] = runCli({QStringLiteral("--selftest")});
+        QCOMPARE(code, 1);
+        QVERIFY(output.contains(QLatin1String("the daemon is not running")));
     }
 
     void cliReportsAMissingDaemon()

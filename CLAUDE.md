@@ -23,4 +23,5 @@ C++20, Qt 6 (Widgets), CMake. Targets Windows 10+ and Linux (X11 and Wayland).
 - `.claude/notes/settings-groups-backend.md` — storage, groups, duplicates, config, backup, CI facts
 - `.claude/notes/passwords.md` — password copies: intent and implementation
 - `.claude/notes/translation.md` — offline translation (CTranslate2), language packs, build script
+- `.claude/notes/selftest.md` — Check this installation (`--selftest`, the checks, privacy rules)
 - `docs/releasing.md` — how a release is made (version bump, notes, tag), and why CI fails

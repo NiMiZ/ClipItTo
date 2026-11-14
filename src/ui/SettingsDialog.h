@@ -5,8 +5,10 @@
 #include "PasteAs.h"
 #include "Translation.h"
 #include "Prompts.h"
+#include "SelfTestWindow.h"
 
 #include <QDialog>
+#include <QPointer>
 
 #include <functional>
 #include <optional>
@@ -110,6 +112,12 @@ public:
     SettingsDialog(const Config& config, db::Repository& repo, ShortcutSupport shortcut,
                    EncryptionSupport encryption = {}, QWidget* parent = nullptr, PasswordSupport passwords = {},
                    StartupSupport startup = {}, TranslationSupport translation = {}, SyncSupport sync = {});
+
+    // Check this installation (General tab, roadmap 31): the button opens a window with the self-test's results.
+    void setSelfTest(SelfTestSupport support);
+    QPushButton* selfTestButton() const { return m_selfTestButton; }
+    SelfTestWindow* selfTestWindow() const { return m_selfTestWindow; }
+    void openSelfTest(); // what the button does
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -331,6 +339,9 @@ private:
     QCheckBox* m_indexPictures;
     QCheckBox* m_keepFormatting;
     QCheckBox* m_debugLog;
+    QPushButton* m_selfTestButton = nullptr;
+    QPointer<SelfTestWindow> m_selfTestWindow;
+    SelfTestSupport m_selfTest;
     QList<QCheckBox*> m_layoutBoxes; // keyboard layouts for Paste as…, in texttransform::layouts() order
     QString m_layoutsSetting; // keyboard_layouts as loaded
     QSpinBox* m_lines;

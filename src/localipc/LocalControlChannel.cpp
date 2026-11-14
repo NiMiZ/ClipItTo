@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QPointer>
 #include <QTimer>
 
 namespace clipitto::localipc {
@@ -67,6 +68,16 @@ void LocalControlChannel::onReadyRead(QLocalSocket* socket)
         }
         QString error;
         const auto request = decodeRequest(line, &error);
+        if (request && request->method == QLatin1String("SelfTest")) {
+            // Answered when the checks are done; the connection stays open until then.
+            runSelfTest([guard = QPointer<QLocalSocket>(socket)](const QVariantMap& result) {
+                if (guard) {
+                    guard->write(encodeReply({true, QJsonObject::fromVariantMap(result), {}}));
+                    guard->flush();
+                }
+            });
+            continue;
+        }
         socket->write(encodeReply(request ? dispatch(*request) : Reply{false, {}, error}));
         // Out to the operating system now: Quit makes the daemon exit on the next event-loop
         // turn, and a reply still in our buffer would be lost (a Unix socket, unlike a pipe,

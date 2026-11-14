@@ -283,6 +283,16 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                  tr("It does not contain what you copied (text, pictures, notes, group names). It does contain file paths "
                     "(with your user name), error messages and the times things happened, so look at it before you send it.")));
     form->addRow(QString(), m_debugLog);
+    m_selfTestButton = new QPushButton(tr("Check this installation…"), this);
+    m_selfTestButton->setObjectName(QStringLiteral("selfTestButton"));
+    m_selfTestButton->setToolTip(QStringLiteral("<p>%1</p>")
+                                     .arg(tr("When something does not work, this tells you what works and what does not: whether "
+                                             "copies are seen, the shortcut is registered, the keyring answers, paste works, and "
+                                             "more, each with what to do. It puts a short test text on the clipboard. The "
+                                             "report never contains what you copied.")));
+    m_selfTestButton->setEnabled(false); // until the daemon gives it the checks (setSelfTest)
+    connect(m_selfTestButton, &QPushButton::clicked, this, &SettingsDialog::openSelfTest);
+    form->addRow(QString(), m_selfTestButton);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
@@ -1138,6 +1148,30 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         }
     }
     resize(wantWidth, wantHeight);
+}
+
+void SettingsDialog::setSelfTest(SelfTestSupport support)
+{
+    m_selfTest = std::move(support);
+    m_selfTestButton->setEnabled(m_selfTest.create != nullptr);
+}
+
+void SettingsDialog::openSelfTest()
+{
+    if (!m_selfTest.create) {
+        return;
+    }
+    if (!m_selfTestWindow) {
+        m_selfTestWindow = new SelfTestWindow(m_selfTest, this);
+        m_selfTestWindow->setAttribute(Qt::WA_DeleteOnClose);
+        m_selfTestWindow->setModal(false);
+    }
+    m_selfTestWindow->show();
+    m_selfTestWindow->raise();
+    m_selfTestWindow->activateWindow();
+    if (!m_selfTestWindow->isRunning()) {
+        m_selfTestWindow->run();
+    }
 }
 
 Config SettingsDialog::config() const

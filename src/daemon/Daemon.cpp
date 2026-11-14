@@ -35,6 +35,7 @@
 #include <QSaveFile>
 #include <QGuiApplication>
 #include <QLoggingCategory>
+#include <QThread>
 #include <QThreadPool>
 #include <QTime>
 #include <QTimer>
@@ -95,6 +96,14 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     m_translatePool.setMaxThreadCount(1);
     m_control->setParent(this);
     m_control->setStatusProvider([this] { return status(); });
+    m_control->setSelfTestProvider([this](ControlChannel::SelfTestReply reply) {
+        selftest::Runner* runner = createSelfTest();
+        connect(runner, &selftest::Runner::finished, this,
+                [reply = std::move(reply)](const selftest::Report& report) { reply(report.toMap()); });
+        if (!runner->isRunning()) {
+            runner->start();
+        }
+    });
     connect(m_control, &ControlChannel::reloadRequested, this, &Daemon::reloadConfig);
     if (m_integration) {
         m_integration->setParent(this);
@@ -617,6 +626,11 @@ void Daemon::onTextEdited(qint64 id, const QString& text)
 
 void Daemon::announceKeyring(const QString& purpose)
 {
+    if (QThread::currentThread() != thread()) {
+        // The self-test reads the keyrings on a worker thread: the notice belongs on the GUI thread.
+        QMetaObject::invokeMethod(this, [this, purpose] { announceKeyring(purpose); }, Qt::QueuedConnection);
+        return;
+    }
     const QDateTime now = QDateTime::currentDateTime();
     const QDateTime last = m_keyringAsked.value(purpose);
     m_keyringAsked.insert(purpose, now);
@@ -672,6 +686,13 @@ void Daemon::onTextActivated(const QString& text)
     pasteIfWanted();
 }
 
+PasteTarget Daemon::currentPasteTarget() const
+{
+    return m_options.pasteTarget ? m_options.pasteTarget()
+           : integrationAvailable() ? m_integration->pasteTarget()
+                                    : rememberedPasteTarget();
+}
+
 void Daemon::pasteIfWanted(std::function<void(bool sent)> done)
 {
     if (!m_config.pasteOnEnter) {
@@ -683,9 +704,7 @@ void Daemon::pasteIfWanted(std::function<void(bool sent)> done)
     // Give the previously focused window time to get focus back after the popup hides.
     QTimer::singleShot(80, this, [this, done = std::move(done)] {
         bool sent = true;
-        const PasteTarget target = m_options.pasteTarget ? m_options.pasteTarget()
-                                   : integrationAvailable() ? m_integration->pasteTarget()
-                                                            : rememberedPasteTarget();
+        const PasteTarget target = currentPasteTarget();
         const pastekeys::Choice choice = pastekeys::choose(m_config.pasteKeys, m_config.pasteKeysPerApp,
                                                            m_config.pasteKeysApps, target);
         // Which rule decided, never the window or what is pasted.
@@ -998,6 +1017,7 @@ void Daemon::openSettings()
     }
     ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup, translationSupport(),
                               std::move(syncing));
+    dialog.setSelfTest(selfTestSupport());
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
@@ -1532,6 +1552,23 @@ void Daemon::reload(bool forceShortcut)
     emit configReloaded();
 }
 
+QString Daemon::passwordStateText() const
+{
+    if (!m_passwords || !m_passwords->isSetUp()) {
+        return QStringLiteral("off (no master password)");
+    }
+    if (!m_config.keepPasswords) {
+        return QStringLiteral("not kept (turned off in the settings)");
+    }
+    if (m_passwords->isOpen()) {
+        return QStringLiteral("open (no master password: not secure)");
+    }
+    if (m_passwords->isUnlocked()) {
+        return QStringLiteral("unlocked (%1 min left)").arg((m_passwords->secondsLeft() + 59) / 60);
+    }
+    return QStringLiteral("locked");
+}
+
 QVariantMap Daemon::status() const
 {
     QVariantMap s = m_extraStatus;
@@ -1575,18 +1612,7 @@ QVariantMap Daemon::status() const
         s[QStringLiteral("login_item")] = loginItem().isEnabled() ? QStringLiteral("on") : QStringLiteral("off");
     }
     if (m_passwords) {
-        QString passwords;
-        if (!m_passwords->isSetUp()) {
-            passwords = QStringLiteral("off (no master password)");
-        } else if (!m_config.keepPasswords) {
-            passwords = QStringLiteral("not kept (turned off in the settings)");
-        } else if (m_passwords->isOpen()) {
-            passwords = QStringLiteral("open (no master password: not secure)");
-        } else if (m_passwords->isUnlocked()) {
-            passwords = QStringLiteral("unlocked (%1 min left)").arg((m_passwords->secondsLeft() + 59) / 60);
-        } else {
-            passwords = QStringLiteral("locked");
-        }
+        QString passwords = passwordStateText();
         if (m_passwords->isSetUp() && !m_passwords->canMatch()) {
             passwords += QStringLiteral("; whole-password search while locked is off (%1)").arg(m_passwords->matchProblem());
         }

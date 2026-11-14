@@ -8,6 +8,7 @@ add_library(clipitto_ui STATIC
     Prompts.cpp Prompts.h
     SearchBar.cpp SearchBar.h
     SearchController.cpp SearchController.h
+    SelfTestWindow.cpp SelfTestWindow.h
     SettingsDialog.cpp SettingsDialog.h
     Theme.cpp Theme.h
     MacApp.h PlatformKeys.h

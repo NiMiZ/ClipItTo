@@ -10,11 +10,14 @@
 #include "KeyStore.h"
 #include "PasswordKeeper.h"
 #include "ScreenLockWatcher.h"
+#include "SelfTestChecks.h"
+#include "SelfTestWindow.h"
 #include "SessionEnv.h"
 #include "Translate.h"
 #include "Translation.h"
 
 #include <QObject>
+#include <QPointer>
 #include <QThreadPool>
 #include <QTimer>
 #include <QVariantMap>
@@ -145,6 +148,14 @@ public:
     // Does nothing without rules, while the history is converted or on a database error.
     qint64 runAutoForget();
 
+    // "Check this installation" (roadmap 31): a runner for all the checks, not started yet (connect to its signals, then
+    // start()). Returns the one already running, if there is one, so two callers share a run. `box` is the Settings window's
+    // paste test box; without it the paste check is skipped. The runner is the daemon's child and deletes itself when done.
+    selftest::Runner* createSelfTest(const selftest::PasteBox* box = nullptr);
+    selftest::Env selfTestEnv(const selftest::PasteBox* box);
+    // What Settings > Check this installation needs (the runner, and copying the report as an own write).
+    ui::SelfTestSupport selfTestSupport();
+
 signals:
     void configReloaded();
     void encryptionFinished(bool ok, const QString& error); // after a runtime switch
@@ -153,6 +164,10 @@ signals:
 
 private:
     void startCapture();
+    void probeCapture(std::function<void(selftest::CaptureOutcome)> done);
+    void probePaste(const selftest::PasteBox& box, std::function<void(selftest::PasteOutcome)> done);
+    PasteTarget currentPasteTarget() const; // what the next paste goes to, as far as the platform can tell
+    QString passwordStateText() const; // the "passwords" line of --status, without the match-key note
     void loadConfig();
     void applyDebugLog(); // debug lines and the log file follow --verbose and the debug_log setting
     void reload(bool forceShortcut);
@@ -214,6 +229,7 @@ private:
     QString m_encryptionError;
     QString m_startupWarning; // shown once, the first time the popup opens
     bool m_removeKeyAfterStart = false;
+    QPointer<selftest::Runner> m_selfTest; // the run in progress
     QString m_lastNameBox; // outcome and time of the last password name box, for --status
     bool m_passwordNoticeShown = false; // "set a master password", once per session
     QTimer* m_clearPassword = nullptr; // takes a pasted password off the clipboard again
