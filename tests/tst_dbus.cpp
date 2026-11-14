@@ -71,12 +71,12 @@ private:
     }
 
     // Runs the real CLI binary while our event loop keeps answering its D-Bus calls.
-    static std::pair<int, QString> runCli(const QStringList& args)
+    static std::pair<int, QString> runCli(const QStringList& args, int waitMs = 10000)
     {
         QProcess cli;
         cli.start(QStringLiteral(CLIPITTO_CLI_PATH), args);
         QSignalSpy finished(&cli, &QProcess::finished);
-        if (!finished.wait(10000)) {
+        if (!finished.wait(waitMs)) {
             cli.kill();
             return {-1, QStringLiteral("timeout")};
         }
@@ -180,6 +180,45 @@ private slots:
         QTRY_COMPARE(m_daemon->repository()->countImages(), 1);
         shell.unregisterService(QStringLiteral("org.gnome.Shell"));
         QDBusConnection::disconnectFromBus(QStringLiteral("gnome-shell"));
+    }
+
+    // "Check this installation" over the bus: a delayed reply with the report (roadmap 31). The live capture check puts a
+    // test text on the clipboard; it must be gone from the history again afterwards.
+    void selfTestAnswersWithTheReportAndLeavesNoTestCopy()
+    {
+        const qint64 before = m_daemon->repository()->count();
+        auto msg = QDBusMessage::createMethodCall(QString::fromLatin1(clipitto::ipc::kServiceName),
+                                                  QString::fromLatin1(clipitto::ipc::kObjectPath),
+                                                  QString::fromLatin1(clipitto::ipc::kInterface), QStringLiteral("SelfTest"));
+        // A connection of its own, as another process has: a delayed reply is not possible for a call inside one connection.
+        QDBusConnection client = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("selftest-client"));
+        QDBusPendingCall pending = client.asyncCall(msg, 120000);
+        QDBusPendingCallWatcher watcher(pending);
+        QSignalSpy finished(&watcher, &QDBusPendingCallWatcher::finished);
+        if (!watcher.isFinished()) {
+            QVERIFY(finished.wait(120000));
+        }
+        const QDBusMessage reply = pending.reply();
+        QDBusConnection::disconnectFromBus(QStringLiteral("selftest-client"));
+        QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+        const QVariantMap result = qdbus_cast<QVariantMap>(reply.arguments().constFirst());
+        const QString report = result.value(QStringLiteral("report")).toString();
+        QVERIFY2(report.contains(QLatin1String("Capture backend")), qPrintable(report));
+        QVERIFY2(report.contains(QLatin1String("[PASS] Capture sees a copy")), qPrintable(report));
+        QVERIFY(report.contains(QLatin1String("[SKIPPED] Paste works"))); // no Settings window here
+        QVERIFY(result.contains(QStringLiteral("fail")));
+        QCOMPARE(m_daemon->repository()->count(), before);
+        for (const clipitto::Entry& entry : m_daemon->repository()->allEntries()) {
+            QVERIFY(!entry.content.contains(QLatin1String("self-test copy")));
+        }
+    }
+
+    void cliSelfTestExitCodeFollowsTheFailures()
+    {
+        const auto [code, output] = runCli({QStringLiteral("--selftest")}, 120000);
+        QVERIFY2(code == 0 || code == 1, qPrintable(output));
+        QVERIFY2(output.contains(QLatin1String("Summary:")), qPrintable(output));
+        QCOMPARE(code == 1, output.contains(QLatin1String("[FAIL]")));
     }
 
     void statusReportsState()
