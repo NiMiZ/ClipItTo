@@ -21,6 +21,9 @@ public:
     virtual std::optional<QByteArray> read(QString* error = nullptr) = 0;
     virtual bool write(const QByteArray& key, QString* error = nullptr) = 0;
     virtual bool remove(QString* error = nullptr) = 0;
+    // True when a call may show the user a window (a keyring to unlock, a Keychain prompt). ClipItTo then says why
+    // first (AnnouncingKeyStore). False where it never does: Windows' Credential Manager.
+    virtual bool mayAsk() const { return true; }
 };
 
 // Tells the user why before the keyring is asked: the keyring may show its own "unlock" window, and without a
@@ -33,7 +36,8 @@ public:
         : m_inner(std::move(inner)), m_purpose(std::move(purpose)), m_announce(std::move(announce))
     {
     }
-    bool available(QString* why = nullptr) override { say(); return m_inner->available(why); }
+    bool available(QString* why = nullptr) override { return m_inner->available(why); } // only a probe: no word
+    bool mayAsk() const override { return m_inner->mayAsk(); }
     std::optional<QByteArray> read(QString* error = nullptr) override { say(); return m_inner->read(error); }
     bool write(const QByteArray& key, QString* error = nullptr) override { say(); return m_inner->write(key, error); }
     bool remove(QString* error = nullptr) override { say(); return m_inner->remove(error); }
@@ -41,7 +45,7 @@ public:
 private:
     void say() const
     {
-        if (m_announce && *m_announce) {
+        if (m_announce && *m_announce && m_inner->mayAsk()) {
             (*m_announce)(m_purpose);
         }
     }

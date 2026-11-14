@@ -45,6 +45,7 @@ public:
     }
 
     bool available(QString*) override { return true; } // Credential Manager is part of Windows
+    bool mayAsk() const override { return false; } // and it never shows a window of its own
 
     std::optional<QByteArray> read(QString* error) override
     {
