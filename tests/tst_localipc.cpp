@@ -173,6 +173,19 @@ private slots:
         QCOMPARE(panic.size(), 2);
     }
 
+    void phoneBecomesASignalAndTheCliSaysTheWindowIsOpen()
+    {
+        LocalControlChannel channel(m_name);
+        QVERIFY(channel.start() == ControlChannel::StartResult::Ok);
+        QSignalSpy phone(&channel, &ControlChannel::phoneRequested);
+        QVERIFY(call({QStringLiteral("ReceiveFromPhone"), {}}).ok);
+        QCOMPARE(phone.size(), 1);
+        const auto [code, output] = runCli({QStringLiteral("--phone")});
+        QVERIFY2(code == 0, qPrintable(output));
+        QVERIFY(output.contains(QLatin1String("window is open")));
+        QCOMPARE(phone.size(), 2);
+    }
+
     // The self-test is answered when the checks are done, not when the request arrives (roadmap 31).
     void selfTestReplyComesLaterOverTheSameConnection()
     {

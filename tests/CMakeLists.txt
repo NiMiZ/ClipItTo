@@ -37,6 +37,7 @@ target_compile_definitions(tst_gui_general PRIVATE CLIPITTO_EXAMPLE_CONFIG="${PR
 clipitto_add_test(tst_pasteonce clipitto_ui clipitto_daemon_lib)
 clipitto_add_test(tst_panic clipitto_ui clipitto_daemon_lib)
 clipitto_add_test(tst_selftest_daemon clipitto_ui clipitto_daemon_lib)
+clipitto_add_test(tst_phone_daemon clipitto_ui clipitto_daemon_lib clipitto_phone)
 if(UNIX)
     target_compile_definitions(tst_panic PRIVATE CLIPITTO_FAKE_GSETTINGS="${CMAKE_CURRENT_SOURCE_DIR}/fakebin/gsettings")
 endif()
