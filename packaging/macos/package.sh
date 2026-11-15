@@ -28,7 +28,8 @@ cmake --install "$build" --prefix "$stage"
 command -v macdeployqt >/dev/null || { echo "package.sh: macdeployqt not found (Qt's bin folder on PATH)" >&2; exit 1; }
 macdeployqt "$app" -executable="$app/Contents/MacOS/clipitto"
 
-# ClipItTo makes no network connections (QtNetwork is only for its local control socket):
+# ClipItTo makes no connections to the internet (QtNetwork serves its local control socket and the local-network
+# "Receive from phone" page):
 # the TLS and reachability plugins macdeployqt adds for it have no use here.
 for plugins in tls networkinformation; do
     [ -d "$app/Contents/PlugIns/$plugins" ] && rm -r "$app/Contents/PlugIns/$plugins"

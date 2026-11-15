@@ -79,7 +79,7 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ${CLIPITTO_DEB_SHLIBDEPS})
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-wayland")
 if(NOT CLIPITTO_DEB_SHLIBDEPS)
     string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libqt6core6t64, libqt6gui6t64, libqt6widgets6t64, "
-                  "libqt6dbus6t64, libtomlplusplus3t64, libx11-6, libxtst6")
+                  "libqt6dbus6t64, libqt6network6t64, libtomlplusplus3t64, libx11-6, libxtst6")
     if(Qt6Keychain_FOUND)
         string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libqt6keychain1")
     endif()
