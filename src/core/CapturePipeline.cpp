@@ -1,5 +1,6 @@
 #include "CapturePipeline.h"
 
+#include "PasswordIgnore.h"
 #include "RichText.h"
 #include "SecretScan.h"
 #include "PasswordVault.h"
@@ -165,22 +166,34 @@ void CapturePipeline::process(const QString& rawText, const QStringList& mimeTyp
     QString text = rawText;
     text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     ClipFilter::Verdict verdict = m_filter.check(text, mimeTypes);
+    // What is only a guess (detect_passwords, password_rules) is dropped when the copy is clearly not a password: a path,
+    // an environment variable, a URL, or one of the user's own ignore texts. Marked copies and secretscan::kindOf are
+    // never asked.
+    passwordignore::Verdict ignore;
+    if (verdict == ClipFilter::Verdict::Accept && (m_detectPasswords || !m_passwordRules.isEmpty())) {
+        ignore = passwordignore::check(m_ignoreBuiltin, m_passwordIgnore, text);
+    }
+    const bool guessPassword = !ignore.ignored();
     // A key or token is never given a formatted version, whether it is kept as a password copy or not.
     const bool looksSecret = verdict == ClipFilter::Verdict::Accept
         && ((m_detectSecrets && !secretscan::kindOf(text).isEmpty())
-            || (m_detectPasswords && secretscan::looksLikeGeneratedPassword(text))
-            || passwordrules::matchesAny(m_passwordRules, text));
+            || (guessPassword && m_detectPasswords && secretscan::looksLikeGeneratedPassword(text))
+            || (guessPassword && passwordrules::matchesAny(m_passwordRules, text)));
     QString detected; // what an unmarked copy looks like, when it is kept as a password anyway
     if (verdict == ClipFilter::Verdict::Accept && (m_detectSecrets || m_detectPasswords || !m_passwordRules.isEmpty())
         && keepsPasswords()) {
         if (m_detectSecrets) {
             detected = secretscan::kindOf(text);
         }
-        if (detected.isEmpty() && passwordrules::matchesAny(m_passwordRules, text)) {
+        if (detected.isEmpty() && guessPassword && passwordrules::matchesAny(m_passwordRules, text)) {
             detected = QStringLiteral("Matches your password rule");
         }
-        if (detected.isEmpty() && m_detectPasswords && secretscan::looksLikeGeneratedPassword(text)) {
+        if (detected.isEmpty() && guessPassword && m_detectPasswords && secretscan::looksLikeGeneratedPassword(text)) {
             detected = QStringLiteral("Looks like a password"); // stored as is, like the kinds from secretscan::kindOf
+        }
+        if (detected.isEmpty() && ignore.ignored()) {
+            // The class of reason only ("built-in shape: file path"), never the text.
+            qCDebug(lcCapture).noquote() << "password guess: ignored by" << passwordignore::describe(ignore);
         }
         if (detected.isEmpty() && m_detectPasswords && text.size() >= 8 && text.size() <= 64
             && !text.contains(QLatin1Char('\n')) && !text.contains(QLatin1Char('\r'))) {

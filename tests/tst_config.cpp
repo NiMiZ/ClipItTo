@@ -202,6 +202,30 @@ private slots:
         QCOMPARE(sixRules.passwordRules.size(), 5);
         QCOMPARE(ruleWarnings.size(), 3); // two malformed, one over the limit of five
         QStringList notList;
+
+        // Password ignore: on by default, rules are trimmed, validated, limited; the file round trips.
+        QVERIFY(defaults.passwordIgnoreBuiltin);
+        QVERIFY(defaults.passwordIgnore.isEmpty());
+        Config ignoring;
+        ignoring.passwordIgnoreBuiltin = false;
+        ignoring.passwordIgnore = {QStringLiteral("%appdata%*"), QStringLiteral("*\\Users\\*"), QStringLiteral("C:\\work\\*")};
+        QVERIFY(Config::fromToml(ignoring.toToml()) == ignoring);
+        QVERIFY(Config::fromToml(ignoring.mergeInto("password_ignore = []   # mine\nrecent_count = 7\n")) == ignoring);
+        QStringList ignoreWarnings;
+        QString list = QStringLiteral("password_ignore = [\"  abc*  \", \"*\", \"ab\", \"a*b*c*d*e\", 5");
+        for (int n = 1; n <= 16; ++n) {
+            list += QStringLiteral(", \"rule%1\"").arg(n);
+        }
+        const Config many = Config::fromToml((list + QStringLiteral("]")).toStdString(), &ignoreWarnings);
+        QCOMPARE(many.passwordIgnore.size(), 16);
+        QCOMPARE(many.passwordIgnore.front(), QStringLiteral("abc*")); // trimmed
+        QCOMPARE(ignoreWarnings.size(), 4 + 1); // "*", "ab", four wildcards and a number are skipped; one over the limit
+        for (const QString& w : ignoreWarnings) {
+            QVERIFY(!w.contains(QLatin1String("abc")) && !w.contains(QLatin1String("rule1"))); // never quotes a rule
+        }
+        QStringList notIgnoreList;
+        QVERIFY(Config::fromToml("password_ignore = 5\npassword_ignore_builtin = 3", &notIgnoreList).passwordIgnore.isEmpty());
+        QCOMPARE(notIgnoreList.size(), 2);
         QVERIFY(Config::fromToml("password_rules = 5", &notList).passwordRules.isEmpty());
         QCOMPARE(notList.size(), 1);
 
