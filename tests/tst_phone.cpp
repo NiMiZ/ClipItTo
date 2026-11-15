@@ -392,11 +392,8 @@ private slots:
         QVERIFY(server.start());
         const QByteArray token = server.token().toLatin1();
         const QList<QByteArray> bad = {
-            "GARBAGE\r\n\r\n",
-            "GET /" + token + "/\r\n\r\n",
             "GET /" + token + "/ HTTP/2.0\r\n\r\n",
             "GET /" + token + "/ HTTP/1.1\r\nno colon here\r\n\r\n",
-            "GET x HTTP/1.1\r\n\r\n",
             "POST /" + token + "/upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
             "POST /" + token + "/upload HTTP/1.1\r\nContent-Length: 3\r\nContent-Length: 3\r\n\r\nabc",
             "POST /" + token + "/upload HTTP/1.1\r\nContent-Length: -1\r\n\r\n",
@@ -415,6 +412,26 @@ private slots:
         QVERIFY(c.waitConnected());
         c.send("POST /" + token + "/upload HTTP/1.1\r\n\r\n");
         QCOMPARE(c.waitReply().status(), 411);
+        // Without the token every kind of broken request is the same bare 404: nothing is learned.
+        const QList<QByteArray> strangers = {
+            "GARBAGE\r\n\r\n",
+            "GET /\r\n\r\n",
+            "GET x HTTP/1.1\r\n\r\n",
+            "GET /" + QByteArray(32, 'a') + "/ HTTP/2.0\r\n\r\n",
+            "GET /" + QByteArray(32, 'a') + "/ HTTP/1.1\r\nno colon\r\n\r\n",
+            "POST /" + QByteArray(32, 'a') + "/upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+            "POST /" + QByteArray(32, 'a') + "/upload HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\nx",
+            "GET /" + QByteArray(32, 'a') + "/ HTTP/1.1\r\nX: " + QByteArray(9000, 'a') + "\r\n\r\n",
+            QByteArray("GET /abc") + QByteArray(9000, 'a'),
+        };
+        for (const QByteArray& request : strangers) {
+            Client s(server.port());
+            QVERIFY(s.waitConnected());
+            s.send(request);
+            const Reply& r = s.waitReply();
+            QVERIFY2(r.status() == 404, request.left(50).constData());
+            QCOMPARE(r.contentLength(), qint64(0));
+        }
     }
     void headerLimit()
     {

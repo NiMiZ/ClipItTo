@@ -1456,6 +1456,7 @@ void Daemon::applyScreenLockWatch()
 // without a master password (open mode never locks). A pasted password still on the clipboard is not touched here.
 void Daemon::onScreenLocked(const QString& reason)
 {
+    stopPhone(phone::PhoneServer::StopReason::User, /*closeWindow=*/true); // nobody is there to watch it
     if (!m_config.lockOnScreenLock || !m_passwords) {
         return;
     }

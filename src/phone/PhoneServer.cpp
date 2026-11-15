@@ -63,12 +63,7 @@ public:
         }
     }
 
-    ~PhoneConnection() override
-    {
-        if (m_reserved) {
-            --m_server->m_inflight;
-        }
-    }
+    ~PhoneConnection() override = default;
 
     void close()
     {
@@ -85,6 +80,10 @@ private:
             return;
         }
         m_finished = true;
+        if (m_reserved) {
+            m_reserved = false;
+            --m_server->m_inflight;
+        }
         m_idle.stop();
         m_life.stop();
         m_server->connectionDone(this);
@@ -109,7 +108,7 @@ private:
             const qsizetype end = m_buf.indexOf("\r\n\r\n");
             const qsizetype limit = m_server->m_config.maxHeaderBytes;
             if (end < 0 ? m_buf.size() > limit : end + 4 > limit) {
-                respond(431);
+                respond(firstLineAuthorized() ? 431 : 404);
                 return;
             }
             if (end < 0) {
@@ -131,6 +130,18 @@ private:
         }
     }
 
+    // Whether the request line already received names the right token (so that a too long header may be answered with 431).
+    bool firstLineAuthorized() const
+    {
+        const qsizetype nl = m_buf.indexOf("\r\n");
+        if (nl < 0) {
+            return false;
+        }
+        const QList<QByteArray> parts = m_buf.left(nl).split(' ');
+        QByteArray query;
+        return parts.size() == 3 && parts[1].startsWith('/') && m_server->route(parts[0], parts[1], &query) != PhoneServer::Route::None;
+    }
+
     // Parses the request line and headers, decides, and returns true when the body (maybe empty) is to be read.
     bool handleHead(const QByteArray& head)
     {
@@ -144,9 +155,18 @@ private:
             lines.append(head.mid(from, nl - from));
             from = nl + 2;
         }
+        // Until the token has matched, every failure is the same bare 404: a stranger learns nothing. Only a request that
+        // names the right token gets 400, 411, 413...
         const QList<QByteArray> parts = lines.first().split(' ');
-        if (parts.size() != 3 || parts[0].isEmpty() || !parts[1].startsWith('/')
-            || (parts[2] != "HTTP/1.1" && parts[2] != "HTTP/1.0")) {
+        QByteArray query;
+        m_route = parts.size() == 3 && parts[1].startsWith('/') ? m_server->route(parts[0], parts[1], &query)
+                                                                : PhoneServer::Route::None;
+        if (m_route == PhoneServer::Route::None) {
+            respond(404);
+            return false;
+        }
+        m_query = query;
+        if (parts[2] != "HTTP/1.1" && parts[2] != "HTTP/1.0") {
             respond(400);
             return false;
         }
@@ -186,9 +206,6 @@ private:
             }
         }
 
-        QByteArray query;
-        m_route = m_server->route(parts[0], parts[1], &query);
-        m_query = query;
         switch (m_route) {
         case PhoneServer::Route::None:
             respond(404);
@@ -274,7 +291,6 @@ private:
         body.swap(m_body);
         QPointer<PhoneServer> server = m_server;
         emit server->received(id, text ? PhoneServer::Kind::Text : PhoneServer::Kind::Picture, body);
-        body.fill('\0');
     }
 
     // An answer without a body of its own (errors): a bare status line, nothing about why.
@@ -390,6 +406,8 @@ void PhoneServer::stop(StopReason reason)
         c->close();
     }
     m_connections.clear();
+    m_items.clear();
+    m_inflight = 0;
     m_token.fill(QLatin1Char('0')); // not left around in memory
     m_token.clear();
     m_tokenBytes.fill('\0');

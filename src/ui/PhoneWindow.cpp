@@ -107,6 +107,8 @@ PhoneWindow::PhoneWindow(QWidget* parent)
 
 PhoneWindow::~PhoneWindow()
 {
+    emit closing();
+    disconnect(); // nothing is delivered to a window that is going away
     qDeleteAll(m_rows);
 }
 
@@ -156,6 +158,9 @@ void PhoneWindow::setUnavailable(const QString& reason)
     m_url->clear();
     m_addresses->setVisible(false);
     m_others->setVisible(false);
+    m_others->clear();
+    m_addresses->clear();
+    m_labels.clear();
     m_urls.clear();
     m_stop->setEnabled(false);
     m_extend->setEnabled(false);
@@ -170,7 +175,12 @@ void PhoneWindow::sessionEnded(const QString& why)
     m_qr->clear(); // the address no longer works: it is not left on the screen
     m_url->clear();
     m_urls.clear();
+    m_labels.clear();
+    m_addresses->blockSignals(true);
+    m_addresses->clear();
+    m_addresses->blockSignals(false);
     m_addresses->setVisible(false);
+    m_others->clear(); // it holds the other addresses, token included
     m_others->setVisible(false);
     m_stop->setEnabled(false);
     m_extend->setEnabled(false);

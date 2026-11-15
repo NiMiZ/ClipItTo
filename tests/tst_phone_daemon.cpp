@@ -21,7 +21,9 @@
 #include <QSignalSpy>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <QTest>
+#include <QThread>
 
 #include <atomic>
 
@@ -484,24 +486,24 @@ private slots:
     void aPictureStillBeingReadWhenPanicComesIsNotStored()
     {
         DaemonOptions o = options();
-        std::atomic<bool> inside{false};
-        std::atomic<bool> release{false};
-        o.fakeOcr->recognize = [&](const QByteArray&, const QStringList&, QString*) -> std::optional<QString> {
-            inside = true;
-            QTest::qWait(0); // not the GUI thread: just a spin below
-            while (!release) {
+        auto inside = std::make_shared<std::atomic<bool>>(false);
+        auto release = std::make_shared<std::atomic<bool>>(false);
+        o.fakeOcr->recognize = [inside, release](const QByteArray&, const QStringList&, QString*) -> std::optional<QString> {
+            *inside = true;
+            for (int i = 0; i < 3000 && !*release; ++i) {
                 QThread::msleep(10);
             }
             return QStringLiteral("late text");
         };
         Daemon daemon(o, std::make_unique<FakeControl>());
+        const auto letGo = qScopeGuard([release] { *release = true; }); // destroyed before the daemon, which waits for the worker; also when a check below fails: the worker must end
         QVERIFY(daemon.start() == Daemon::StartResult::Ok);
         daemon.openPhone();
         phone::PhoneServer* server = daemon.phoneServer();
         (void)request(server->port(), "POST", path(*server, "upload"), encoded(fakePicture(), "PNG"));
-        QTRY_VERIFY_WITH_TIMEOUT(inside.load(), waitMs());
+        QTRY_VERIFY_WITH_TIMEOUT(inside->load(), waitMs());
         daemon.panic();
-        release = true;
+        *release = true;
         QTest::qWait(800);
         QVERIFY(texts(daemon).isEmpty());
         QCOMPARE(daemon.repository()->count(), qint64(0));

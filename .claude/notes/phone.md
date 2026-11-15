@@ -47,12 +47,20 @@ Attacker: anyone on the same LAN/Wi-Fi who is not the user; a program on the PC 
 | Sniffing/injection on Wi-Fi | None beyond the token's lifetime. The token is in the URL path (sent in clear). | Plain HTTP: a passive listener learns the token and the content. Documented. |
 | Flooding / resource use | 4 connections, 10 s idle, 120 s lifetime, 8 KB headers, 20 MB bodies, 100 KB text, 30 uploads, 6 pending, one decode at a time. | Up to ~120 MB of bodies in memory at worst; a full 30 uploads fill the history with up to 30 pictures (pruned by `max_images`). |
 | Malicious picture (decompression bomb, parser bug) | Format whitelist from content, header size check before decode (80 MP), Qt allocation limit, decode on a worker, re-encoded to PNG (the original bytes are never stored). | Bugs in Qt's image plugins (libjpeg, libpng, ...) are the exposure; the same plugins read any copied picture. |
-| Request smuggling / parsing tricks | One request per connection; Transfer-Encoding and duplicate/odd Content-Length are 400; no keep-alive; bytes after the body are ignored; no percent-decoding of paths. | |
+| Request smuggling / parsing tricks | One request per connection; before the token has matched, EVERY failure (bad request line, odd headers, too long header) is the same bare 404; with the right token, Transfer-Encoding and duplicate/odd Content-Length are 400; no keep-alive; bytes after the body are ignored; no percent-decoding of paths. | |
 | Cross-site requests from a web page on the phone/PC (CSRF, DNS rebinding) | The token is unguessable and in the path; no cookies, no CORS headers (a cross-origin page cannot read answers and cannot POST non-simple bodies with the token it does not know); `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, CSP `connect-src 'self'`. | |
 | Secrets typed or photographed | The usual pipeline: secret/password detection, filters, auto-forget, panic. The window shows the item (the user's own). | A password photographed from a screen is just text. |
 | Token or content in logs / on disk | Debug log: counts and sizes only; token wiped on stop; no temp files; the DB is the only place. | Item text stays in the open window until it is closed (cleared on panic). |
 | A phone page that phones home | The page has no external address (tested); CSP forbids other origins. | |
 | Left running | 5-minute timer, hard cap of 30 minutes; stops on window close/quit/panic. | The user may Extend repeatedly up to 30 minutes at a time. |
+
+## Reviews (privacy-reviewer, platform-reviewer) and what was done
+- Fixed: uniform 404 before the token; address list cleared from the window when the session ends; items cleared on stop; reservation
+  accounting; a session counter drops results of a stopped session; stop on screen lock; text refused as a password is not left in the
+  window; delayed paste after minimizing; macOS `NSLocalNetworkUsageDescription`; test worker cannot hang the suite.
+- Known, not done: listens on all IPv4 interfaces and accepts any private peer (not only the offered subnet); no per-peer connection cap
+  (one LAN host can hold the 4 slots, slowloris-style, for the session); no Host/Content-Type check; OCR error text goes to the phone;
+  the byte buffers are not wiped (copies are shared with the worker).
 
 ## Not done / ideas
 - HTTPS (a self-signed certificate warns on phones), PC to phone, non-picture files, a "drop folder" (Syncthing from the phone, watched by ClipItTo).

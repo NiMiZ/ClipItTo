@@ -134,7 +134,7 @@ void Daemon::openPhone(QWidget* parent)
     connect(window, &ui::PhoneWindow::pasteRequested, this, [this](const QString& text) { pasteFromPhone(text); });
     // Closing the window (or the dialog that owns it) ends the session.
     connect(window, &QDialog::finished, this, [this] { stopPhone(phone::PhoneServer::StopReason::User); });
-    connect(window, &QObject::destroyed, this, [this] { stopPhone(phone::PhoneServer::StopReason::User); });
+    connect(window, &ui::PhoneWindow::closing, this, [this] { stopPhone(phone::PhoneServer::StopReason::User); });
 
     const QList<phone::InterfaceInfo> interfaces = m_options.phoneInterfaces ? m_options.phoneInterfaces() : phone::systemInterfaces();
     const QList<phone::Candidate> candidates = phone::lanCandidates(interfaces);
@@ -173,6 +173,7 @@ void Daemon::openPhone(QWidget* parent)
 
 void Daemon::stopPhone(phone::PhoneServer::StopReason reason, bool closeWindow)
 {
+    ++m_phoneSession; // results of items from this session are dropped
     if (m_phone && m_phone->isListening()) {
         m_phone->stop(reason);
         qCInfo(lcDaemonPhone) << "receive from phone: stopped";
@@ -196,7 +197,7 @@ void Daemon::pasteFromPhone(const QString& text)
     if (m_phoneWindow) {
         m_phoneWindow->showMinimized(); // the program that had the focus gets it back
     }
-    pasteIfWanted();
+    QTimer::singleShot(150, this, [this] { pasteIfWanted(); }); // after the focus has moved
 }
 
 void Daemon::onPhoneReceived(int id, phone::PhoneServer::Kind kind, const QByteArray& body)
@@ -240,8 +241,10 @@ void Daemon::onPhoneText(int id, const QByteArray& body)
 {
     const QString text = QString::fromUtf8(body);
     m_phoneWindow->addItem(id, QImage());
-    m_phoneWindow->setItemText(id, text);
     const StoreProbe probe = probePipeline(*m_pipeline, [&] { m_pipeline->process(text, {QStringLiteral("text/plain")}); });
+    if (!probe.passwordSkipped) {
+        m_phoneWindow->setItemText(id, text); // a text that was refused as a password is not left on the screen
+    }
     QString note;
     if (probe.passwordKept) {
         note = tr("kept as a password copy");
@@ -258,12 +261,16 @@ void Daemon::onPhonePicture(int id, const QByteArray& body)
     m_phoneWindow->addItem(id, QImage());
     const qint64 maxBytes = m_config.maxImageBytes;
     const quint64 epoch = m_panicEpoch;
+    const quint64 session = m_phoneSession;
     auto* watcher = new QFutureWatcher<Decoded>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, id, epoch] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, id, epoch, session] {
         const Decoded decoded = watcher->result();
         watcher->deleteLater();
         if (epoch != m_panicEpoch || !m_pipeline) {
             return; // a panic came meanwhile: nothing is stored
+        }
+        if (session != m_phoneSession) {
+            return; // the session ended (Stop, closed window): this picture is dropped, not stored
         }
         if (!decoded.error.isEmpty()) {
             phoneItemFailed(id, decoded.error);
@@ -302,10 +309,10 @@ void Daemon::onPhonePicture(int id, const QByteArray& body)
         const std::shared_ptr<FakeOcr> fakeOcr = m_options.fakeOcr;
         const QByteArray png = decoded.ocrPng;
         auto* reader = new QFutureWatcher<std::pair<QString, QString>>(this);
-        connect(reader, &QFutureWatcherBase::finished, this, [this, reader, id, epoch, pictureId, kept] {
+        connect(reader, &QFutureWatcherBase::finished, this, [this, reader, id, epoch, session, pictureId, kept] {
             const auto result = reader->result();
             reader->deleteLater();
-            if (epoch != m_panicEpoch || !m_pipeline) {
+            if (epoch != m_panicEpoch || !m_pipeline || session != m_phoneSession) {
                 return;
             }
             if (!result.second.isEmpty()) {

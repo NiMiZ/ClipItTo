@@ -65,6 +65,8 @@ signals:
     void extendRequested();
     void copyRequested(const QString& text);
     void pasteRequested(const QString& text);
+    // The window is being destroyed (emitted first, while it is still whole): the daemon ends the session.
+    void closing();
 
 private:
     struct Row;

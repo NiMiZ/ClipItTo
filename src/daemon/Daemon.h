@@ -272,6 +272,7 @@ private:
     std::unique_ptr<phone::PhoneServer> m_phone; // exists from the first "Receive from phone"; listens only while started
     QPointer<ui::PhoneWindow> m_phoneWindow;
     QThreadPool m_phonePool; // one thread: pictures from the phone are decoded one after another
+    quint64 m_phoneSession = 0; // counts stops: results of an earlier session are dropped
     bool m_suppressIndex = false; // a picture from the phone is being stored: its text is set by the phone code, not read again
     quint64 m_panicEpoch = 0; // counts panics: an answer that was started before one is dropped
     bool m_panicAfterConversion = false; // a panic came while the file was being converted
