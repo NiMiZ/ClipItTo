@@ -120,13 +120,15 @@ int main(int argc, char* argv[])
     const QCommandLineOption syncNow(QStringLiteral("sync"), QStringLiteral("Sync through the shared folder now."));
     const QCommandLineOption selfTest(QStringLiteral("selftest"),
                                       QStringLiteral("Check this installation: what works and what does not. Exits 1 if a check fails."));
+    const QCommandLineOption phone(QStringLiteral("phone"),
+                                   QStringLiteral("Open the window that receives a picture or text from your phone over the local network."));
     const QCommandLineOption quit(QStringLiteral("quit"), QStringLiteral("Stop the daemon."));
     const QCommandLineOption lock(QStringLiteral("lock"), QStringLiteral("Lock the password copies now."));
     const QCommandLineOption panic(QStringLiteral("panic"),
                                    QStringLiteral("Wipe the history, lock the passwords and empty the clipboard, now, without asking."));
     const QCommandLineOption ingest(QStringLiteral("ingest"), QStringLiteral("Add <text> to the history."),
                                     QStringLiteral("text"));
-    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest, syncNow, selfTest};
+    const QList<QCommandLineOption> actions = {toggle, show, hide, status, reload, quit, lock, panic, ingest, syncNow, selfTest, phone};
     parser.addOptions(actions);
     parser.process(app);
 
@@ -152,6 +154,8 @@ int main(int argc, char* argv[])
         method = QStringLiteral("Status");
     } else if (parser.isSet(selfTest)) {
         method = QStringLiteral("SelfTest");
+    } else if (parser.isSet(phone)) {
+        method = QStringLiteral("ReceiveFromPhone");
     } else if (parser.isSet(reload)) {
         method = QStringLiteral("ReloadConfig");
     } else if (parser.isSet(quit)) {
@@ -175,6 +179,9 @@ int main(int argc, char* argv[])
     QTextStream out(stdout);
     if (parser.isSet(panic)) {
         out << "done\n"; // the daemon replies only after the wipe, the lock and the clipboard clear are over
+    }
+    if (parser.isSet(phone)) {
+        out << "the window is open on this computer\n"; // the address is shown there only
     }
     if (parser.isSet(selfTest)) {
         out << result.status.value(QStringLiteral("report")).toString();

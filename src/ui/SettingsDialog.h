@@ -5,6 +5,7 @@
 #include "PasteAs.h"
 #include "Translation.h"
 #include "Prompts.h"
+#include "PhoneWindow.h"
 #include "SelfTestWindow.h"
 
 #include <QDialog>
@@ -118,6 +119,9 @@ public:
     QPushButton* selfTestButton() const { return m_selfTestButton; }
     SelfTestWindow* selfTestWindow() const { return m_selfTestWindow; }
     void openSelfTest(); // what the button does
+    // Receive from phone (General tab, roadmap 28): the button asks the daemon to open its window, owned by this dialog.
+    void setPhone(PhoneSupport support);
+    QPushButton* phoneButton() const { return m_phoneButton; }
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -340,6 +344,8 @@ private:
     QCheckBox* m_keepFormatting;
     QCheckBox* m_debugLog;
     QPushButton* m_selfTestButton = nullptr;
+    QPushButton* m_phoneButton = nullptr;
+    PhoneSupport m_phone;
     QPointer<SelfTestWindow> m_selfTestWindow;
     SelfTestSupport m_selfTest;
     QList<QCheckBox*> m_layoutBoxes; // keyboard layouts for Paste as…, in texttransform::layouts() order

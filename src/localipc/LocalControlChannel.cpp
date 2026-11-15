@@ -119,6 +119,8 @@ Reply LocalControlChannel::dispatch(const Request& request)
         emit lockPasswordsRequested();
     } else if (m == QLatin1String("Panic")) {
         emit panicRequested();
+    } else if (m == QLatin1String("ReceiveFromPhone")) {
+        emit phoneRequested();
     } else if (m == QLatin1String("Quit")) {
         // Reply first; quitting tears down this socket.
         QTimer::singleShot(0, this, &ControlChannel::quitRequested);
