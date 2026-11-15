@@ -276,6 +276,13 @@ ClipItTo's paste (`paste_once_clear_seconds`, default 5), not at the next Ctrl+V
 **Tests to write:** deleted after the paste, kept if the paste was cancelled, clipboard cleared only when unchanged, not in a
 backup, survives (or not) a restart as decided, and the auto rules.
 
+### Password ignore (done, v0.18 work)
+Bug: `%AppData%\rig` was stored as a password copy (the generated-password guess and `password_rules` judge by shape). Now
+`password_ignore_builtin` (on) drops OS variables, file paths, registry keys, host:port, dotted names, URLs and email addresses
+before a guess can take a copy, and `password_ignore` (up to 16 texts with `*`) adds the user's own. Only the guesses are
+filtered: marker-marked copies and `secretscan::kindOf` kinds are never ignored. Code `src/core/PasswordIgnore.*`, tests
+`tst_passwordignore` plus daemon, settings, config and selftest cases. Open: ignoring by source program (needs item 21).
+
 ### Auto-forget (18): details (nice to have)
 Copies that remove themselves. Rules, like `password_rules`, in Settings › Privacy and in the config file (`auto_forget`):
 - by **time**: all copies older than N days (outside pinned and saved), or copies of a kind (pictures after 1 day);

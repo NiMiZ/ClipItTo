@@ -173,6 +173,14 @@ lower case, upper case, digits and symbols ("at least 2 digits", not "only 2 dig
 optionally *digits at the end*. Rules add to the detection above. The *Try it* box tests a sample
 (not saved or logged). Needs a master password or *Use without one…*, like the checkbox above.
 
+**Password ignore:** the guesses (`detect_passwords`, your password rules) never take what is clearly not a
+password: environment variables (`%AppData%\rig`, `$HOME/bin`), file paths, URLs, email addresses, `host:port`,
+registry keys and dotted names like `com.example.Thing` (`password_ignore_builtin`, on by default). Settings ›
+Passwords › *Password ignore* › *Edit rules…* also takes your own texts (`password_ignore`, up to 16, `*` = any text,
+the whole copy must match, e.g. `C:\work\*`) and a *Try it* box. Copies a password manager marked, keys, tokens and card numbers are
+never ignored. If something was stored as a password by mistake, use *Not a password* in the right-click menu. See
+[passwords.md](passwords.md).
+
 **Auto-forget:** Settings › Passwords › *Auto-forget* (`auto_forget`, up to 8 rules, none by default) makes copies
 remove themselves, quietly (no message; the log gets only a count). A rule is one of: *Older than N days* (since the
 copy was last used; any copy, text only or pictures only), *Text containing …* (any letter case, at least 3
