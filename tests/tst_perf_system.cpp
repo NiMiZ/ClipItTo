@@ -152,7 +152,7 @@ private slots:
         for (int i = 0; i < 1000; ++i) {
             rig.ingest(perf::sampleText(i));
         }
-        StallWatchdog wd;
+        StallWatchdog wd(300); // a Windows runner measured 541 ms against 500: the limit is for a runaway, not a precise figure
         QElapsedTimer t;
         qint64 worst = 0;
         for (int i = 0; i < 50; ++i) {
