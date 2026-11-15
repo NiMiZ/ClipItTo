@@ -1,6 +1,7 @@
 #include "ImageCodec.h"
 
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QFutureWatcher>
 #include <QImageReader>
@@ -63,18 +64,23 @@ const char* qtFormat(const QString& mimeType)
     return nullptr;
 }
 
+// Qt refuses to allocate more than its limit (256 MB by default): match kMaxImagePixels.
+void ensureAllocationLimit()
+{
+    static const bool limitSet = [] {
+        QImageReader::setAllocationLimit(int(kMaxImagePixels * 4 / (1024 * 1024)) + 1);
+        return true;
+    }();
+    Q_UNUSED(limitSet);
+}
+
 QImage decode(const QByteArray& data, const QString& mimeType)
 {
     const char* format = qtFormat(mimeType);
     if (!format) {
         return {};
     }
-    // Qt refuses to allocate more than its limit (256 MB by default): match kMaxImagePixels.
-    static const bool limitSet = [] {
-        QImageReader::setAllocationLimit(int(kMaxImagePixels * 4 / (1024 * 1024)) + 1);
-        return true;
-    }();
-    Q_UNUSED(limitSet);
+    ensureAllocationLimit();
     QBuffer buffer;
     buffer.setData(data);
     buffer.open(QIODevice::ReadOnly);
@@ -105,6 +111,45 @@ void runAsync(std::function<std::optional<ImageClip>()> work, QObject* context,
 }
 
 } // namespace
+
+QImage decodeUntrusted(const QByteArray& data, QString* error)
+{
+    const auto fail = [error](const QString& why) {
+        if (error) {
+            *error = why;
+        }
+        return QImage();
+    };
+    ensureAllocationLimit();
+    QBuffer buffer;
+    buffer.setData(data);
+    buffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&buffer);
+    const QByteArray format = reader.format().toLower();
+    static const QList<QByteArray> allowed = {"jpeg", "png", "webp", "gif", "bmp"};
+    if (!allowed.contains(format)) {
+        qCDebug(lcImage) << "refused uploaded picture: format not accepted," << data.size() << "bytes";
+        return fail(QCoreApplication::translate("clipitto::capture",
+                                                "This picture format cannot be read here (JPEG, PNG, WebP, GIF and BMP can). "
+                                                "Choose another picture, or one saved as JPEG."));
+    }
+    const QSize size = reader.size(); // from the header, before any pixel is read
+    if (!size.isValid() || size.width() <= 0 || size.height() <= 0) {
+        return fail(QCoreApplication::translate("clipitto::capture", "The picture could not be read."));
+    }
+    if (qint64(size.width()) * size.height() > kMaxImagePixels) {
+        qCDebug(lcImage) << "refused uploaded picture:" << format << size;
+        return fail(QCoreApplication::translate("clipitto::capture", "The picture is too large (over %1 megapixels).")
+                        .arg(kMaxImagePixels / 1000000));
+    }
+    reader.setAutoTransform(true);
+    QImage image;
+    if (!reader.read(&image) || image.isNull()) {
+        qCDebug(lcImage) << "undecodable uploaded picture:" << format << data.size() << "bytes";
+        return fail(QCoreApplication::translate("clipitto::capture", "The picture could not be read."));
+    }
+    return image;
+}
 
 bool isSupportedImageType(const QString& mimeType)
 {

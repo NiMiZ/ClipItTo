@@ -100,6 +100,15 @@ private slots:
         DaemonOptions options;
         options.configPath = m_dir.filePath(QStringLiteral("config.toml"));
         options.databasePath = m_dir.filePath(QStringLiteral("data/history.db"));
+        // "Receive from phone" listens on the loopback only in tests, and names one made-up network address.
+        options.phoneConfig = clipitto::phone::PhoneServer::Config{};
+        options.phoneConfig->listenOn = QHostAddress::LocalHost;
+        options.phoneInterfaces = [] {
+            clipitto::phone::InterfaceInfo info;
+            info.name = QStringLiteral("eth0");
+            info.addresses = {QHostAddress(QStringLiteral("192.168.1.20"))};
+            return QList<clipitto::phone::InterfaceInfo>{info};
+        };
         m_daemon = std::make_unique<Daemon>(options, std::make_unique<DbusControlChannel>(QDBusConnection::sessionBus()));
         QString error;
         QVERIFY2(m_daemon->start(&error) == Daemon::StartResult::Ok, qPrintable(error));
@@ -342,6 +351,26 @@ private slots:
         QVERIFY2(code == 0, qPrintable(output));
         QCOMPARE(output.trimmed(), QStringLiteral("done"));
         QCOMPARE(m_daemon->repository()->count(), qint64(0));
+    }
+
+    // "Receive from phone" (roadmap 28): the method and the CLI open the window and start the server; the panic closes both.
+    void receiveFromPhoneMethodAndCliOpenTheWindow()
+    {
+        QVERIFY(!m_daemon->phoneServer() || !m_daemon->phoneServer()->isListening());
+        QCOMPARE(call(QStringLiteral("ReceiveFromPhone")).type(), QDBusMessage::ReplyMessage);
+        QVERIFY(m_daemon->phoneServer());
+        QVERIFY(m_daemon->phoneServer()->isListening());
+        QVERIFY(m_daemon->phoneWindow());
+        QVERIFY(m_daemon->status().value(QStringLiteral("phone_receive")).toString().startsWith(QLatin1String("on")));
+        const QString token = m_daemon->phoneServer()->token();
+        const auto [code, output] = runCli({QStringLiteral("--phone")});
+        QVERIFY2(code == 0, qPrintable(output));
+        QVERIFY(!output.contains(token)); // the address is shown in the window only
+        QVERIFY(m_daemon->phoneServer()->isListening());
+        QCOMPARE(m_daemon->phoneServer()->token(), token); // the window that is open was raised, not a second session
+        m_daemon->panic();
+        QVERIFY(!m_daemon->phoneServer()->isListening());
+        QTRY_VERIFY(!m_daemon->phoneWindow());
     }
 
     void cliRejectsZeroOrMultipleActions()

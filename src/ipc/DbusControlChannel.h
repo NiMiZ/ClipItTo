@@ -33,6 +33,7 @@ public slots: // D-Bus methods
     void LockPasswords();
     void SyncNow();
     void Panic();
+    void ReceiveFromPhone();
     void Quit();
     QVariantMap Status();
     // The reply is sent when the checks are done (a delayed reply); the return value is not used.

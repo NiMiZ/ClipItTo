@@ -293,6 +293,20 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_selfTestButton->setEnabled(false); // until the daemon gives it the checks (setSelfTest)
     connect(m_selfTestButton, &QPushButton::clicked, this, &SettingsDialog::openSelfTest);
     form->addRow(QString(), m_selfTestButton);
+    m_phoneButton = new QPushButton(tr("Receive from phone…"), this);
+    m_phoneButton->setObjectName(QStringLiteral("phoneButton"));
+    m_phoneButton->setToolTip(QStringLiteral("<p>%1</p>")
+                                  .arg(tr("Send a picture or text from your phone to this computer over your home network: a window "
+                                          "shows a QR code for the phone, and the text in each picture you send is added to your "
+                                          "history. It works for 5 minutes, only on the local network, and the program listens "
+                                          "only while that window is open. Nothing goes over the internet.")));
+    m_phoneButton->setEnabled(false); // until the daemon gives it the window (setPhone)
+    connect(m_phoneButton, &QPushButton::clicked, this, [this] {
+        if (m_phone.open) {
+            m_phone.open(this);
+        }
+    });
+    form->addRow(QString(), m_phoneButton);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
@@ -1154,6 +1168,12 @@ void SettingsDialog::setSelfTest(SelfTestSupport support)
 {
     m_selfTest = std::move(support);
     m_selfTestButton->setEnabled(m_selfTest.create != nullptr);
+}
+
+void SettingsDialog::setPhone(PhoneSupport support)
+{
+    m_phone = std::move(support);
+    m_phoneButton->setEnabled(m_phone.open != nullptr);
 }
 
 void SettingsDialog::openSelfTest()

@@ -2,6 +2,7 @@
 add_library(clipitto_daemon_lib STATIC
     Daemon.cpp Daemon.h
     DaemonSelfTest.cpp
+    DaemonPhone.cpp
     GnomeShortcut.cpp GnomeShortcut.h
     LoginItem.cpp LoginItem.h
     SyncService.cpp SyncService.h
@@ -9,7 +10,7 @@ add_library(clipitto_daemon_lib STATIC
     TranslateCheck.cpp TranslateCheck.h
 )
 target_include_directories(clipitto_daemon_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_translate clipitto_output clipitto_ui Qt6::Concurrent)
+target_link_libraries(clipitto_daemon_lib PUBLIC clipitto_core clipitto_capture clipitto_translate clipitto_output clipitto_ui clipitto_phone Qt6::Concurrent)
 clipitto_set_warnings(clipitto_daemon_lib)
 if(APPLE)
     target_compile_options(clipitto_daemon_lib PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)

@@ -140,6 +140,11 @@ void DbusControlChannel::Panic()
     emit panicRequested();
 }
 
+void DbusControlChannel::ReceiveFromPhone()
+{
+    emit phoneRequested();
+}
+
 void DbusControlChannel::Quit()
 {
     emit quitRequested();

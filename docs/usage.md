@@ -346,6 +346,52 @@ finds them by note, group or "image".
 
 Saving keeps your own comments and layout in `config.toml`.
 
+## Send a picture or text from your phone
+
+Take a picture of a page, a sign or a screen with your phone and have its **text** on the computer, with no app on the phone,
+no account and no server in between. (The other direction, computer to phone, does not exist.)
+
+1. On the computer: Settings › General › **Receive from phone…** (or run `clipitto --phone`). A window shows a QR code and the
+   address under it.
+2. On the phone (**on the same Wi-Fi** as the computer): scan the code with the camera and open the link. iPhone (Safari) and
+   Android (Chrome, Firefox) both work.
+3. Press **Take a picture** or **Choose from the gallery** (several pictures at once are sent one after another), or type or paste
+   text in the box and press **Send text**. Each line on the phone says *Sent*, *Reading the text…* and *Done: N characters*.
+4. In the window each item has a thumbnail, the recognized text (select it, read it), **Copy text** and **Paste** (it goes to the
+   program you were in). The picture is kept in the history as a picture, and its text is added as a separate text copy, so
+   a search finds it and you can paste it later. Text you typed on the phone is added to the history the same way.
+
+What the phone sends is only the picture or the text. iPhone photos in HEIC format are turned into JPEG on the phone (largest
+side 2400 pixels) before they are sent; if that fails, the original is sent and the computer says whether it can read it.
+
+**The rules**
+- Nothing listens until you open the window. The address works for **5 minutes** (a countdown is shown; *Extend 5 minutes* adds
+  more, never more than 30 minutes in all) and stops when you press *Stop*, close the window, quit ClipItTo or use the
+  panic key. After that the address does nothing.
+- The address contains a random secret (128 bits). Only computers on your own network are answered (home network addresses such
+  as 192.168.x.x, 10.x.x.x, 172.16-31.x.x; anything else is dropped without an answer). Nothing goes to the internet and
+  no other computer or server is involved.
+- **It is plain HTTP, not encrypted.** Anyone on your Wi-Fi who sees the address (it is on your screen and in the QR code)
+  could send you a picture or text until it stops working. Do not use it on a network you do not trust.
+- Limits: 4 connections at once, a picture up to 20 MB (and under 80 megapixels), typed text up to 100 KB, 30 pictures or
+  texts per session. A picture is only data: it is decoded, kept in the history and never opened or run.
+- If **no text recognition** is available on the computer, the picture is still kept and the phone and the window say why
+  (the same reason as *Paste text from picture*; on Linux install Tesseract).
+- Copies that look like a secret are handled by the usual rules (kept as a password copy with a master password, otherwise not kept).
+
+**Your computer may ask once** to allow incoming connections (Windows Defender Firewall, macOS). Allow it **for private
+networks only**. If you refuse, the phone cannot connect. On Linux with a firewall (ufw, firewalld) the random port is blocked
+unless you allow the program; temporarily allowing the local network is enough.
+
+**When it does not work**
+- *The phone cannot open the address:* the phone must be on the same Wi-Fi. A **guest network** or a router setting called
+  *client isolation* / *AP isolation* blocks phone-to-computer traffic: use the main network. A **VPN** on either device often
+  routes around the local network: switch it off for this. If the computer has several networks (a VM, docker, WSL), pick
+  another address in the list under the QR code.
+- *"Failed: this address has stopped working":* the 5 minutes are over; open the window again (it makes a new code).
+- *Text is empty or wrong:* take the picture straight on and in good light; the text is read by the same engine as
+  *Paste text from picture* (Settings › General › languages).
+
 ## When something does not work: Check this installation
 
 Start here. *Check this installation* tells you what works and what does not, one line per check, each with **PASS**, **WARN**,

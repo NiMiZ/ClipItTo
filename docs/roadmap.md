@@ -201,8 +201,13 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
 ### Between computers
 27. **Send a copy to another of your computers** on the local network, after pairing with a short code, encrypted, off by default
     (Ditto has "Friends"). It would be the first network use by ClipItTo, so it needs its own decision and a clear setting.
-28. **Receive text from a phone** with a short-lived local page opened from a QR code. A bigger step than the QR code that
-    shows a copy; same network question as the item above.
+28. **DONE: Receive a picture or text from a phone** (*Receive from phone*): Settings › General or `clipitto --phone` opens a window
+    with a QR code; the phone opens a small page (any browser, no app) on the local network, sends pictures or typed text, and
+    the text in each picture lands in the history (the picture is kept too). A tiny HTTP server, local addresses only, a random
+    token, 5 minutes, off until started. Design, threat model and limits: `.claude/notes/phone.md`, user view in `docs/usage.md`.
+    Not done: the other direction (PC to phone), HTTPS, and receiving files that are not pictures. A possible later item: a
+    **drop folder watched by ClipItTo** (a phone app such as Syncthing puts pictures in a folder, ClipItTo reads their text),
+    which needs no network code of its own.
 
 ### Keeping the clipboard useful
 29. **Snapshots:** a named set of copies ("project X") that can be put back later, or pasted as a queue.

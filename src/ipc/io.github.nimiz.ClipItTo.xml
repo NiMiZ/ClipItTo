@@ -55,6 +55,9 @@
          asking (the CLI's panic option). Replies when it is done. -->
     <method name="Panic"/>
 
+    <!-- Opens the "Receive from phone" window (the CLI's phone option). The local web server starts then, not before. -->
+    <method name="ReceiveFromPhone"/>
+
     <!-- Exits the daemon. Under systemd, prefer stopping the clipitto.service user unit. -->
     <method name="Quit"/>
 

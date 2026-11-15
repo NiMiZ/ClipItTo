@@ -21,7 +21,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 - **Notes** give a clip a readable title.
 - **Password copies** from password managers are kept encrypted behind a master password, never in clear.
 - **Encrypted history** on disk (optional), and **backup** of copies and settings to one file; optional **sync between your PCs** through a folder you already sync (no network of its own).
-- **Private:** no network, no cloud, no telemetry.
+- **Private:** no cloud, no telemetry, and no network use unless you open [Receive from phone](docs/usage.md#send-a-picture-or-text-from-your-phone) (local network only, a few minutes, off until you start it).
 
 ## Keys
 
@@ -53,8 +53,10 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 
 ## Privacy
 
-Your clipboard history stays on your computer. ClipItTo makes no network connections: no
-cloud sync, no accounts, no telemetry, no update checks. Copies, notes, groups and settings
+Your clipboard history stays on your computer. ClipItTo makes no connections to the internet: no
+cloud sync, no accounts, no telemetry, no update checks. The one thing that listens on a network is
+[Receive from phone](docs/usage.md#send-a-picture-or-text-from-your-phone): only after you open its window, only for
+connections from your own local network, for 5 minutes at a time, and it is never on at program start. Copies, notes, groups and settings
 are stored only in local files under your user account (`~/.local/share/clipitto/` and
 `~/.config/clipitto/` on Linux, `%LOCALAPPDATA%\clipitto\` and `%APPDATA%\clipitto\` on
 Windows), readable by your account only; turn on [encryption](docs/passwords.md#encrypted-history) to

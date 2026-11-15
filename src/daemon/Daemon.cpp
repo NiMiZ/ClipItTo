@@ -92,9 +92,12 @@ Daemon::Daemon(DaemonOptions options, std::unique_ptr<ControlChannel> control,
     connect(m_forgetTimer, &QTimer::timeout, this, [this] { runAutoForget(); });
     // Quitting with a pasted password still waiting: it leaves the clipboard now, not after the program is gone.
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &Daemon::clearPastedPassword);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
+            [this] { stopPhone(phone::PhoneServer::StopReason::Quit, true); });
     m_helloPool.setMaxThreadCount(1);
     m_translatePool.setMaxThreadCount(1);
     m_control->setParent(this);
+    m_phonePool.setMaxThreadCount(1);
     m_control->setStatusProvider([this] { return status(); });
     m_control->setSelfTestProvider([this](ControlChannel::SelfTestReply reply) {
         selftest::Runner* runner = createSelfTest();
@@ -145,6 +148,7 @@ void Daemon::clearPastedPassword()
 Daemon::PanicResult Daemon::panic()
 {
     PanicResult result;
+    stopPhone(phone::PhoneServer::StopReason::Panic, /*closeWindow=*/true); // nothing listens, and what it showed is gone
     ++m_panicEpoch; // answers still on their way (a translation, a text read from a picture, a decoded picture) are dropped
     m_clearPassword->stop(); // a clear that was waiting has nothing left to do
     if (m_passwords) {
@@ -226,6 +230,8 @@ qint64 Daemon::runAutoForget()
 
 Daemon::~Daemon()
 {
+    stopPhone(phone::PhoneServer::StopReason::Quit, /*closeWindow=*/true);
+    m_phonePool.waitForDone();
     if (m_options.screenLockWatcher) {
         m_options.screenLockWatcher->disconnect(this); // the test's watcher may outlive this daemon
         m_options.screenLockWatcher->stop();
@@ -314,6 +320,8 @@ Daemon::StartResult Daemon::start(QString* error)
         connect(m_options.screenLockWatcher.get(), &ScreenLockWatcher::locked, this, &Daemon::onScreenLocked);
     }
     connect(m_control, &ControlChannel::panicRequested, this, [this] { panic(); });
+    connect(m_control, &ControlChannel::phoneRequested, this, [this] { openPhone(); });
+    connect(m_control, &ControlChannel::quitRequested, this, [this] { stopPhone(phone::PhoneServer::StopReason::Quit, true); });
     connect(m_control, &ControlChannel::ingestRequested, m_pipeline.get(),
             [this](const QString& text, const QStringList& mimeTypes, const QString& html) {
                 m_pipeline->process(text, mimeTypes, html);
@@ -350,7 +358,7 @@ Daemon::StartResult Daemon::start(QString* error)
     setUpWindowsHello();
     setUpOcr();
     connect(m_pipeline.get(), &CapturePipeline::stored, this, [this](qint64, bool inserted) {
-        if (inserted) {
+        if (inserted && !m_suppressIndex) {
             indexNextPicture();
         }
     });
@@ -1018,6 +1026,7 @@ void Daemon::openSettings()
     ui::SettingsDialog dialog(m_config, *m_repo, support, encryption, m_popup.get(), passwords, startup, translationSupport(),
                               std::move(syncing));
     dialog.setSelfTest(selfTestSupport());
+    dialog.setPhone(phoneSupport());
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {
@@ -1447,6 +1456,7 @@ void Daemon::applyScreenLockWatch()
 // without a master password (open mode never locks). A pasted password still on the clipboard is not touched here.
 void Daemon::onScreenLocked(const QString& reason)
 {
+    stopPhone(phone::PhoneServer::StopReason::User, /*closeWindow=*/true); // nobody is there to watch it
     if (!m_config.lockOnScreenLock || !m_passwords) {
         return;
     }
@@ -1578,6 +1588,9 @@ QVariantMap Daemon::status() const
     s[QStringLiteral("config")] = m_options.configPath;
     s[QStringLiteral("database")] = m_options.databasePath;
     s[QStringLiteral("max_history")] = m_config.maxHistory;
+    s[QStringLiteral("phone_receive")] = m_phone && m_phone->isListening()
+        ? QStringLiteral("on (%1 s left)").arg(m_phone->remainingMs() / 1000)
+        : QStringLiteral("off");
     s[QStringLiteral("visible")] = m_popup && m_popup->isVisible();
     s[QStringLiteral("desktop_integration")] = m_integration
         ? QStringLiteral("%1 (%2)").arg(m_integration->name(),

@@ -59,6 +59,8 @@ signals:
     // clipitto --panic (or the panic shortcut's command): wipe the history, lock the passwords, empty the clipboard.
     // Connected directly, so the reply goes out after it is done.
     void panicRequested();
+    // clipitto --phone: open the "Receive from phone" window (it starts the local web server; nothing listens before this).
+    void phoneRequested();
     void quitRequested();
 
     // Emitted by the daemon when the popup is shown or hidden; implementations forward it to clients.

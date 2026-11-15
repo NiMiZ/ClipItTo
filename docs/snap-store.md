@@ -22,8 +22,9 @@ ClipItTo asks for permissions that the store does not grant automatically. Witho
 features below don't work, and the store holds the first revision for review. Ask for them on the
 [Snapcraft forum](https://forum.snapcraft.io) (category *store-requests*) with this text:
 
-> **Snap:** clipitto. A clipboard history manager (GPL-3.0, https://github.com/NiMiZ/ClipItTo). It makes no network
-> connections; history stays on the user's computer.
+> **Snap:** clipitto. A clipboard history manager (GPL-3.0, https://github.com/NiMiZ/ClipItTo). It makes no connections to the
+> internet; history stays on the user's computer. Its one network use is the optional "Receive from phone" window, which
+> listens on the local network for a few minutes after the user opens it (hence `network-bind`).
 >
 > **Requests**
 > - `password-manager-service` (auto-connect): the optional "encrypt history" and "password vault" features keep their keys

@@ -26,6 +26,8 @@
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>
     <string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>ClipItTo listens on your local network for a few minutes while the Receive from phone window is open, so that your phone can send it a picture or text.</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>

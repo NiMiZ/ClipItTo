@@ -9,6 +9,9 @@
 #include "ClipboardWriter.h"
 #include "KeyStore.h"
 #include "PasswordKeeper.h"
+#include "PhoneNet.h"
+#include "PhoneServer.h"
+#include "PhoneWindow.h"
 #include "ScreenLockWatcher.h"
 #include "SelfTestChecks.h"
 #include "SelfTestWindow.h"
@@ -56,6 +59,9 @@ struct FakeTranslation {
 // Tests: a stand-in for the text recognition (Ocr.h), so that reading pictures can be tested in a build without an engine.
 struct FakeOcr {
     std::function<std::optional<QString>(const QByteArray& png, const QStringList& languages, QString* error)> recognize;
+    // true: pretend this build has no text recognition, with `reason` as the explanation (what the popup would say).
+    bool unavailable = false;
+    QString reason;
 };
 
 struct DaemonOptions {
@@ -85,6 +91,9 @@ struct DaemonOptions {
     std::shared_ptr<ScreenLockWatcher> screenLockWatcher;
     int syncPollMs = 0; // how often the sync folder is checked; 0 = the default (a minute). Tests shorten it
     int syncDebounceMs = 3000; // after a change in the folder
+    // "Receive from phone": tests shorten the timers and replace the network interfaces (null: this computer's).
+    std::optional<phone::PhoneServer::Config> phoneConfig;
+    std::function<QList<phone::InterfaceInfo>()> phoneInterfaces;
     int panicQuietMs = 500; // after a panic, copies arriving this long are ignored (one on its way must not put back what was wiped)
     int autoForgetIntervalMs = 60000; // how often the auto_forget rules run (tests shorten it)
     std::function<QDateTime()> autoForgetClock; // what "now" is for the rules; null: the system clock (tests)
@@ -156,6 +165,15 @@ public:
     // What Settings > Check this installation needs (the runner, and copying the report as an own write).
     ui::SelfTestSupport selfTestSupport();
 
+    // "Receive from phone" (roadmap 28): opens the window and starts the local web server (or raises the window that is open).
+    // `parent` owns the window (Settings passes itself, because its modal dialog blocks input to other windows); null: free.
+    void openPhone(QWidget* parent = nullptr);
+    // Stops the server and closes the window's address; `close` also closes the window (panic, quit).
+    void stopPhone(phone::PhoneServer::StopReason reason, bool closeWindow = false);
+    phone::PhoneServer* phoneServer() const { return m_phone.get(); }
+    ui::PhoneWindow* phoneWindow() const { return m_phoneWindow; }
+    ui::PhoneSupport phoneSupport();
+
 signals:
     void configReloaded();
     void encryptionFinished(bool ok, const QString& error); // after a runtime switch
@@ -164,6 +182,13 @@ signals:
 
 private:
     void startCapture();
+    void onPhoneReceived(int id, phone::PhoneServer::Kind kind, const QByteArray& body);
+    void onPhonePicture(int id, const QByteArray& body);
+    void onPhoneText(int id, const QByteArray& body);
+    void phoneItemFailed(int id, const QString& message);
+    void phoneItemDone(int id, int chars, const QString& note);
+    QString ocrUnavailableReason() const; // empty when text can be read (or tried)
+    void pasteFromPhone(const QString& text);
     void probeCapture(std::function<void(selftest::CaptureOutcome)> done);
     void probePaste(const selftest::PasteBox& box, std::function<void(selftest::PasteOutcome)> done);
     PasteTarget currentPasteTarget() const; // what the next paste goes to, as far as the platform can tell
@@ -244,6 +269,11 @@ private:
     QThreadPool m_helloPool; // one thread: Windows Hello and text-recognition calls (blocking, WinRT; never on the GUI thread)
     bool m_helloAvailable = false;
     QString m_helloReason;
+    std::unique_ptr<phone::PhoneServer> m_phone; // exists from the first "Receive from phone"; listens only while started
+    QPointer<ui::PhoneWindow> m_phoneWindow;
+    QThreadPool m_phonePool; // one thread: pictures from the phone are decoded one after another
+    quint64 m_phoneSession = 0; // counts stops: results of an earlier session are dropped
+    bool m_suppressIndex = false; // a picture from the phone is being stored: its text is set by the phone code, not read again
     quint64 m_panicEpoch = 0; // counts panics: an answer that was started before one is dropped
     bool m_panicAfterConversion = false; // a panic came while the file was being converted
     quint64 m_panicShortcutRequest = 0;
