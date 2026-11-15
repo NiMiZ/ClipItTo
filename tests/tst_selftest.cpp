@@ -460,6 +460,13 @@ private slots:
                                  "detect_secrets on", "detect_passwords off", "last name box: named at 10:00:00"}) {
             QVERIFY2(ok.detail.contains(QLatin1String(part)), part);
         }
+        QVERIFY(ok.detail.contains(QLatin1String("ignore rules: built-in on, 0 of yours (sample environment variable: ignored)")));
+        env.config.passwordIgnoreBuiltin = false;
+        env.config.passwordIgnore = {QStringLiteral("abc*"), QStringLiteral("def*")};
+        QVERIFY(passwordChainCheck(env).detail.contains(
+            QLatin1String("ignore rules: built-in off, 2 of yours (sample environment variable: not ignored)")));
+        env.config.passwordIgnoreBuiltin = true;
+        env.config.passwordIgnore.clear();
         // The reasons come from the real rule, on samples of our own.
         QVERIFY(ok.detail.contains(QLatin1String("a mixed random string: kept")));
         QVERIFY(ok.detail.contains(QLatin1String("words joined together: not kept (looks like words and numbers joined together)")));

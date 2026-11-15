@@ -73,6 +73,8 @@ struct Config {
     bool detectSecrets = true; // copies that look like keys/tokens/card numbers are kept as password copies
     bool detectPasswords = false; // copies that look like generated passwords are kept as password copies (guesses; off)
     QList<PasswordRule> passwordRules; // user rules (up to 5) for what else is kept as a password copy
+    bool passwordIgnoreBuiltin = true; // paths, %VARIABLES%, URLs... are never taken as a guessed password (PasswordIgnore.h)
+    QStringList passwordIgnore; // your own "not a password" texts with * wildcards (up to 16)
     bool passwordsPerNote = true; // the same password under another note is another copy
     bool passwordAskNote = true; // after copying a new password, open ClipItTo to name it
     int passwordUnlockMinutes = 5; // an unlock lasts this long

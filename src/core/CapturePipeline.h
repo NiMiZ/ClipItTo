@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ClipFilter.h"
+#include "PasswordIgnore.h"
 #include "PasswordRules.h"
 
 #include <QElapsedTimer>
@@ -39,6 +40,14 @@ public:
     void setDetectPasswords(bool on) { m_detectPasswords = on; }
     // The user's own rules (password_rules): a copy that fits one is kept as a password copy, like detect_passwords.
     void setPasswordRules(const QList<PasswordRule>& rules) { m_passwordRules = rules; }
+    // What is never GUESSED to be a password (PasswordIgnore.h): the built-in shapes (paths, %VARIABLES%, URLs...) and the
+    // user's own texts (password_ignore). Applies to detect_passwords and password_rules only, never to copies a password
+    // manager marked or to keys, tokens and card numbers (detect_secrets).
+    void setPasswordIgnore(bool builtin, const QStringList& rules)
+    {
+        m_ignoreBuiltin = builtin;
+        m_passwordIgnore = rules;
+    }
     // Keep the HTML of a copy that has formatting next to its text (keep_formatting).
     void setKeepFormatting(bool on);
 
@@ -107,6 +116,8 @@ private:
     bool m_detectSecrets = false;
     bool m_detectPasswords = false;
     QList<PasswordRule> m_passwordRules;
+    bool m_ignoreBuiltin = true;
+    QStringList m_passwordIgnore;
     bool m_keepFormatting = true;
     bool m_autoGroup = false;
     int m_autoPending = 0;

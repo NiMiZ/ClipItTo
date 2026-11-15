@@ -1696,6 +1696,72 @@ private slots:
                       clipitto::secretscan::kindOf(text));
     }
 
+    // Password ignore (PasswordIgnore.h): what is only a guess is dropped for paths and variables.
+    void anEnvironmentVariablePathIsNotGuessedToBeAPassword_data() { aMarkedCopyIsKeptSealedOrSkipped_data(); }
+    void anEnvironmentVariablePathIsNotGuessedToBeAPassword()
+    {
+        QFETCH(int, mode);
+        // Both guesses are on: the generated-password shape and a rule this text fits (14 characters, upper, lower, symbol).
+        const QByteArray config = "detect_passwords = true\npassword_rules = [\"6-30 lower=1 upper=1 symbols=1\"]\n";
+        for (const char* sample : {"%AppData%\\rig", "%appdata%\\rig", "$HOME/bin", "C:\\Users\\me\\x", "/usr/local/bin"}) {
+            const QString text = QString::fromLatin1(sample);
+            QFile::remove(options().databasePath);
+            writeConfig("password_ask_note = false\n" + config);
+            Daemon d(options(), std::make_unique<FakeControl>());
+            QVERIFY(d.start() == Daemon::StartResult::Ok);
+            QVERIFY(d.config().passwordIgnoreBuiltin);
+            QVERIFY(setUpVault(d, VaultMode(mode)));
+            emit d.control()->ingestRequested(text, {QStringLiteral("text/plain")});
+            QCOMPARE(d.repository()->count(), 1);
+            QCOMPARE(d.repository()->countSecrets(), 0); // an ordinary copy
+            QCOMPARE(d.repository()->allEntries().back().content, text);
+        }
+    }
+
+    void withTheBuiltInIgnoresOffAPathFittingARuleIsKept()
+    {
+        writeConfig("password_ask_note = false\npassword_ignore_builtin = false\n"
+                    "password_rules = [\"6-30 lower=1 upper=1 symbols=1\"]\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QVERIFY(!d.config().passwordIgnoreBuiltin);
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        emit d.control()->ingestRequested(QStringLiteral("%AppData%\\rig"), {QStringLiteral("text/plain")});
+        QCOMPARE(d.repository()->countSecrets(), 1);
+        QVERIFY(!historyFileHolds(QByteArray("%AppData%")));
+    }
+
+    void aUserIgnoreRuleStopsTheGuesses()
+    {
+        writeConfig("password_ask_note = false\ndetect_passwords = true\npassword_ignore = [\"k9#*\", \"x\"]\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        QCOMPARE(d.config().passwordIgnore, QStringList{QStringLiteral("k9#*")}); // the short rule is dropped on load
+        QVERIFY(setUpVault(d, VaultMode::Master));
+        emit d.control()->ingestRequested(QStringLiteral("k9#Vf2!qLm8@Zp"), {QStringLiteral("text/plain")});
+        QCOMPARE(d.repository()->countSecrets(), 0);
+        emit d.control()->ingestRequested(QStringLiteral("q9#Vf2!qLm8@Zp"), {QStringLiteral("text/plain")}); // not the rule
+        QCOMPARE(d.repository()->countSecrets(), 1);
+    }
+
+    void aMarkedCopyIsSealedEvenWhenItLooksLikeAPath_data() { aMarkedCopyIsKeptSealedOrSkipped_data(); }
+    void aMarkedCopyIsSealedEvenWhenItLooksLikeAPath()
+    {
+        QFETCH(int, mode);
+        detectionCase(QStringLiteral("%AppData%\\rig"), marked(), "password_ignore = [\"%appdata%*\"]\n", VaultMode(mode), true,
+                      QStringLiteral("KeePassXC"));
+    }
+
+    void aKeyOrTokenIsSealedEvenWhenItLooksLikeAPath_data() { aMarkedCopyIsKeptSealedOrSkipped_data(); }
+    void aKeyOrTokenIsSealedEvenWhenItLooksLikeAPath()
+    {
+        QFETCH(int, mode);
+        const QString text = QStringLiteral("C:\\work\\ghp_0123456789abcdefghijklmnopqrstuvwxyzAB");
+        QVERIFY(!clipitto::secretscan::kindOf(text).isEmpty());
+        detectionCase(text, {QStringLiteral("text/plain")}, "password_ignore = [\"c:\\\\work\\\\*\"]\n", VaultMode(mode), false,
+                      clipitto::secretscan::kindOf(text));
+    }
+
     void aRuleBelowSixCharactersIsNeverUsed()
     {
         // The minimum is part of loading the config: a rule asking for fewer is skipped, so a plain word is not caught.

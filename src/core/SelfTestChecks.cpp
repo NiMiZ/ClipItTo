@@ -1,5 +1,6 @@
 #include "SelfTestChecks.h"
 
+#include "PasswordIgnore.h"
 #include "SecretScan.h"
 #include "db/Migrator.h"
 #include "db/Sqlite.h"
@@ -412,14 +413,20 @@ Result passwordChainCheck(const Env& env)
         judged << QStringLiteral("%1: %2").arg(QLatin1String(sample.label),
                                                why.isEmpty() ? QStringLiteral("kept") : QStringLiteral("not kept (%1)").arg(why));
     }
+    // A fixed sample of an environment variable, to show the built-in "not a password" shapes working.
+    const QString ignoreSample = QStringLiteral("%AppData%\\rig");
+    const QString ignoreShape = env.config.passwordIgnoreBuiltin ? passwordignore::builtinShape(ignoreSample) : QString();
+    const QString ignoreLine = QStringLiteral("ignore rules: built-in %1, %2 of yours (sample environment variable: %3)")
+                                   .arg(onOff(env.config.passwordIgnoreBuiltin)).arg(env.config.passwordIgnore.size())
+                                   .arg(ignoreShape.isEmpty() ? QStringLiteral("not ignored") : QStringLiteral("ignored"));
     const QString detail =
         QStringLiteral("master password: %1; name box after a password copy: %2; match key: %3%4; detect_secrets %5, "
-                       "detect_passwords %6; last name box: %7. detect_passwords on built-in samples: %8")
+                       "detect_passwords %6; %9; last name box: %7. detect_passwords on built-in samples: %8")
             .arg(env.passwordState.isEmpty() ? QStringLiteral("none") : env.passwordState, onOff(env.config.passwordAskNote),
                  env.canMatch ? QStringLiteral("available") : QStringLiteral("not available"),
                  env.canMatch || env.matchProblem.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(env.matchProblem),
                  onOff(env.config.detectSecrets), onOff(env.config.detectPasswords),
-                 env.lastNameBox.isEmpty() ? QStringLiteral("none yet") : env.lastNameBox, judged.join(QStringLiteral("; ")));
+                 env.lastNameBox.isEmpty() ? QStringLiteral("none yet") : env.lastNameBox, judged.join(QStringLiteral("; ")), ignoreLine);
     if (!env.passwordsSetUp) {
         return Result::warn(detail, QStringLiteral("No master password is set, so copies from password managers are not kept. Set "
                                                    "one in Settings > Passwords to keep them, encrypted."));

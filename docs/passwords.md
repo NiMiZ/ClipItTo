@@ -129,6 +129,38 @@ sample in the *Try it* box to see which rule keeps it (the sample is only checke
 logged). Impossible rules (shortest above longest, counts above the longest length) are refused and OK stays
 disabled. Like the options above, rules need a master password or *Use without one…*.
 
+**Things that are clearly not passwords (on by default, `password_ignore_builtin`).** The two guesses above
+(`detect_passwords` and your own rules) judge by shape, and a path such as `%AppData%\rig` has the shape of a
+password: one line, no spaces, upper case, lower case and symbols. So before a guess can take a copy, ClipItTo checks
+that the whole copy is not one of these shapes (shown in the checkbox's tooltip and named in the *Try it* box):
+
+| Shape | Examples |
+|---|---|
+| environment variable | `%AppData%\rig`, `%ProgramData%`, `%USERPROFILE%\Documents`, `C:\x\%TEMP%\y`, `$HOME/bin`, `$USER`, `${XDG_DATA_HOME}/x`, `$env:APPDATA\rig`, `~`, `~/.config`, `~user/x` |
+| file path | `C:\Users\me\x`, `D:/work/src`, `\\server\share\f`, `/usr/local/bin`, `/home/me/x`, `/opt/My Tool/bin`, `./build/out`, `..\x` |
+| registry key | `HKEY_LOCAL_MACHINE\SOFTWARE\X`, `HKLM\Software\X`, `HKCU` |
+| host and port | `localhost`, `localhost:8080/api`, `example.com:443`, `192.168.1.10:22` |
+| dotted name | `com.example.Thing`, `System.Collections.Generic` (lower case first part like `com.`, or `System.`/`Microsoft.`; three or more parts, letters only; `Correct.Horse.Battery` stays) |
+| URL | `https://example.com/a?b=C1`, `www.example.com/x`, `mailto:me@example.com` |
+| email address | `me.name+tag@example.com` |
+
+The shapes are anchored and conservative, so a real generated password still gets through, including one with
+`$`, `%`, `/` or `\` inside or at its start (`$aB3xY9!qLm2`, `%aB3$xY9`, `p@Ss/w0rD!x`, `~Kp2xY9qLm`). A Unix
+`$NAME` counts only in upper case, up to 8 letters or with an underscore (`$HOME`, `$XDG_DATA_HOME`), and `~name` only with a `/` after it. The shapes apply
+**only to the guesses**: a copy a password manager marked is always kept, and a private key, an access token or a
+card number (`detect_secrets`) is always kept, even inside a path. Switch the shapes off with the box in
+Settings › Passwords › *Password ignore* › *Edit rules…*.
+
+**Your own ignore rules (`password_ignore`, up to 16).** The same window takes texts of your own that are never
+guessed to be passwords. The **whole copy** must match, `*` stands for any text (up to 3 of them), letter case does
+not matter, and a text needs at least 3 characters besides `*`, so `*` alone cannot ignore everything. Examples:
+`%appdata%*`, `*\Users\*`, `C:\work\*`. In the file: `password_ignore = ["%appdata%*", "C:\\work\\*"]` (a backslash is
+doubled inside the quotes). The *Try it* box says what would happen to a sample: ignored by the built-in shape
+"file path", ignored by your rule 2, kept by password rule 1, kept as a generated password, or not taken (the
+sample is never saved or logged, and is cleared when the window closes). Like the other password settings the
+editor is disabled until there is a master password or *Use without one…*. If a copy was stored as a password
+anyway, *Not a password* in the right-click menu turns it back into text.
+
 **Auto-forget and password copies.** The `auto_forget` rules (Settings › Passwords › *Auto-forget*, see
 [usage.md](usage.md)) never remove a password copy and never read one: a password copy is deleted only by you
 (*Delete*, *Clear history*, *Turn off…*). A secret-looking copy that is *not* a password copy (no master password,

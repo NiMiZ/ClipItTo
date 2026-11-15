@@ -1,6 +1,7 @@
 #include "Config.h"
 
 #include "Hotkey.h"
+#include "PasswordIgnore.h"
 
 #include <QDir>
 #include <QFile>
@@ -247,6 +248,35 @@ public:
         out = rules;
     }
 
+    // Up to passwordignore::kMaxRules strings (texts with * wildcards); bad ones are skipped with a warning that never
+    // quotes the rule.
+    void ignoreRules(const char* key, QStringList& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const toml::array* array = node->as_array();
+        if (!array) {
+            warn(QStringLiteral("%1: expected a list of strings").arg(QLatin1String(key)));
+            return;
+        }
+        QStringList rules;
+        for (const toml::node& item : *array) {
+            const auto value = item.value_exact<std::string>();
+            const QString rule = value ? passwordignore::normalize(QString::fromStdString(*value)) : QString();
+            const QString why = value ? passwordignore::validate(rule) : QStringLiteral("not a string");
+            if (!why.isEmpty()) {
+                warn(QStringLiteral("%1: a rule is skipped (%2)").arg(QLatin1String(key), why));
+            } else if (rules.size() >= passwordignore::kMaxRules) {
+                warn(QStringLiteral("%1: only %2 rules are used").arg(QLatin1String(key)).arg(passwordignore::kMaxRules));
+            } else {
+                rules << rule;
+            }
+        }
+        out = rules;
+    }
+
     // Up to autoforget::kMaxRules strings in AutoForget.h's text form; bad ones are skipped with a warning (never
     // quoting the rule: its text may be something the user wants forgotten).
     void autoForget(const char* key, QList<AutoForgetRule>& out)
@@ -389,6 +419,8 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("detect_secrets", config.detectSecrets);
     r.boolean("detect_passwords", config.detectPasswords);
     r.passwordRules("password_rules", config.passwordRules);
+    r.boolean("password_ignore_builtin", config.passwordIgnoreBuiltin);
+    r.ignoreRules("password_ignore", config.passwordIgnore);
     r.boolean("passwords_per_note", config.passwordsPerNote);
     r.boolean("password_ask_note", config.passwordAskNote);
     r.integer("password_unlock_minutes", config.passwordUnlockMinutes, 1, 240);
@@ -462,6 +494,15 @@ std::string tomlRules(const QList<PasswordRule>& rules)
     return out + "]";
 }
 
+std::string tomlStrings(const QStringList& values)
+{
+    std::string out = "[";
+    for (qsizetype i = 0; i < values.size(); ++i) {
+        out += (i ? ", " : "") + tomlString(values.at(i).toStdString());
+    }
+    return out + "]";
+}
+
 std::string tomlAutoForget(const QList<AutoForgetRule>& rules)
 {
     std::string out = "[";
@@ -527,6 +568,10 @@ std::vector<Line> lines(const Config& c)
         {"detect_secrets", tomlBool(c.detectSecrets), "copies that look like API keys, tokens or card numbers are kept as password copies"},
         {"detect_passwords", tomlBool(c.detectPasswords), "copies that look like generated passwords are kept as password copies (guesses; may take ordinary text)"},
         {"password_rules", tomlRules(c.passwordRules), "your own rules for what is kept as a password copy (up to 5)"},
+        {"password_ignore_builtin", tomlBool(c.passwordIgnoreBuiltin),
+         "paths, %VARIABLES%, URLs and the like are never guessed to be passwords (detect_passwords and password_rules)"},
+        {"password_ignore", tomlStrings(c.passwordIgnore),
+         "your own texts that are never guessed to be passwords, * = anything, up to 16, e.g. [\"%appdata%*\"]"},
         {"passwords_per_note", tomlBool(c.passwordsPerNote), "the same password under a different note is a separate copy"},
         {"password_ask_note", tomlBool(c.passwordAskNote), "after copying a new password, open ClipItTo to name it"},
         {"password_unlock_minutes", std::to_string(c.passwordUnlockMinutes), "how long an unlock lasts"},

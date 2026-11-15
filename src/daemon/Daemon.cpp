@@ -1473,6 +1473,7 @@ void Daemon::applyPasswordSettings()
     m_pipeline->setDetectSecrets(m_config.detectSecrets);
     m_pipeline->setDetectPasswords(m_config.detectPasswords);
     m_pipeline->setPasswordRules(m_config.passwordRules);
+    m_pipeline->setPasswordIgnore(m_config.passwordIgnoreBuiltin, m_config.passwordIgnore);
     m_pipeline->setPasswords(&m_passwords->vault(), m_config.keepPasswords,
                              m_config.passwordsInGroup ? PasswordKeeper::passwordsGroup() : QString());
     if (m_config.passwordsInGroup && m_repo) {
@@ -1635,11 +1636,13 @@ QVariantMap Daemon::status() const
             : (m_options.screenLockWatcher && m_options.screenLockWatcher->isWatching()) ? QStringLiteral("on (watching)")
                                                                                          : QStringLiteral("on (unsupported here)");
         const auto onOff = [](bool on) { return on ? QStringLiteral("on") : QStringLiteral("off"); };
-        s[QStringLiteral("password_feature")] = QStringLiteral("ask_note %1, detect_secrets %2, detect_passwords %3, match key %4, last name box: %5")
+        s[QStringLiteral("password_feature")] = QStringLiteral("ask_note %1, detect_secrets %2, detect_passwords %3, ignore built-in %6 + %7 of yours, match key %4, last name box: %5")
                                                     .arg(onOff(m_config.passwordAskNote), onOff(m_config.detectSecrets),
                                                          onOff(m_config.detectPasswords),
                                                          m_passwords->canMatch() ? QStringLiteral("available") : QStringLiteral("not available"),
-                                                         m_lastNameBox.isEmpty() ? QStringLiteral("none yet") : m_lastNameBox);
+                                                         m_lastNameBox.isEmpty() ? QStringLiteral("none yet") : m_lastNameBox,
+                                                         onOff(m_config.passwordIgnoreBuiltin))
+                                                    .arg(m_config.passwordIgnore.size());
     }
     if (m_sync) {
         s[QStringLiteral("sync")] = m_sync->statusLine();

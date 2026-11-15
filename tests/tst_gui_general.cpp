@@ -232,6 +232,12 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"detect_secrets", [](SettingsDialog& d) { toggle(d.detectSecretsBox()); }},
         {"detect_passwords", [](SettingsDialog& d) { toggle(d.detectPasswordsBox()); }},
         {"password_rules", [](SettingsDialog& d) { d.addRuleButton()->click(); }},
+        {"password_ignore_builtin", [](SettingsDialog& d) { toggle(d.ignoreBuiltinBox()); }},
+        {"password_ignore",
+         [](SettingsDialog& d) {
+             d.addIgnoreButton()->click();
+             d.ignoreRuleEdit(0)->setText(QStringLiteral("%appdata%*"));
+         }},
         {"auto_forget", [](SettingsDialog& d) { d.addForgetButton()->click(); }},
         {"passwords_per_note", [](SettingsDialog& d) { toggle(d.passwordsPerNoteBox()); }},
         {"password_ask_note", [](SettingsDialog& d) { toggle(d.askNoteBox()); }},
@@ -662,7 +668,7 @@ private slots:
         const QList<QWidget*> dependent = {off->keepPasswordsBox(), off->passwordsInGroupBox(), off->askNoteBox(),
                                            off->detectSecretsBox(), off->detectPasswordsBox(), off->passwordsPerNoteBox(),
                                            off->unlockMinutesBox(), off->clearSecondsBox(), off->keywordEdit(),
-                                           off->rulesPanel(), off->helloBox()};
+                                           off->rulesPanel(), off->ignorePanel(), off->ignoreEditButton(), off->helloBox()};
         for (QWidget* w : dependent) {
             QVERIFY2(!w->isEnabled(), qPrintable(w->metaObject()->className()));
         }
@@ -673,7 +679,8 @@ private slots:
         auto on = with.open(Config{});
         for (QWidget* w : {static_cast<QWidget*>(on->keepPasswordsBox()), static_cast<QWidget*>(on->askNoteBox()),
                            static_cast<QWidget*>(on->detectSecretsBox()), static_cast<QWidget*>(on->unlockMinutesBox()),
-                           static_cast<QWidget*>(on->keywordEdit()), static_cast<QWidget*>(on->rulesPanel())}) {
+                           static_cast<QWidget*>(on->keywordEdit()), static_cast<QWidget*>(on->rulesPanel()),
+                           static_cast<QWidget*>(on->ignorePanel()), static_cast<QWidget*>(on->ignoreEditButton())}) {
             QVERIFY2(w->isEnabled(), qPrintable(w->metaObject()->className()));
         }
         QVERIFY(!on->helloBox()->isEnabled()); // no Windows Hello / Touch ID support here

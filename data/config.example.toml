@@ -79,6 +79,14 @@ password_rules = []         # your own rules for what is kept as a password copy
                             # ["8-20 lower=1 upper=1 digits=2 symbols=0 end"]: 8 to 20 characters, at
                             # least 1 lower case, 1 upper case, 2 digits, and ending with a digit
                             # (omit "end" for no such condition; counts default to 0)
+password_ignore_builtin = true  # things that are clearly not passwords are never taken by detect_passwords
+                            # or password_rules: %AppData%\rig, $HOME/bin, $env:APPDATA, ~/x, file paths
+                            # (C:\x, \\server\share, /usr/bin), URLs, email addresses, host:port,
+                            # registry keys, com.example.Name. Never applies to copies a password manager
+                            # marked, nor to keys, tokens and card numbers (detect_secrets)
+password_ignore = []        # your own "not a password" texts, up to 16, added to the above. The whole copy
+                            # must match; * stands for anything (up to 3 of them), letter case is ignored,
+                            # at least 3 other characters, e.g. ["%appdata%*", "*\\Users\\*", "C:\\work\\*"]
 passwords_per_note = true  # the same password under a different note is kept as a separate copy
 password_ask_note = true    # after copying a new password, open ClipItTo with a name box on it
                             # (the app it came from is suggested)
