@@ -130,6 +130,18 @@ private slots:
             "$HOME2xY9!q",
             "${aB3$xY9",
             "$env;aB3xY9",
+            "Zx9$kL@pQ.ab",
+            "q:/Xk9#mL2",
+            "/Ab3x/Zq7mK",
+            "./Xk9#mL2q",
+            "../aB3$xY9",
+            "~aB3/xY9#q",
+            "$XKQMZPLW12",
+            "$XKQMZPLWAB",
+            "Correct.Horse.Battery",
+            "www.Xk9#mL2!",
+            "http://user:pa55@host.com",
+            "Xk9;%Ab%/q",
         };
         for (const char* p : passwords) {
             QTest::newRow(p) << QString::fromUtf8(p);

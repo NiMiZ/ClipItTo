@@ -140,13 +140,13 @@ that the whole copy is not one of these shapes (shown in the checkbox's tooltip 
 | file path | `C:\Users\me\x`, `D:/work/src`, `\\server\share\f`, `/usr/local/bin`, `/home/me/x`, `/opt/My Tool/bin`, `./build/out`, `..\x` |
 | registry key | `HKEY_LOCAL_MACHINE\SOFTWARE\X`, `HKLM\Software\X`, `HKCU` |
 | host and port | `localhost`, `localhost:8080/api`, `example.com:443`, `192.168.1.10:22` |
-| dotted name | `com.example.Thing`, `System.Collections.Generic` (letters and dots, two dots or more) |
+| dotted name | `com.example.Thing`, `System.Collections.Generic` (lower case first part like `com.`, or `System.`/`Microsoft.`; three or more parts, letters only; `Correct.Horse.Battery` stays) |
 | URL | `https://example.com/a?b=C1`, `www.example.com/x`, `mailto:me@example.com` |
 | email address | `me.name+tag@example.com` |
 
 The shapes are anchored and conservative, so a real generated password still gets through, including one with
 `$`, `%`, `/` or `\` inside or at its start (`$aB3xY9!qLm2`, `%aB3$xY9`, `p@Ss/w0rD!x`, `~Kp2xY9qLm`). A Unix
-`$NAME` counts only in upper case (`$HOME`, `$XDG_DATA_HOME`), and `~name` only with a `/` after it. The shapes apply
+`$NAME` counts only in upper case, up to 8 letters or with an underscore (`$HOME`, `$XDG_DATA_HOME`), and `~name` only with a `/` after it. The shapes apply
 **only to the guesses**: a copy a password manager marked is always kept, and a private key, an access token or a
 card number (`detect_secrets`) is always kept, even inside a path. Switch the shapes off with the box in
 Settings › Passwords › *Password ignore* › *Edit rules…*.

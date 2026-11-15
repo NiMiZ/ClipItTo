@@ -19,37 +19,41 @@ struct Shape {
 // names that really occur ($HOME, $XDG_DATA_HOME), so "$aB3xY9qL" stays a password; ${NAME} and $env:NAME are
 // unambiguous and take any letter case.
 const Shape kShapes[] = {
-    // Windows %NAME% at the start (alone or before a separator), or inside a path right before a separator.
-    {"environment variable", R"(\A%[A-Za-z_][A-Za-z0-9_()]+%(?:[\\/].*)?\z)", false},
-    {"environment variable", R"((?:\A|[\\/=;:])%[A-Za-z_][A-Za-z0-9_()]+%[\\/])", false},
-    // Unix $NAME, ${NAME}, PowerShell $env:NAME.
-    {"environment variable", R"(\A\$[A-Z_][A-Z_]*[0-9]{0,2}(?:[\\/].*)?\z)", false},
-    {"environment variable", R"(\A\$\{[A-Za-z_][A-Za-z0-9_]*\}(?:[\\/].*)?\z)", false},
-    {"environment variable", R"(\A\$env:[A-Za-z_][A-Za-z0-9_]*(?:[\\/].*)?\z)", true},
+    // Windows %NAME% at the start (alone or before a separator), or inside a path right after a separator.
+    {"environment variable", R"(\A%[A-Za-z_][A-Za-z0-9_()]+%(?:[\\/][A-Za-z0-9._ \-()\\/%~+,]*)?\z)", false},
+    {"environment variable", R"([\\/]%[A-Za-z_][A-Za-z0-9_()]+%[\\/])", false},
+    // Unix $NAME (upper case: up to 8 letters, or with an underscore), ${NAME}, PowerShell $env:NAME.
+    {"environment variable", R"(\A\$(?:[A-Z]{1,8}|[A-Z]+(?:_[A-Z0-9]+)+|_[A-Z0-9_]*)(?:[\\/][A-Za-z0-9._ \-()\\/%~+,]*)?\z)", false},
+    {"environment variable", R"(\A\$\{[A-Za-z_][A-Za-z0-9_]*\}(?:[\\/][A-Za-z0-9._ \-()\\/%~+,]*)?\z)", false},
+    {"environment variable", R"(\A\$env:[A-Za-z_][A-Za-z0-9_]*(?:[\\/][A-Za-z0-9._ \-()\\/%~+,]*)?\z)", true},
     // Home directory: ~ alone, ~/x, ~\x, ~user/x (not "~user" alone: that can be the start of a password).
     {"environment variable", R"(\A~\z)", false},
-    {"environment variable", R"(\A~(?:[A-Za-z_][A-Za-z0-9_.-]*)?[\\/].*\z)", false},
+    {"environment variable", R"(\A~(?:[A-Za-z_][A-Za-z0-9_.-]*)?[\\/][A-Za-z0-9._ \-()\\/%~+,]*\z)", false},
 
     // Windows drive path, UNC path.
-    {"file path", R"(\A[A-Za-z]:[\\/].*\z)", false},
-    {"file path", R"(\A\\\\[^\\/\s]+\\[^\\/\s].*\z)", false},
-    // Unix: well-known roots, or at least two plain segments.
-    {"file path", R"(\A/(?:usr|etc|home|var|opt|mnt|tmp|bin|sbin|lib|lib64|dev|proc|sys|srv|root|run|boot|media|Users|Applications|Library|Volumes|System|private)(?:/\S*)?\z)", false},
-    {"file path", R"(\A/[A-Za-z0-9._ -]+(?:/[A-Za-z0-9._ -]+)+/?\z)", false},
+    {"file path", R"(\A[A-Za-z]:[\\/][A-Za-z0-9._ \-()\\/%~+,]*\z)", false},
+    {"file path", R"(\A\\\\[^\\/\s]+\\[A-Za-z0-9._ \-()%~+,$][A-Za-z0-9._ \-()\\/%~+,$]*\z)", false},
+    // Unix: well-known roots, or three plain segments, or two with a dot.
+    {"file path", R"(\A/(?:usr|etc|home|var|opt|mnt|tmp|bin|sbin|lib|lib64|dev|proc|sys|srv|root|run|boot|media|snap|nix|cores|Users|Applications|Library|Volumes|System|Network|private)(?:/\S*)?\z)", false},
+    {"file path", R"(\A/[A-Za-z0-9._ -]+(?:/[A-Za-z0-9._ -]+){2,}/?\z)", false},
+    {"file path", R"(\A/[A-Za-z0-9._ -]+/[A-Za-z0-9_ -]*\.[A-Za-z0-9._ -]+\z)", false},
     // Relative.
-    {"file path", R"(\A\.{1,2}[\\/].+\z)", false},
+    {"file path", R"(\A\.{1,2}[\\/][A-Za-z0-9._ \-()\\/%~+,]*\z)", false},
 
     {"registry key",
-     R"(\A(?:HKEY_(?:LOCAL_MACHINE|CURRENT_USER|CLASSES_ROOT|USERS|CURRENT_CONFIG)|HKLM|HKCU|HKCR|HKU|HKCC)(?:\\.*)?\z)",
+     R"(\A(?:HKEY_(?:LOCAL_MACHINE|CURRENT_USER|CLASSES_ROOT|USERS|CURRENT_CONFIG)|HKLM|HKCU|HKCR|HKU|HKCC)(?:\\[A-Za-z0-9._ \-()\\/%~+,]*)?\z)",
      false},
 
     {"host and port", R"(\A(?:localhost|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+):\d{1,5}(?:/\S*)?\z)", true},
     {"host and port", R"(\Alocalhost(?:/\S*)?\z)", true},
-    {"dotted name", R"(\A[A-Za-z]{2,}(?:\.[A-Za-z]{2,}){2,}\z)", false},
+    // Reverse-DNS (com.example.Thing) or a well-known namespace; a three-word passphrase is not one.
+    {"dotted name", R"(\A(?:[a-z]{2,}(?:\.[A-Za-z]{2,}){2,}|(?:System|Microsoft|Windows|UnityEngine)(?:\.[A-Za-z]{2,}){2,})\z)", false},
 
-    {"URL", R"(\A[A-Za-z][A-Za-z0-9+.-]*://\S+\z)", false},
-    {"URL", R"(\A(?:www\.|mailto:)\S+\z)", true},
-    {"email address", R"(\A[^@\s]+@[^@\s]+\.[A-Za-z]{2,}\z)", false},
+    // A URL with a user name or password in it falls through to the guesses.
+    {"URL", R"(\A[A-Za-z][A-Za-z0-9+.-]*://(?![^/\s]*@)\S+\z)", false},
+    {"URL", R"(\Awww\.[A-Za-z0-9-]+\.[A-Za-z]{2,}(?:[/?#]\S*)?\z)", true},
+    {"URL", R"(\Amailto:[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\z)", true},
+    {"email address", R"(\A[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\z)", false},
 };
 
 struct Compiled {
