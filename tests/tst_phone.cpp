@@ -82,6 +82,19 @@ private:
     Reply m_reply;
 };
 
+// After the server stopped, a connection to its old port must not get the page. The port is refused; if another test's
+// server (they run in parallel) already took that port number, it answers 404 or something else, never the page.
+bool oldAddressIsDead(quint16 port, const QByteArray& token)
+{
+    Client c(port);
+    if (!c.waitConnected()) {
+        return true; // refused
+    }
+    c.send("GET /" + token + "/ HTTP/1.1\r\nHost: x\r\n\r\n");
+    const auto& r = c.waitReply();
+    return r.status() != 200;
+}
+
 PhoneServer::Config smallConfig()
 {
     PhoneServer::Config c;
@@ -725,8 +738,7 @@ private slots:
         QVERIFY(!server.isListening());
         QVERIFY(server.token().isEmpty());
         QCOMPARE(server.remainingMs(), qint64(0));
-        Client c(port);
-        QVERIFY(!c.waitConnected()); // refused
+        QVERIFY(oldAddressIsDead(port, token)); // refused, or not served
         QVERIFY(!server.extend()); // nothing to extend
     }
     void extendAddsTime()
@@ -773,8 +785,7 @@ private slots:
         QCOMPARE(stopped.count(), 1);
         QCOMPARE(stopped.at(0).at(0).value<PhoneServer::StopReason>(), PhoneServer::StopReason::User);
         QVERIFY(open.waitClosed()); // open connections are cut
-        Client late(port);
-        QVERIFY(!late.waitConnected());
+        QVERIFY(oldAddressIsDead(port, token));
         QVERIFY(server.token().isEmpty());
         server.stop(); // again: nothing
         QCOMPARE(stopped.count(), 1);
