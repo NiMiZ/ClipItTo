@@ -104,6 +104,105 @@ private slots:
         QCOMPARE(d.config().passwordRules.size(), 1); // and config() still reads it from the window
     }
 
+    // Password ignore rules: own window, built-in switch, rows, validation, and the Try-it verdicts.
+    void passwordIgnoreEditorInItsOwnWindowWithTryIt()
+    {
+        TestDb t;
+        Config c;
+        c.passwordIgnore = {QStringLiteral("C:\\work\\*")};
+        clipitto::PasswordRule shortWithSymbol;
+        shortWithSymbol.minLength = 6;
+        shortWithSymbol.maxLength = 8;
+        shortWithSymbol.symbols = 1;
+        c.passwordRules = {shortWithSymbol};
+        clipitto::PasswordKeeper keeper(*t.repo, std::make_shared<FakeKeyStore>());
+        keeper.setKdfCost({64, 1});
+        clipitto::ui::PasswordSupport support;
+        support.keeper = &keeper;
+        {
+            // No master password: the editor is greyed like the other password rules.
+            SettingsDialog off(c, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+            QVERIFY(!off.ignorePanel()->isEnabled());
+            QVERIFY(!off.ignoreEditButton()->isEnabled());
+        }
+        bool set = false;
+        keeper.setMasterPassword("master", [&set](bool ok) { set = ok; });
+        QTRY_VERIFY(set);
+        SettingsDialog d(c, *t.repo, ShortcutSupport{}, {}, nullptr, support);
+        QVERIFY(d.ignorePanel()->isEnabled());
+        QVERIFY(d.ignoreEditButton()->isEnabled());
+        QVERIFY(d.ignoreDialog());
+        QCOMPARE(d.ignorePanel()->window(), static_cast<QWidget*>(d.ignoreDialog()));
+        QVERIFY(d.ignoreDialog() != d.rulesDialog());
+        QVERIFY(!d.ignoreDialog()->isVisible());
+        QVERIFY(d.ignoreBuiltinBox()->isChecked()); // on by default
+        QVERIFY(d.ignoreBuiltinBox()->toolTip().contains(QLatin1String("file path")));
+        QVERIFY(d.ignoreBuiltinBox()->toolTip().contains(QLatin1String("environment variable")));
+        QCOMPARE(d.ignoreRowCount(), 1);
+        QVERIFY(d.ignoreSummary()->text().contains(QLatin1String("1")));
+        QCOMPARE(d.config().passwordIgnore, c.passwordIgnore);
+        QVERIFY(d.config().passwordIgnoreBuiltin);
+        QVERIFY(d.ignoreTryEdit()->inputMethodHints().testFlag(Qt::ImhSensitiveData));
+
+        // Verdicts name the class of reason, never the text.
+        const auto verdict = [&](const QString& sample) {
+            d.ignoreTryEdit()->setText(sample);
+            return d.ignoreTryResult()->text();
+        };
+        QVERIFY(verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("environment variable")));
+        QVERIFY(verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("Ignored")));
+        QVERIFY(!verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("rig")));
+        QVERIFY(verdict(QStringLiteral("C:\\work\\a")).contains(QLatin1String("your rule 1")));
+        QVERIFY(verdict(QStringLiteral("aB3$xY9!qLm2")).contains(QLatin1String("Not taken")));
+        d.detectPasswordsBox()->setChecked(true);
+        QVERIFY(verdict(QStringLiteral("aB3$xY9!qLm2")).contains(QLatin1String("generated password")));
+        QVERIFY(verdict(QStringLiteral("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB")).contains(QLatin1String("never ignored")));
+        QVERIFY(verdict(QStringLiteral("C:\\work\\ghp_0123456789abcdefghijklmnopqrstuvwxyzAB")).contains(QLatin1String("never ignored")));
+        d.ignoreBuiltinBox()->setChecked(false);
+        QVERIFY(!d.config().passwordIgnoreBuiltin);
+        // Without the shapes the user's own bug returns: the generated-password guess takes it.
+        QVERIFY(verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("generated password")));
+        QVERIFY(verdict(QStringLiteral("a$bcdef")).contains(QLatin1String("password rule 1"))); // 6-8, one symbol
+        d.ignoreBuiltinBox()->setChecked(true);
+        QVERIFY(verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("Ignored")));
+        d.ignoreTryEdit()->clear();
+        QVERIFY(d.ignoreTryResult()->text().isEmpty());
+
+        // Rows: add, validate (OK waits, the text is not saved), limit, remove.
+        d.addIgnoreButton()->click();
+        QCOMPARE(d.ignoreRowCount(), 2);
+        d.ignoreRuleEdit(1)->setText(QStringLiteral("zq*"));
+        QVERIFY(!d.ignoreErrorLabel()->isHidden());
+        QVERIFY(!d.ignoreErrorLabel()->text().contains(QLatin1String("zq"))); // the message never quotes the text
+        QVERIFY(!d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        QCOMPARE(d.config().passwordIgnore.size(), 1);
+        d.ignoreRuleEdit(1)->setText(QStringLiteral("  *\\Users\\*  "));
+        QVERIFY(d.buttons()->button(QDialogButtonBox::Ok)->isEnabled());
+        QCOMPARE(d.config().passwordIgnore, (QStringList{QStringLiteral("C:\\work\\*"), QStringLiteral("*\\Users\\*")}));
+        while (d.addIgnoreButton()->isEnabled()) {
+            d.addIgnoreButton()->click();
+        }
+        QCOMPARE(d.ignoreRowCount(), 16);
+        while (d.ignoreRowCount() > 0) {
+            d.ignoreRemoveButton(0)->click();
+        }
+        QVERIFY(d.config().passwordIgnore.isEmpty());
+        QVERIFY(d.addIgnoreButton()->isEnabled());
+    }
+
+    void thePasswordIgnoreSampleIsClearedWhenTheDialogCloses()
+    {
+        TestDb t;
+        SettingsDialog d(Config{}, *t.repo, {});
+        d.ignoreTryEdit()->setText(QStringLiteral("some-sample"));
+        d.ignoreTryEdit()->setText(QStringLiteral("%TEMP%\\x"));
+        emit d.finished(0);
+        QVERIFY(d.ignoreTryEdit()->text().isEmpty());
+        d.ignoreTryEdit()->setText(QStringLiteral("again"));
+        emit d.ignoreDialog()->finished(0);
+        QVERIFY(d.ignoreTryEdit()->text().isEmpty());
+    }
+
     // Opening Settings must not touch the keyring for a feature that is off (it can show the keyring's window).
     void openingSettingsDoesNotAskTheKeyringWhileSyncIsOff()
     {

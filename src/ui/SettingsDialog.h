@@ -230,6 +230,19 @@ public:
     QLabel* rulesSummary() const { return m_rulesWindow.summary; }
     QPushButton* addRuleButton() const { return m_addRule; }
     QLabel* ruleErrorLabel() const { return m_ruleError; }
+    // Password ignore rules (Passwords tab, own window): the built-in switch, one text row per rule, a "Try it" box.
+    QDialog* ignoreDialog() const { return m_ignoreWindow.dialog; }
+    QLabel* ignoreSummary() const { return m_ignoreWindow.summary; }
+    QPushButton* ignoreEditButton() const { return m_ignoreWindow.button; }
+    QWidget* ignorePanel() const { return m_ignorePanel; }
+    QCheckBox* ignoreBuiltinBox() const { return m_ignoreBuiltin; }
+    QPushButton* addIgnoreButton() const { return m_addIgnore; }
+    QLabel* ignoreErrorLabel() const { return m_ignoreError; }
+    QLineEdit* ignoreTryEdit() const { return m_ignoreTry; }
+    QLabel* ignoreTryResult() const { return m_ignoreTryResult; }
+    int ignoreRowCount() const { return int(m_ignoreRows.size()); }
+    QLineEdit* ignoreRuleEdit(int row) const { return m_ignoreRows.at(size_t(row)).text; }
+    QPushButton* ignoreRemoveButton(int row) const { return m_ignoreRows.at(size_t(row)).remove; }
     QLineEdit* ruleTryEdit() const { return m_ruleTry; }
     QLabel* ruleTryResult() const { return m_ruleTryResult; }
     int ruleRowCount() const { return int(m_ruleRows.size()); }
@@ -301,6 +314,10 @@ private:
     QList<PasteKeyRule> pasteKeysValues() const; // what the rows say (valid or not)
     void refreshPasteKeys(); // validation message, OK button, Add button
     void updateOkButton(); // OK waits while any rule editor shows an error
+    void addIgnoreRow(const QString& rule);
+    void removeIgnoreRow(QWidget* row);
+    QStringList ignoreValues() const; // what the rows say (valid or not), trimmed
+    void refreshIgnore(); // validation message, OK button, Add button, summary, "Try it" verdict
     void addForgetRow(const AutoForgetRule& rule);
     void removeForgetRow(QWidget* row);
     QList<AutoForgetRule> forgetValues() const; // what the rows say (valid or not)
@@ -385,6 +402,11 @@ private:
         QComboBox* secret = nullptr; // Secret: any / token / key / card
         QPushButton* remove = nullptr;
     };
+    struct IgnoreRow {
+        QWidget* row = nullptr;
+        QLineEdit* text = nullptr;
+        QPushButton* remove = nullptr;
+    };
     struct PasteKeysRow {
         QWidget* row = nullptr;
         QLineEdit* pattern = nullptr;
@@ -403,6 +425,15 @@ private:
     RulesWindow m_rulesWindow;
     RulesWindow m_forgetWindow;
     RulesWindow m_pasteKeysWindow;
+    RulesWindow m_ignoreWindow;
+    QWidget* m_ignorePanel = nullptr;
+    QVBoxLayout* m_ignoreLayout = nullptr;
+    std::vector<IgnoreRow> m_ignoreRows;
+    QPushButton* m_addIgnore = nullptr;
+    QLabel* m_ignoreError = nullptr;
+    QCheckBox* m_ignoreBuiltin = nullptr;
+    QLineEdit* m_ignoreTry = nullptr;
+    QLabel* m_ignoreTryResult = nullptr;
     QWidget* m_pasteKeysPanel = nullptr;
     QVBoxLayout* m_pasteKeysLayout = nullptr;
     std::vector<PasteKeysRow> m_pasteKeysRows;

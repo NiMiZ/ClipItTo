@@ -6,7 +6,9 @@
 #include "Hotkey.h"
 #include "PasswordKeeper.h"
 #include "AutoForget.h"
+#include "PasswordIgnore.h"
 #include "PasswordRules.h"
+#include "SecretScan.h"
 #include "PasteKeys.h"
 #include "PlatformKeys.h"
 #include "TextTransform.h"
@@ -685,6 +687,75 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     for (const PasswordRule& rule : config.passwordRules) {
         addRuleRow(rule);
     }
+
+    // Password ignore: what is never GUESSED to be a password (paths, %VARIABLES%, URLs, your own texts).
+    m_ignorePanel = new QWidget(this);
+    auto* ignoreOuter = new QVBoxLayout(m_ignorePanel);
+    ignoreOuter->setContentsMargins(0, 0, 0, 0);
+    auto* ignoreIntro = new QLabel(tr("Things that are clearly not passwords are never kept as password copies by the "
+                                      "guesses above (generated-password detection and your password rules). Copies a "
+                                      "password manager marked, and keys, tokens and card numbers, are never ignored."),
+                                   m_ignorePanel);
+    ignoreIntro->setWordWrap(true);
+    ignoreOuter->addWidget(ignoreIntro);
+    m_ignoreBuiltin = new QCheckBox(tr("Never take paths, %VARIABLES%, URLs and the like as passwords"), m_ignorePanel);
+    m_ignoreBuiltin->setChecked(config.passwordIgnoreBuiltin);
+    m_ignoreBuiltin->setToolTip(QStringLiteral("<p>%1</p><p>%2</p>")
+                                    .arg(tr("The shapes (the whole copy must have one): %1.")
+                                             .arg(passwordignore::shapeNames().join(QStringLiteral(", ")).toHtmlEscaped()),
+                                         tr("For example %AppData%\\rig, $HOME/bin, $env:APPDATA, ~/x, C:\\Users\\me, "
+                                            "\\\\server\\share, /usr/bin, https://…, me@example.com, localhost:8080, "
+                                            "HKLM\\Software\\X, com.example.Name.")
+                                             .toHtmlEscaped()));
+    connect(m_ignoreBuiltin, &QCheckBox::toggled, this, &SettingsDialog::refreshIgnore);
+    ignoreOuter->addWidget(m_ignoreBuiltin);
+    auto* ignoreRulesIntro = new QLabel(tr("Your own texts: the whole copy must match; <b>*</b> stands for any text "
+                                           "(up to %1), letter case does not matter, and a text needs at least %2 other "
+                                           "characters. For example <b>%appdata%*</b>, <b>*\\Users\\*</b>, "
+                                           "<b>C:\\work\\*</b>.")
+                                            .arg(passwordignore::kMaxWildcards).arg(passwordignore::kMinLiteral),
+                                        m_ignorePanel);
+    ignoreRulesIntro->setWordWrap(true);
+    ignoreRulesIntro->setTextFormat(Qt::RichText);
+    ignoreOuter->addWidget(ignoreRulesIntro);
+    m_ignoreLayout = new QVBoxLayout;
+    ignoreOuter->addLayout(m_ignoreLayout);
+    m_addIgnore = new QPushButton(tr("Add a text"), m_ignorePanel);
+    m_addIgnore->setAutoDefault(false);
+    m_addIgnore->setToolTip(tr("Up to %1 texts").arg(passwordignore::kMaxRules));
+    connect(m_addIgnore, &QPushButton::clicked, this, [this] {
+        addIgnoreRow(QString());
+        refreshIgnore();
+    });
+    auto* ignoreAdd = new QHBoxLayout;
+    ignoreAdd->addWidget(m_addIgnore);
+    ignoreAdd->addStretch(1);
+    ignoreOuter->addLayout(ignoreAdd);
+    m_ignoreError = new QLabel(m_ignorePanel);
+    m_ignoreError->setWordWrap(true);
+    m_ignoreError->setStyleSheet(QStringLiteral("color: #c0392b;"));
+    m_ignoreError->hide();
+    ignoreOuter->addWidget(m_ignoreError);
+    m_ignoreTry = new QLineEdit(m_ignorePanel);
+    m_ignoreTry->setPlaceholderText(tr("Try it: type a sample to see what happens to it"));
+    m_ignoreTry->setInputMethodHints(Qt::ImhSensitiveData | Qt::ImhNoPredictiveText);
+    m_ignoreTry->setMaxLength(passwordrules::kLengthLimit + 64);
+    m_ignoreTry->setToolTip(tr("Only tested here; it is not saved or logged, and it is cleared when this window closes."));
+    connect(this, &QDialog::finished, m_ignoreTry, &QLineEdit::clear);
+    ignoreOuter->addWidget(m_ignoreTry);
+    m_ignoreTryResult = new QLabel(m_ignorePanel);
+    m_ignoreTryResult->setWordWrap(true);
+    ignoreOuter->addWidget(m_ignoreTryResult);
+    connect(m_ignoreTry, &QLineEdit::textChanged, this, &SettingsDialog::refreshIgnore);
+    connect(m_detectPasswords, &QCheckBox::toggled, this, &SettingsDialog::refreshIgnore);
+    connect(m_detectSecrets, &QCheckBox::toggled, this, &SettingsDialog::refreshIgnore);
+    m_ignoreWindow = addRulesWindow(passwordsForm, tr("Password ignore:"), tr("Password ignore rules"), m_ignorePanel,
+                                    tr("Edit rules…"));
+    connect(m_ignoreWindow.dialog, &QDialog::finished, m_ignoreTry, &QLineEdit::clear);
+    for (const QString& rule : config.passwordIgnore) {
+        addIgnoreRow(rule);
+    }
+    refreshIgnore();
     refreshRules();
     m_passwordsPerNote->setChecked(config.passwordsPerNote);
     m_passwordsPerNote->setToolTip(QStringLiteral("<p>%1</p>")
@@ -1247,6 +1318,13 @@ Config SettingsDialog::config() const
             c.passwordRules << rule;
         }
     }
+    c.passwordIgnoreBuiltin = m_ignoreBuiltin->isChecked();
+    c.passwordIgnore.clear();
+    for (const QString& rule : ignoreValues()) {
+        if (passwordignore::validate(rule).isEmpty()) {
+            c.passwordIgnore << rule;
+        }
+    }
     c.autoForget.clear();
     for (const AutoForgetRule& rule : forgetValues()) {
         if (autoforget::validate(rule).isEmpty()) {
@@ -1657,6 +1735,7 @@ void SettingsDialog::refreshRules()
     showRulesSummary(m_rulesWindow, tr("%n rule(s)", "", int(rules.size())), !errors.isEmpty());
     m_addRule->setEnabled(rules.size() < passwordrules::kMaxRules);
     updateOkButton();
+    refreshIgnore(); // its "Try it" verdict names the password rules too
     // "Try it": which rule keeps the sample. Only the verdict is shown, never the text.
     const QString sample = m_ruleTry->text();
     if (sample.isEmpty()) {
@@ -1852,7 +1931,7 @@ void SettingsDialog::updateOkButton()
 {
     // Each editor can hold an error: OK waits for all of them.
     bool fine = true;
-    for (const QLabel* error : {m_ruleError, m_forgetError, m_pasteKeysError}) {
+    for (const QLabel* error : {m_ruleError, m_forgetError, m_pasteKeysError, m_ignoreError}) {
         // The paste keys rules are not saved while their switch is off: their errors do not count then.
         const bool ignored = error == m_pasteKeysError && m_pasteKeysPerApp && !m_pasteKeysPerApp->isChecked();
         fine = fine && (ignored || !error || error->text().isEmpty());
@@ -1940,6 +2019,111 @@ void SettingsDialog::refreshPasteKeys()
     updateOkButton();
 }
 
+void SettingsDialog::addIgnoreRow(const QString& rule)
+{
+    if (int(m_ignoreRows.size()) >= passwordignore::kMaxRules) {
+        return;
+    }
+    IgnoreRow r;
+    r.row = new QWidget(m_ignorePanel);
+    auto* h = new QHBoxLayout(r.row);
+    h->setContentsMargins(0, 2, 0, 2);
+    r.text = new QLineEdit(rule, r.row);
+    r.text->setMaxLength(passwordignore::kMaxRuleLength);
+    r.text->setPlaceholderText(tr("e.g. %appdata%*   or   C:\\work\\*"));
+    r.text->setToolTip(tr("The whole copy must match. * stands for any text, letter case does not matter."));
+    r.remove = new QPushButton(tr("Remove"), r.row);
+    r.remove->setAutoDefault(false);
+    QWidget* rowWidget = r.row;
+    connect(r.remove, &QPushButton::clicked, this, [this, rowWidget] { removeIgnoreRow(rowWidget); });
+    connect(r.text, &QLineEdit::textChanged, this, &SettingsDialog::refreshIgnore);
+    h->addWidget(r.text, 1);
+    h->addWidget(r.remove);
+    m_ignoreLayout->addWidget(r.row);
+    m_ignoreRows.push_back(r);
+}
+
+void SettingsDialog::removeIgnoreRow(QWidget* row)
+{
+    for (auto it = m_ignoreRows.begin(); it != m_ignoreRows.end(); ++it) {
+        if (it->row == row) {
+            m_ignoreRows.erase(it);
+            m_ignoreLayout->removeWidget(row);
+            row->hide();
+            row->deleteLater();
+            break;
+        }
+    }
+    refreshIgnore();
+}
+
+QStringList SettingsDialog::ignoreValues() const
+{
+    QStringList rules;
+    for (const IgnoreRow& r : m_ignoreRows) {
+        rules << passwordignore::normalize(r.text->text());
+    }
+    return rules;
+}
+
+void SettingsDialog::refreshIgnore()
+{
+    if (!m_ignorePanel || !m_ignoreError || !m_ignoreTry || !m_ignoreWindow.dialog) {
+        return;
+    }
+    const QStringList rules = ignoreValues();
+    QStringList errors;
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        const QString why = passwordignore::validate(rules.at(i));
+        if (!why.isEmpty()) {
+            errors << tr("Text %1: %2.").arg(i + 1).arg(why); // never quotes the text
+        }
+    }
+    setNote(m_ignoreError, errors.join(QLatin1Char(' ')));
+    m_ignoreError->setEnabled(true);
+    showRulesSummary(m_ignoreWindow,
+                     (m_ignoreBuiltin->isChecked() ? tr("built-in on, %n of yours", "", int(rules.size()))
+                                                   : tr("built-in off, %n of yours", "", int(rules.size()))),
+                     !errors.isEmpty());
+    m_addIgnore->setEnabled(rules.size() < passwordignore::kMaxRules);
+    updateOkButton();
+
+    // "Try it": what would happen to the sample. Only the verdict is shown, never the text; nothing is stored or logged.
+    const QString sample = m_ignoreTry->text();
+    if (sample.isEmpty()) {
+        setNote(m_ignoreTryResult, QString());
+        return;
+    }
+    if (m_detectSecrets->isChecked()) {
+        const QString kind = secretscan::kindOf(sample);
+        if (!kind.isEmpty()) {
+            setNote(m_ignoreTryResult, tr("Kept as a password copy: it looks like a %1 (never ignored).").arg(kind));
+            return;
+        }
+    }
+    const passwordignore::Verdict verdict = passwordignore::check(m_ignoreBuiltin->isChecked(), rules, sample);
+    if (verdict.kind == passwordignore::Verdict::Kind::Rule) {
+        setNote(m_ignoreTryResult, tr("Ignored by your rule %1: not taken as a password.").arg(verdict.rule + 1));
+        return;
+    }
+    if (verdict.kind == passwordignore::Verdict::Kind::Builtin) {
+        setNote(m_ignoreTryResult, tr("Ignored: %1 (built-in shape). Not taken as a password.").arg(verdict.shape));
+        return;
+    }
+    const QList<PasswordRule> passwordRules = ruleValues();
+    for (qsizetype i = 0; i < passwordRules.size(); ++i) {
+        if (passwordrules::validate(passwordRules.at(i)).isEmpty() && passwordrules::matches(passwordRules.at(i), sample)) {
+            setNote(m_ignoreTryResult, tr("Kept as a password copy by password rule %1.").arg(i + 1));
+            return;
+        }
+    }
+    if (m_detectPasswords->isChecked() && secretscan::looksLikeGeneratedPassword(sample)) {
+        setNote(m_ignoreTryResult, tr("Kept as a password copy: it looks like a generated password."));
+        return;
+    }
+    setNote(m_ignoreTryResult, tr("Not taken as a password."));
+}
+
 void SettingsDialog::updatePasswordDependents()
 {
     // Only a password copy that is in the Passwords group can be kept out of Recent.
@@ -1985,6 +2169,8 @@ void SettingsDialog::updatePasswordPage()
     m_detectPasswords->setEnabled(setUp);
     m_rulesPanel->setEnabled(setUp);
     m_rulesWindow.button->setEnabled(setUp);
+    m_ignorePanel->setEnabled(setUp);
+    m_ignoreWindow.button->setEnabled(setUp);
     m_passwordsPerNote->setEnabled(setUp);
     for (QWidget* w : {static_cast<QWidget*>(m_keepPasswords), static_cast<QWidget*>(m_passwordsInGroup),
                        static_cast<QWidget*>(m_unlockMinutes), static_cast<QWidget*>(m_clearSeconds),
