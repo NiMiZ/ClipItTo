@@ -219,6 +219,8 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"ignore_case", [](SettingsDialog& d) { toggle(d.ignoreCaseBox()); }},
         {"encrypt_history", [](SettingsDialog& d) { toggle(d.encryptBox()); }},
         {"paste_on_enter", [](SettingsDialog& d) { toggle(d.pasteBox()); }},
+        {"paste_keys",
+         [](SettingsDialog& d) { d.pasteKeysBox()->setCurrentIndex(d.pasteKeysBox()->findData(int(clipitto::PasteKeys::CtrlShiftV))); }},
         {"paste_keys_per_app", [](SettingsDialog& d) { toggle(d.pasteKeysPerAppBox()); }},
         {"paste_keys_apps",
          [](SettingsDialog& d) {
@@ -268,7 +270,7 @@ const std::set<QString>& fileOnlyKeys()
 {
     static const std::set<QString> keys = {
         "saved_cap",        "show_saved_on_top", "max_item_bytes",   "max_image_bytes",    "capture_primary",
-        "paste_keys",       "click_to_copy",     "hide_on_focus_loss", "search_debounce_ms", "backend",
+        "click_to_copy",     "hide_on_focus_loss", "search_debounce_ms", "backend",
         "translate_timeout", "windows_hello",
     };
     return keys;
@@ -283,7 +285,6 @@ Config fileOnlyConfig()
     c.maxItemBytes = 4096;
     c.maxImageBytes = 1'000'000;
     c.capturePrimary = true;
-    c.pasteKeys = clipitto::PasteKeys::ShiftInsert;
     c.clickToCopy = clipitto::ClickMode::Double;
     c.hideOnFocusLoss = false;
     c.searchDebounceMs = 250;
@@ -653,7 +654,7 @@ private slots:
     void settingsWithoutAControlSurviveTheDialog()
     {
         const Config odd = fileOnlyConfig();
-        QCOMPARE(changedKeys(Config{}, odd).size(), 11); // every file-only key (but windows_hello) differs
+        QCOMPARE(changedKeys(Config{}, odd).size(), 10); // every file-only key (but windows_hello) differs
         DialogEnv env;
         auto d = env.open(odd);
         QVERIFY(d->config() == odd);

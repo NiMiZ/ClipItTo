@@ -26,7 +26,8 @@ namespace {
 template <typename Enum, std::size_t N>
 using EnumNames = std::array<std::pair<Enum, const char*>, N>;
 
-constexpr EnumNames<PasteKeys, 2> kPasteKeys{{{PasteKeys::CtrlV, "ctrl+v"}, {PasteKeys::ShiftInsert, "shift+insert"}}};
+constexpr EnumNames<PasteKeys, 3> kPasteKeys{
+    {{PasteKeys::CtrlV, "ctrl+v"}, {PasteKeys::ShiftInsert, "shift+insert"}, {PasteKeys::CtrlShiftV, "ctrl+shift+v"}}};
 constexpr EnumNames<ClickMode, 2> kClickModes{{{ClickMode::Single, "single"}, {ClickMode::Double, "double"}}};
 // The first name of a value is the one written back; later ones are accepted aliases.
 constexpr EnumNames<PopupPosition, 7> kPopupPositions{{{PopupPosition::Cursor, "cursor"},
@@ -575,7 +576,7 @@ std::vector<Line> lines(const Config& c)
         {"capture_primary", tomlBool(c.capturePrimary), ""},
         {"paste_on_enter", tomlBool(c.pasteOnEnter), "choosing a copy also pastes it"},
         {"latest_after_paste", tomlBool(c.latestAfterPaste), "a chosen copy becomes the latest"},
-        {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert; for programs no rule below names"},
+        {"paste_keys", tomlString(nameOf(kPasteKeys, c.pasteKeys)), "ctrl+v | shift+insert | ctrl+shift+v; for programs no rule names (all of them where the program is not known)"},
         {"paste_keys_per_app", tomlBool(c.pasteKeysPerApp), "terminals get ctrl+shift+v (shift+insert in Windows consoles); where the program is known"},
         {"paste_keys_apps", tomlPasteKeyRules(c.pasteKeysApps), "your own \"program = ctrl+v | shift+insert | ctrl+shift+v\" rules, up to 16"},
         {"click_to_copy", tomlString(nameOf(kClickModes, c.clickToCopy)), "single | double"},

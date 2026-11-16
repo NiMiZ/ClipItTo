@@ -1210,6 +1210,8 @@ private slots:
     {
         // Unsupported platform (Wayland without the extension, macOS) and no window remembered.
         QCOMPARE(typedFor(PasteTarget::unsupported(), "paste_keys = \"shift+insert\"\n"), QList<PasteKeys>{PasteKeys::ShiftInsert});
+        QCOMPARE(typedFor(PasteTarget::unsupported(), "paste_keys = \"ctrl+shift+v\"\n"), QList<PasteKeys>{PasteKeys::CtrlShiftV});
+        QCOMPARE(typedFor(PasteTarget::known({QStringLiteral("notepad.exe")}), "paste_keys = \"ctrl+shift+v\"\n"), QList<PasteKeys>{PasteKeys::CtrlShiftV});
         QCOMPARE(typedFor(PasteTarget::unknown(), "paste_keys_apps = [\"kitty = ctrl+shift+v\"]\n"), QList<PasteKeys>{PasteKeys::CtrlV});
     }
 

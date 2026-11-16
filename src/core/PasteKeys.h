@@ -6,8 +6,8 @@
 
 namespace clipitto {
 
-// The keys ClipItTo types to paste. Config's `paste_keys` offers CtrlV and ShiftInsert; CtrlShiftV is what
-// most terminals want and is chosen per app (`paste_keys_per_app`, roadmap 8).
+// The keys ClipItTo types to paste. Config's `paste_keys` (the global choice) offers all three; CtrlShiftV is what
+// most terminals want and is also chosen per app (`paste_keys_per_app`, roadmap 8).
 enum class PasteKeys { CtrlV, ShiftInsert, CtrlShiftV };
 
 // Which program will receive the paste, as far as the platform can tell. Names only: never a window title.
