@@ -223,6 +223,13 @@ private slots:
         for (const QString& w : ignoreWarnings) {
             QVERIFY(!w.contains(QLatin1String("abc")) && !w.contains(QLatin1String("rule1"))); // never quotes a rule
         }
+        Config shapesOff;
+        shapesOff.passwordIgnoreOff = {QStringLiteral("URL"), QStringLiteral("file path")};
+        QVERIFY(Config::fromToml(shapesOff.toToml()) == shapesOff);
+        QStringList shapeWarnings;
+        const Config badShapes = Config::fromToml("password_ignore_off = [\"URL\", \"nope\", \"URL\", 3]", &shapeWarnings);
+        QCOMPARE(badShapes.passwordIgnoreOff, QStringList{QStringLiteral("URL")});
+        QCOMPARE(shapeWarnings.size(), 2);
         QStringList notIgnoreList;
         QVERIFY(Config::fromToml("password_ignore = 5\npassword_ignore_builtin = 3", &notIgnoreList).passwordIgnore.isEmpty());
         QCOMPARE(notIgnoreList.size(), 2);

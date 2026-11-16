@@ -709,6 +709,17 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
                                              .toHtmlEscaped()));
     connect(m_ignoreBuiltin, &QCheckBox::toggled, this, &SettingsDialog::refreshIgnore);
     ignoreOuter->addWidget(m_ignoreBuiltin);
+    // Each built-in shape on its own: it can be switched off, but not deleted or edited.
+    for (const QString& name : passwordignore::shapeNames()) {
+        auto* box = new QCheckBox(name, m_ignorePanel);
+        box->setChecked(!config.passwordIgnoreOff.contains(name));
+        box->setEnabled(m_ignoreBuiltin->isChecked());
+        box->setStyleSheet(QStringLiteral("margin-left: 18px;"));
+        connect(box, &QCheckBox::toggled, this, &SettingsDialog::refreshIgnore);
+        connect(m_ignoreBuiltin, &QCheckBox::toggled, box, &QWidget::setEnabled);
+        ignoreOuter->addWidget(box);
+        m_ignoreShapeBoxes.push_back(box);
+    }
     auto* ignoreRulesIntro = new QLabel(tr("Your own texts: the whole copy must match; <b>*</b> stands for any text "
                                            "(up to %1), letter case does not matter, and a text needs at least %2 other "
                                            "characters. For example <b>%appdata%*</b>, <b>*\\Users\\*</b>, "
@@ -756,6 +767,38 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         addIgnoreRow(rule);
     }
     refreshIgnore();
+
+    // Auto-forget: copies that remove themselves. Pinned, starred, grouped and password copies are never touched.
+    m_forgetPanel = new QWidget(this);
+    auto* forgetOuter = new QVBoxLayout(m_forgetPanel);
+    forgetOuter->setContentsMargins(0, 0, 0, 0);
+    auto* forgetIntro = new QLabel(tr("Copies that remove themselves, quietly. Pinned, starred, grouped and password "
+                                      "copies are never removed. With no rules nothing is removed."),
+                                   m_forgetPanel);
+    forgetIntro->setWordWrap(true);
+    forgetOuter->addWidget(forgetIntro);
+    m_forgetLayout = new QVBoxLayout;
+    forgetOuter->addLayout(m_forgetLayout);
+    m_addForget = new QPushButton(tr("Add a rule"), m_forgetPanel);
+    m_addForget->setToolTip(tr("Up to %1 rules").arg(autoforget::kMaxRules));
+    connect(m_addForget, &QPushButton::clicked, this, [this] {
+        addForgetRow(AutoForgetRule());
+        refreshForget();
+    });
+    auto* forgetAdd = new QHBoxLayout;
+    forgetAdd->addWidget(m_addForget);
+    forgetAdd->addStretch(1);
+    forgetOuter->addLayout(forgetAdd);
+    m_forgetError = new QLabel(m_forgetPanel);
+    m_forgetError->setWordWrap(true);
+    m_forgetError->setStyleSheet(QStringLiteral("color: #c0392b;"));
+    m_forgetError->hide();
+    forgetOuter->addWidget(m_forgetError);
+    m_forgetWindow = addRulesWindow(passwordsForm, tr("Auto-forget:"), tr("Auto-forget rules"), m_forgetPanel, tr("Edit rules…"));
+    for (const AutoForgetRule& rule : config.autoForget) {
+        addForgetRow(rule);
+    }
+    refreshForget();
     refreshRules();
     m_passwordsPerNote->setChecked(config.passwordsPerNote);
     m_passwordsPerNote->setToolTip(QStringLiteral("<p>%1</p>")
@@ -870,37 +913,6 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     panicNone->setEnabled(m_shortcutsEditable);
     syncPanic();
 
-    // Auto-forget: copies that remove themselves. Pinned, starred, grouped and password copies are never touched.
-    m_forgetPanel = new QWidget(this);
-    auto* forgetOuter = new QVBoxLayout(m_forgetPanel);
-    forgetOuter->setContentsMargins(0, 0, 0, 0);
-    auto* forgetIntro = new QLabel(tr("Copies that remove themselves, quietly. Pinned, starred, grouped and password "
-                                      "copies are never removed. With no rules nothing is removed."),
-                                   m_forgetPanel);
-    forgetIntro->setWordWrap(true);
-    forgetOuter->addWidget(forgetIntro);
-    m_forgetLayout = new QVBoxLayout;
-    forgetOuter->addLayout(m_forgetLayout);
-    m_addForget = new QPushButton(tr("Add a rule"), m_forgetPanel);
-    m_addForget->setToolTip(tr("Up to %1 rules").arg(autoforget::kMaxRules));
-    connect(m_addForget, &QPushButton::clicked, this, [this] {
-        addForgetRow(AutoForgetRule());
-        refreshForget();
-    });
-    auto* forgetAdd = new QHBoxLayout;
-    forgetAdd->addWidget(m_addForget);
-    forgetAdd->addStretch(1);
-    forgetOuter->addLayout(forgetAdd);
-    m_forgetError = new QLabel(m_forgetPanel);
-    m_forgetError->setWordWrap(true);
-    m_forgetError->setStyleSheet(QStringLiteral("color: #c0392b;"));
-    m_forgetError->hide();
-    forgetOuter->addWidget(m_forgetError);
-    m_forgetWindow = addRulesWindow(passwordsForm, tr("Auto-forget:"), tr("Auto-forget rules"), m_forgetPanel, tr("Edit rules…"));
-    for (const AutoForgetRule& rule : config.autoForget) {
-        addForgetRow(rule);
-    }
-    refreshForget();
     auto* helloRow = new QHBoxLayout;
     helloRow->addWidget(m_hello);
     auto* helloInfo = makeInfoButton(this);
@@ -1319,6 +1331,12 @@ Config SettingsDialog::config() const
         }
     }
     c.passwordIgnoreBuiltin = m_ignoreBuiltin->isChecked();
+    c.passwordIgnoreOff.clear();
+    for (const QCheckBox* box : m_ignoreShapeBoxes) {
+        if (!box->isChecked()) {
+            c.passwordIgnoreOff << box->text();
+        }
+    }
     c.passwordIgnore.clear();
     for (const QString& rule : ignoreValues()) {
         if (passwordignore::validate(rule).isEmpty()) {
@@ -2057,6 +2075,17 @@ void SettingsDialog::removeIgnoreRow(QWidget* row)
     refreshIgnore();
 }
 
+QStringList SettingsDialog::ignoreShapesOff() const
+{
+    QStringList off;
+    for (const QCheckBox* box : m_ignoreShapeBoxes) {
+        if (!box->isChecked()) {
+            off << box->text();
+        }
+    }
+    return off;
+}
+
 QStringList SettingsDialog::ignoreValues() const
 {
     QStringList rules;
@@ -2101,7 +2130,7 @@ void SettingsDialog::refreshIgnore()
             return;
         }
     }
-    const passwordignore::Verdict verdict = passwordignore::check(m_ignoreBuiltin->isChecked(), rules, sample);
+    const passwordignore::Verdict verdict = passwordignore::check(m_ignoreBuiltin->isChecked(), rules, sample, ignoreShapesOff());
     if (verdict.kind == passwordignore::Verdict::Kind::Rule) {
         setNote(m_ignoreTryResult, tr("Ignored by your rule %1: not taken as a password.").arg(verdict.rule + 1));
         return;
