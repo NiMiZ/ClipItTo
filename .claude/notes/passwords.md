@@ -80,13 +80,16 @@ unsupported; tests pass `FakeScreenLockWatcher`). `Daemon::applyScreenLockWatch`
 the pasted-password clear timer is untouched). `--status`: `lock_on_screen_lock: on (watching) | on (unsupported here) | off`.
 Tests: tst_daemon (fake watcher), tst_config, tst_gui_general, tst_screenlock (fake logind/screensaver on a private bus).
 
-## Password ignore (`password_ignore_builtin`, `password_ignore`)
+## Password ignore (`password_ignore_builtin`, `password_ignore_off`, `password_ignore`)
 `src/core/PasswordIgnore.{h,cpp}`: one shape table (name + anchored regex: environment variable, file path, registry key,
 host and port, dotted name, URL, email address) and the user's rules (<=16, `*` x3, whole copy, case-insensitive, >=3 other
 characters). `CapturePipeline::process()` runs `passwordignore::check` only when `detect_passwords` or `password_rules` could take
 the copy, and only the guess paths use it: the marker path and `secretscan::kindOf` never do. Unix `$NAME` is upper case only and `~name`
 needs a `/`, so real passwords starting with `$` or `~` stay. Settings: own window (`m_ignoreWindow`), Try-it clears when the dialog
-closes, disabled without a master password. Selftest line "ignore rules: built-in on, N of yours". Logs the reason class only.
+closes, disabled without a master password. `password_ignore_off` lists built-in shapes the user switched off, by name (the table's
+names, case-sensitive; unknown names are skipped with a warning that does not quote them); `password_ignore_builtin = false` still
+turns the whole table off. One checkbox per shape in the ignore window. Fewer ignored shapes only means more guesses get sealed, never a
+clear copy. Selftest line "ignore rules: built-in on, N of yours". Logs the reason class only.
 
 ## Limits to remember
 Protects the file at rest and other people at your session while locked; not programs running as the user
