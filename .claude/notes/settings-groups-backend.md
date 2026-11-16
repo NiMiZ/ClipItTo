@@ -93,5 +93,5 @@ window class on Windows `SyntheticPaste.cpp`; WM_CLASS instance+class on X11, un
 extension `FocusedApp` D-Bus method -> `GnomeShellIntegration::pasteTarget`; macOS unsupported, always Cmd+V; KDE/wlroots
 unsupported). Remembered at popup `aboutToShow` (`rememberPasteTarget()` + `DesktopIntegration::rememberPasteTarget`), used in
 `Daemon::pasteIfWanted` (`DaemonOptions::pasteTarget` is the test hook next to `syntheticPaste`). Debug log: the matched rule only.
-`paste_keys` itself stays ctrl+v | shift+insert; ctrl+shift+v is for rules. Settings: General tab editor; `updateOkButton()` is
+`paste_keys` is the global fallback: ctrl+v | shift+insert | ctrl+shift+v (for desktops that cannot tell the program, KDE/wlroots); rules and built-in terminals win where the program is known. Settings: General tab "Paste keys:" combo and the editor; `updateOkButton()` is
 shared by the three rule editors (password, auto-forget, paste keys). Tests: `tst_pastekeys`, plus config/settings/daemon/dbus.
