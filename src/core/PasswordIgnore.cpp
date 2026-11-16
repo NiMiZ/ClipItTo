@@ -162,12 +162,15 @@ int firstRuleMatch(const QStringList& rules, const QString& text)
     return -1;
 }
 
-QString builtinShape(const QString& text)
+QString builtinShape(const QString& text, const QStringList& off)
 {
     if (!singleLine(text)) {
         return {};
     }
     for (const Compiled& c : compiled()) {
+        if (!off.isEmpty() && off.contains(QString::fromLatin1(c.shape->name))) {
+            continue;
+        }
         if (c.regex.match(text).hasMatch()) {
             return QString::fromLatin1(c.shape->name);
         }
@@ -187,7 +190,7 @@ QStringList shapeNames()
     return names;
 }
 
-Verdict check(bool builtin, const QStringList& rules, const QString& text)
+Verdict check(bool builtin, const QStringList& rules, const QString& text, const QStringList& off)
 {
     Verdict v;
     if (!singleLine(text)) {
@@ -200,7 +203,7 @@ Verdict check(bool builtin, const QStringList& rules, const QString& text)
         return v;
     }
     if (builtin) {
-        v.shape = builtinShape(text);
+        v.shape = builtinShape(text, off);
         if (!v.shape.isEmpty()) {
             v.kind = Verdict::Kind::Builtin;
         }

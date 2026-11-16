@@ -415,7 +415,7 @@ Result passwordChainCheck(const Env& env)
     }
     // A fixed sample of an environment variable, to show the built-in "not a password" shapes working.
     const QString ignoreSample = QStringLiteral("%AppData%\\rig");
-    const QString ignoreShape = env.config.passwordIgnoreBuiltin ? passwordignore::builtinShape(ignoreSample) : QString();
+    const QString ignoreShape = env.config.passwordIgnoreBuiltin ? passwordignore::builtinShape(ignoreSample, env.config.passwordIgnoreOff) : QString();
     const QString ignoreLine = QStringLiteral("ignore rules: built-in %1, %2 of yours (sample environment variable: %3)")
                                    .arg(onOff(env.config.passwordIgnoreBuiltin)).arg(env.config.passwordIgnore.size())
                                    .arg(ignoreShape.isEmpty() ? QStringLiteral("not ignored") : QStringLiteral("ignored"));

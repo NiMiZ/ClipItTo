@@ -43,8 +43,9 @@ public:
     // What is never GUESSED to be a password (PasswordIgnore.h): the built-in shapes (paths, %VARIABLES%, URLs...) and the
     // user's own texts (password_ignore). Applies to detect_passwords and password_rules only, never to copies a password
     // manager marked or to keys, tokens and card numbers (detect_secrets).
-    void setPasswordIgnore(bool builtin, const QStringList& rules)
+    void setPasswordIgnore(bool builtin, const QStringList& rules, const QStringList& shapesOff = {})
     {
+        m_ignoreOff = shapesOff;
         m_ignoreBuiltin = builtin;
         m_passwordIgnore = rules;
     }
@@ -118,6 +119,7 @@ private:
     QList<PasswordRule> m_passwordRules;
     bool m_ignoreBuiltin = true;
     QStringList m_passwordIgnore;
+    QStringList m_ignoreOff;
     bool m_keepFormatting = true;
     bool m_autoGroup = false;
     int m_autoPending = 0;

@@ -233,6 +233,7 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"detect_passwords", [](SettingsDialog& d) { toggle(d.detectPasswordsBox()); }},
         {"password_rules", [](SettingsDialog& d) { d.addRuleButton()->click(); }},
         {"password_ignore_builtin", [](SettingsDialog& d) { toggle(d.ignoreBuiltinBox()); }},
+        {"password_ignore_off", [](SettingsDialog& d) { toggle(d.ignoreShapeBox(0)); }},
         {"password_ignore",
          [](SettingsDialog& d) {
              d.addIgnoreButton()->click();

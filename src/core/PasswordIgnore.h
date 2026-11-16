@@ -30,7 +30,8 @@ bool ruleMatches(const QString& rule, const QString& text);
 int firstRuleMatch(const QStringList& rules, const QString& text);
 
 // Name of the built-in shape the text has ("environment variable", "file path", "URL", ...), empty for none.
-QString builtinShape(const QString& text);
+// `off` lists shape names (see shapeNames) the user switched off; those shapes are skipped.
+QString builtinShape(const QString& text, const QStringList& off = {});
 // The names of all shapes, in the order of the table, each once (for the tooltip and the docs).
 QStringList shapeNames();
 
@@ -43,7 +44,7 @@ struct Verdict {
 };
 // Rules first, then the shapes (when `builtin`). Multi-line and very long texts are never ignored here: the guesses
 // do not take them either.
-Verdict check(bool builtin, const QStringList& rules, const QString& text);
+Verdict check(bool builtin, const QStringList& rules, const QString& text, const QStringList& off = {});
 // A short class of reason ("built-in shape: file path", "your ignore rule 2"), never any part of the text.
 QString describe(const Verdict& verdict);
 

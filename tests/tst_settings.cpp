@@ -1,6 +1,7 @@
 #include "Config.h"
 #include "FakeKeyStore.h"
 #include "PasswordKeeper.h"
+#include "PasswordIgnore.h"
 #include "SettingsDialog.h"
 #include "TestDb.h"
 #include "Theme.h"
@@ -165,6 +166,15 @@ private slots:
         QVERIFY(verdict(QStringLiteral("a$bcdef")).contains(QLatin1String("password rule 1"))); // 6-8, one symbol
         d.ignoreBuiltinBox()->setChecked(true);
         QVERIFY(verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("Ignored")));
+        // Each shape can be switched off on its own (not deleted); the choice is saved by name.
+        QCOMPARE(d.ignoreShapeCount(), clipitto::passwordignore::shapeNames().size());
+        QVERIFY(d.config().passwordIgnoreOff.isEmpty());
+        const int envBox = clipitto::passwordignore::shapeNames().indexOf(QStringLiteral("environment variable"));
+        d.ignoreShapeBox(envBox)->setChecked(false);
+        QCOMPARE(d.config().passwordIgnoreOff, QStringList{QStringLiteral("environment variable")});
+        QVERIFY(verdict(QStringLiteral("%AppData%\\rig")).contains(QLatin1String("generated password")));
+        QVERIFY(verdict(QStringLiteral("C:\\Users\\me")).contains(QLatin1String("file path")));
+        d.ignoreShapeBox(envBox)->setChecked(true);
         d.ignoreTryEdit()->clear();
         QVERIFY(d.ignoreTryResult()->text().isEmpty());
 

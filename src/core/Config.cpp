@@ -248,6 +248,32 @@ public:
         out = rules;
     }
 
+    // Names of built-in shapes that are switched off; unknown names are skipped with a warning.
+    void ignoreShapes(const char* key, QStringList& out)
+    {
+        const toml::node* node = find(key);
+        if (!node) {
+            return;
+        }
+        const toml::array* array = node->as_array();
+        if (!array) {
+            warn(QStringLiteral("%1: expected a list of strings").arg(QLatin1String(key)));
+            return;
+        }
+        const QStringList known = passwordignore::shapeNames();
+        QStringList names;
+        for (const toml::node& item : *array) {
+            const auto value = item.value_exact<std::string>();
+            const QString name = value ? QString::fromStdString(*value).trimmed() : QString();
+            if (!known.contains(name)) {
+                warn(QStringLiteral("%1: an unknown shape is skipped").arg(QLatin1String(key)));
+            } else if (!names.contains(name)) {
+                names << name;
+            }
+        }
+        out = names;
+    }
+
     // Up to passwordignore::kMaxRules strings (texts with * wildcards); bad ones are skipped with a warning that never
     // quotes the rule.
     void ignoreRules(const char* key, QStringList& out)
@@ -420,6 +446,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("detect_passwords", config.detectPasswords);
     r.passwordRules("password_rules", config.passwordRules);
     r.boolean("password_ignore_builtin", config.passwordIgnoreBuiltin);
+    r.ignoreShapes("password_ignore_off", config.passwordIgnoreOff);
     r.ignoreRules("password_ignore", config.passwordIgnore);
     r.boolean("passwords_per_note", config.passwordsPerNote);
     r.boolean("password_ask_note", config.passwordAskNote);
@@ -570,6 +597,8 @@ std::vector<Line> lines(const Config& c)
         {"password_rules", tomlRules(c.passwordRules), "your own rules for what is kept as a password copy (up to 5)"},
         {"password_ignore_builtin", tomlBool(c.passwordIgnoreBuiltin),
          "paths, %VARIABLES%, URLs and the like are never guessed to be passwords (detect_passwords and password_rules)"},
+        {"password_ignore_off", tomlStrings(c.passwordIgnoreOff),
+         "built-in shapes switched off, e.g. [\"URL\", \"file path\"] (see password_ignore_builtin); empty = all on"},
         {"password_ignore", tomlStrings(c.passwordIgnore),
          "your own texts that are never guessed to be passwords, * = anything, up to 16, e.g. [\"%appdata%*\"]"},
         {"passwords_per_note", tomlBool(c.passwordsPerNote), "the same password under a different note is a separate copy"},

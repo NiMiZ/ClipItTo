@@ -1473,7 +1473,7 @@ void Daemon::applyPasswordSettings()
     m_pipeline->setDetectSecrets(m_config.detectSecrets);
     m_pipeline->setDetectPasswords(m_config.detectPasswords);
     m_pipeline->setPasswordRules(m_config.passwordRules);
-    m_pipeline->setPasswordIgnore(m_config.passwordIgnoreBuiltin, m_config.passwordIgnore);
+    m_pipeline->setPasswordIgnore(m_config.passwordIgnoreBuiltin, m_config.passwordIgnore, m_config.passwordIgnoreOff);
     m_pipeline->setPasswords(&m_passwords->vault(), m_config.keepPasswords,
                              m_config.passwordsInGroup ? PasswordKeeper::passwordsGroup() : QString());
     if (m_config.passwordsInGroup && m_repo) {

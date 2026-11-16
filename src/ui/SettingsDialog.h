@@ -236,6 +236,8 @@ public:
     QPushButton* ignoreEditButton() const { return m_ignoreWindow.button; }
     QWidget* ignorePanel() const { return m_ignorePanel; }
     QCheckBox* ignoreBuiltinBox() const { return m_ignoreBuiltin; }
+    int ignoreShapeCount() const { return int(m_ignoreShapeBoxes.size()); }
+    QCheckBox* ignoreShapeBox(int i) const { return m_ignoreShapeBoxes.at(size_t(i)); }
     QPushButton* addIgnoreButton() const { return m_addIgnore; }
     QLabel* ignoreErrorLabel() const { return m_ignoreError; }
     QLineEdit* ignoreTryEdit() const { return m_ignoreTry; }
@@ -315,6 +317,7 @@ private:
     void refreshPasteKeys(); // validation message, OK button, Add button
     void updateOkButton(); // OK waits while any rule editor shows an error
     void addIgnoreRow(const QString& rule);
+    QStringList ignoreShapesOff() const;
     void removeIgnoreRow(QWidget* row);
     QStringList ignoreValues() const; // what the rows say (valid or not), trimmed
     void refreshIgnore(); // validation message, OK button, Add button, summary, "Try it" verdict
@@ -432,6 +435,7 @@ private:
     QPushButton* m_addIgnore = nullptr;
     QLabel* m_ignoreError = nullptr;
     QCheckBox* m_ignoreBuiltin = nullptr;
+    std::vector<QCheckBox*> m_ignoreShapeBoxes;
     QLineEdit* m_ignoreTry = nullptr;
     QLabel* m_ignoreTryResult = nullptr;
     QWidget* m_pasteKeysPanel = nullptr;

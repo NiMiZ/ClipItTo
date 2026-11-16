@@ -73,6 +73,15 @@ private slots:
         row("me.Name+tag@example.com", "email address");
     }
 
+    void shapeCanBeSwitchedOff()
+    {
+        const QStringList off{QStringLiteral("environment variable")};
+        QCOMPARE(builtinShape(QStringLiteral("%AppData%\\rig"), off), QString());
+        QVERIFY(!check(true, {}, QStringLiteral("%AppData%\\rig"), off).ignored());
+        QCOMPARE(builtinShape(QStringLiteral("C:\\Users\\me"), off), QStringLiteral("file path"));
+        QVERIFY(check(true, {}, QStringLiteral("%AppData%\\rig")).ignored());
+    }
+
     void ignoredShapes()
     {
         QFETCH(QString, text);

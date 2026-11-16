@@ -171,7 +171,7 @@ void CapturePipeline::process(const QString& rawText, const QStringList& mimeTyp
     // never asked.
     passwordignore::Verdict ignore;
     if (verdict == ClipFilter::Verdict::Accept && (m_detectPasswords || !m_passwordRules.isEmpty())) {
-        ignore = passwordignore::check(m_ignoreBuiltin, m_passwordIgnore, text);
+        ignore = passwordignore::check(m_ignoreBuiltin, m_passwordIgnore, text, m_ignoreOff);
     }
     const bool guessPassword = !ignore.ignored();
     // A key or token is never given a formatted version, whether it is kept as a password copy or not.

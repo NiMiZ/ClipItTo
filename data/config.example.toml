@@ -84,6 +84,9 @@ password_ignore_builtin = true  # things that are clearly not passwords are neve
                             # (C:\x, \\server\share, /usr/bin), URLs, email addresses, host:port,
                             # registry keys, com.example.Name. Never applies to copies a password manager
                             # marked, nor to keys, tokens and card numbers (detect_secrets)
+password_ignore_off = []      # built-in shapes you switched off, by name, e.g. ["URL", "file path"]; the names:
+                            # environment variable, file path, registry key, host and port, dotted name,
+                            # URL, email address. Empty = all of them are on
 password_ignore = []        # your own "not a password" texts, up to 16, added to the above. The whole copy
                             # must match; * stands for anything (up to 3 of them), letter case is ignored,
                             # at least 3 other characters, e.g. ["%appdata%*", "*\\Users\\*", "C:\\work\\*"]
