@@ -312,9 +312,15 @@ private slots:
         QStringList notBool;
         QVERIFY(Config::fromToml("paste_keys_per_app = \"yes\"", &notBool).pasteKeysPerApp);
         QCOMPARE(notBool.size(), 1);
-        // paste_keys itself stays a choice of two: ctrl+shift+v is for the per-program rules.
+        // paste_keys is the global choice: all three chords, anything else warns and keeps ctrl+v.
         QStringList global;
-        QVERIFY(Config::fromToml("paste_keys = \"ctrl+shift+v\"", &global).pasteKeys == PasteKeys::CtrlV);
+        QVERIFY(Config::fromToml("paste_keys = \"ctrl+shift+v\"", &global).pasteKeys == PasteKeys::CtrlShiftV);
+        QVERIFY(global.isEmpty());
+        QVERIFY(Config::fromToml("paste_keys = \"shift+insert\"").pasteKeys == PasteKeys::ShiftInsert);
+        Config g;
+        g.pasteKeys = PasteKeys::CtrlShiftV;
+        QVERIFY(Config::fromToml(g.mergeInto("paste_keys = \"ctrl+v\"\n")) == g);
+        QVERIFY(Config::fromToml("paste_keys = \"ctrl+x\"", &global).pasteKeys == PasteKeys::CtrlV);
         QCOMPARE(global.size(), 1);
     }
 
@@ -538,7 +544,7 @@ private slots:
         const Config c = Config::fromToml(R"(
             max_history = 3
             recent_count = "lots"
-            paste_keys = "ctrl+shift+v"
+            paste_keys = "ctrl+x"
             show_saved_on_top = 1
             colour = "blue"
         )", &warnings);

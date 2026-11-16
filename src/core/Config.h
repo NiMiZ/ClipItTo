@@ -50,7 +50,7 @@ struct Config {
     bool capturePrimary = false;
     bool pasteOnEnter = true; // choosing a copy also pastes it into the window you came from
     bool latestAfterPaste = true; // a chosen copy becomes the latest in the history, as if copied
-    PasteKeys pasteKeys = PasteKeys::CtrlV; // ctrl+v | shift+insert, for every program no rule names
+    PasteKeys pasteKeys = PasteKeys::CtrlV; // ctrl+v | shift+insert | ctrl+shift+v, for every program no rule names
     bool pasteKeysPerApp = true; // the keys follow the program that gets the paste (terminals: ctrl+shift+v)
     QList<PasteKeyRule> pasteKeysApps; // your own "program = keys" rules (up to 16), tried before the built-in terminals
     ClickMode clickToCopy = ClickMode::Single;

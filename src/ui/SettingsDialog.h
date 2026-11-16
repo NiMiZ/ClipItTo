@@ -210,6 +210,7 @@ public:
     QCheckBox* pasteBox() const { return m_paste; }
     QCheckBox* latestBox() const { return m_latest; }
     // Paste keys per program (General tab): the switch and one row per rule "program = keys".
+    QComboBox* pasteKeysBox() const { return m_pasteKeys; }
     QCheckBox* pasteKeysPerAppBox() const { return m_pasteKeysPerApp; }
     QWidget* pasteKeysPanel() const { return m_pasteKeysPanel; }
     QPushButton* addPasteKeysButton() const { return m_addPasteKeys; }
@@ -379,6 +380,7 @@ private:
     QCheckBox* m_startup;
     QCheckBox* m_paste;
     QCheckBox* m_latest;
+    QComboBox* m_pasteKeys;
     QCheckBox* m_pasteKeysPerApp;
     QCheckBox* m_ignoreCase;
     QCheckBox* m_detectSecrets;

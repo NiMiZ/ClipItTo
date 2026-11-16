@@ -131,10 +131,23 @@ private slots:
 
     void theGlobalSettingIsTheDefaultForEverythingElse()
     {
-        for (const PasteKeys global : {PasteKeys::CtrlV, PasteKeys::ShiftInsert}) {
+        for (const PasteKeys global : {PasteKeys::CtrlV, PasteKeys::ShiftInsert, PasteKeys::CtrlShiftV}) {
             const Choice c = choose(global, true, {}, app({QStringLiteral("notepad")}));
             QVERIFY(c.keys == global && c.rule.isEmpty() && !c.builtIn);
         }
+    }
+
+    void aGlobalCtrlShiftVYieldsToRulesAndBuiltInsWhereTheProgramIsKnown()
+    {
+        const QList<PasteKeyRule> mine{{QStringLiteral("Code"), PasteKeys::CtrlV}};
+        // Your rule wins, then the built-in terminals (Windows consoles keep shift+insert), then the global keys.
+        QVERIFY(choose(PasteKeys::CtrlShiftV, true, mine, app({QStringLiteral("Code")})).keys == PasteKeys::CtrlV);
+        QVERIFY(choose(PasteKeys::CtrlShiftV, true, mine, app({QStringLiteral("cmd.exe")})).keys == PasteKeys::ShiftInsert);
+        const Choice other = choose(PasteKeys::CtrlShiftV, true, mine, app({QStringLiteral("notepad")}));
+        QVERIFY(other.keys == PasteKeys::CtrlShiftV && other.rule.isEmpty());
+        // Where nothing can be told (KDE / wlroots Wayland) or with the per-program switch off: for every program.
+        QVERIFY(choose(PasteKeys::CtrlShiftV, true, mine, PasteTarget::unsupported()).keys == PasteKeys::CtrlShiftV);
+        QVERIFY(choose(PasteKeys::CtrlShiftV, false, mine, app({QStringLiteral("Code")})).keys == PasteKeys::CtrlShiftV);
     }
 
     void withoutAKnownTargetOrWithTheSwitchOffTheGlobalSettingIsUsed()

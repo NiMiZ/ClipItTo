@@ -123,7 +123,7 @@ of one, takes its star along; ClipItTo tells you when the target is full.
 paste with Ctrl+V. With *Choose the paste keys by the program* (Settings › General, `paste_keys_per_app`, on by default) it
 looks at which program had the focus when the popup opened and types **Ctrl+Shift+V** for the well-known terminals
 (Windows Terminal, GNOME Terminal, Konsole, xterm, Alacritty, kitty, WezTerm, Tilix, Terminator, foot, Ghostty, and more),
-**Shift+Insert** for Windows consoles (cmd, PowerShell in the classic console, mintty), and `paste_keys` (Ctrl+V unless you
+**Shift+Insert** for Windows consoles (cmd, PowerShell in the classic console, mintty), and the global **Paste keys** (Settings › General, `paste_keys`: Ctrl+V unless you
 changed it) for everything else. *Programs* in the same place lists your own rules, up to 16, tried before the built-in
 ones: a program name, which is its executable name (Windows, `.exe` optional), its window class (X11, `WM_CLASS`) or its
 app id (GNOME), in any letter case with `*` for any text, and one of `ctrl+v`, `shift+insert`, `ctrl+shift+v`. In the
@@ -133,7 +133,7 @@ config file: `paste_keys_apps = ["Code = ctrl+shift+v", "xterm = shift+insert"]`
 Where it works: **Windows** (executable name and window class), **X11** (`WM_CLASS`), **GNOME Wayland** with the ClipItTo
 extension (log out and back in once after updating it; an older extension cannot say, then `paste_keys` is used).
 Where it cannot: **macOS** always pastes with Cmd+V (terminals included, so there is nothing to choose), and **other Wayland
-desktops** (KDE, wlroots) let no program ask which window has the focus; there `paste_keys` is used for every program and
+desktops** (KDE, wlroots) let no program ask which window has the focus; there the global **Paste keys** are used for every program (choose Ctrl+Shift+V there if you paste into a terminal; `paste_keys = "ctrl+shift+v"`) and
 auto-paste itself needs the GNOME extension anyway. Program names are matched whole (`xterm` does not match `xterm-256color`), a program can name its own window class, and the names in the config file are not secret. A terminal inside another program (VS Code's) is the program: add a
 rule for it.
 

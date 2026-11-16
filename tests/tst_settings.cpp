@@ -990,6 +990,16 @@ private slots:
             QVERIFY(d.config() == start); // untouched: the same on the way out
         }
 
+        {
+            Config global;
+            global.pasteKeys = PasteKeys::CtrlShiftV;
+            SettingsDialog g(global, *t.repo, {});
+            QVERIFY(PasteKeys(g.pasteKeysBox()->currentData().toInt()) == PasteKeys::CtrlShiftV);
+            QVERIFY(g.config() == global);
+            g.pasteKeysBox()->setCurrentIndex(g.pasteKeysBox()->findData(int(PasteKeys::ShiftInsert)));
+            QVERIFY(g.config().pasteKeys == PasteKeys::ShiftInsert);
+            QVERIFY(PasteKeys(SettingsDialog(Config{}, *t.repo, {}).pasteKeysBox()->currentData().toInt()) == PasteKeys::CtrlV);
+        }
         SettingsDialog d(Config{}, *t.repo, {});
         QCOMPARE(d.pasteKeysRowCount(), 0); // the built-in terminals only
         QVERIFY(d.config().pasteKeysApps.isEmpty());

@@ -155,6 +155,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     , m_startup(new QCheckBox(tr("Start ClipItTo when I sign in"), this))
     , m_paste(new QCheckBox(tr("Paste it into the window I came from"), this))
     , m_latest(new QCheckBox(tr("Make it the latest copy in the history"), this))
+    , m_pasteKeys(new QComboBox(this))
     , m_pasteKeysPerApp(new QCheckBox(tr("Choose the paste keys by the program (Ctrl+Shift+V in terminals)"), this))
     , m_ignoreCase(new QCheckBox(tr("Ignore letter case (ABC = abc)"), this))
     , m_detectSecrets(new QCheckBox(tr("Keep copies that look like secrets as password copies"), this))
@@ -351,12 +352,24 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_latest->setToolTip(tr("As if you had copied it again. Off: it keeps its place in Recent."));
     form->addRow(QString(), m_latest);
 
+    // The global paste keys: for every program no rule names, and for all of them where the program cannot be told.
+    m_pasteKeys->addItem(tr("Ctrl+V"), int(PasteKeys::CtrlV));
+    m_pasteKeys->addItem(tr("Ctrl+Shift+V"), int(PasteKeys::CtrlShiftV));
+    m_pasteKeys->addItem(tr("Shift+Insert"), int(PasteKeys::ShiftInsert));
+    m_pasteKeys->setCurrentIndex(m_pasteKeys->findData(int(config.pasteKeys)));
+    m_pasteKeys->setToolTip(
+        tr("The keys ClipItTo types to paste into every program that no rule below names. Where ClipItTo cannot tell "
+           "which program you came from (KDE and wlroots Wayland), this is used for every program: choose "
+           "Ctrl+Shift+V there if you paste into a terminal. Per-program rules and the built-in terminals come first "
+           "where the program is known."));
+    form->addRow(tr("Paste keys:"), m_pasteKeys);
+
     // Paste keys per program (roadmap 8): terminals do not paste with Ctrl+V.
     m_pasteKeysPerApp->setChecked(config.pasteKeysPerApp);
     m_pasteKeysPerApp->setToolTip(
         tr("ClipItTo types the paste keys into the program you came from. Well-known terminals get Ctrl+Shift+V "
-           "(Shift+Insert in Windows consoles); every other program gets the keys of paste_keys in the config file "
-           "(Ctrl+V). Your own rules below come first."));
+           "(Shift+Insert in Windows consoles); every other program gets the Paste keys chosen above "
+           "(Ctrl+V unless you changed it). Your own rules below come first."));
     form->addRow(QString(), m_pasteKeysPerApp);
     m_pasteKeysPanel = new QWidget(this);
     auto* pasteKeysOuter = new QVBoxLayout(m_pasteKeysPanel);
@@ -366,7 +379,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
            "window class (X11) or app id; letter case does not matter, <b>*</b> matches any text. "
            "<b>Works on:</b> Windows, X11 and GNOME Wayland with the ClipItTo extension (log out and back in once "
            "after updating it). <b>Does not work on:</b> macOS (always ⌘V) and other Wayland desktops: there "
-           "the keys of paste_keys are used for every program."),
+           "the Paste keys chosen above are used for every program."),
         m_pasteKeysPanel);
     pasteKeysIntro->setWordWrap(true);
     pasteKeysIntro->setTextFormat(Qt::RichText);
@@ -1314,6 +1327,7 @@ Config SettingsDialog::config() const
     c.encryptHistory = m_encrypt->isChecked();
     c.pasteOnEnter = m_paste->isChecked();
     c.latestAfterPaste = m_latest->isChecked();
+    c.pasteKeys = PasteKeys(m_pasteKeys->currentData().toInt());
     c.pasteKeysPerApp = m_pasteKeysPerApp->isChecked();
     c.pasteKeysApps.clear();
     for (const PasteKeyRule& rule : pasteKeysValues()) {
