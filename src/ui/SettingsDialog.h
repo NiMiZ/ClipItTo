@@ -15,6 +15,7 @@
 #include <optional>
 #include <vector>
 
+class QUrl;
 class QVBoxLayout;
 class QCheckBox;
 class QComboBox;
@@ -122,6 +123,11 @@ public:
     // Receive from phone (General tab, roadmap 28): the button asks the daemon to open its window, owned by this dialog.
     void setPhone(PhoneSupport support);
     QPushButton* phoneButton() const { return m_phoneButton; }
+    // Support ClipItTo (General tab): opens a web page in the browser, only when clicked. The opener is replaceable so
+    // tests never launch a browser; the default is QDesktopServices::openUrl.
+    using UrlOpener = std::function<void(const QUrl&)>;
+    void setUrlOpener(UrlOpener opener) { m_openUrl = std::move(opener); }
+    QPushButton* supportButton() const { return m_supportButton; }
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -366,6 +372,8 @@ private:
     QCheckBox* m_debugLog;
     QPushButton* m_selfTestButton = nullptr;
     QPushButton* m_phoneButton = nullptr;
+    QPushButton* m_supportButton = nullptr;
+    UrlOpener m_openUrl;
     PhoneSupport m_phone;
     QPointer<SelfTestWindow> m_selfTestWindow;
     SelfTestSupport m_selfTest;

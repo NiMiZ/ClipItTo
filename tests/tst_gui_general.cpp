@@ -464,6 +464,23 @@ private slots:
         QVERIFY(d->config() == Config{});
     }
 
+    void theSupportButtonOpensAPageOnlyWhenClicked()
+    {
+        DialogEnv env(false);
+        auto d = env.open(Config{});
+        QList<QUrl> opened;
+        d->setUrlOpener([&opened](const QUrl& url) { opened.append(url); });
+        QVERIFY(d->supportButton());
+        QCOMPARE(d->supportButton()->text(), QStringLiteral("Support ClipItTo…"));
+        QVERIFY(d->supportButton()->toolTip().contains(QStringLiteral("web page in your browser")));
+        QTest::qWait(50);
+        QVERIFY(opened.isEmpty()); // nothing on its own
+        d->supportButton()->click();
+        QCOMPARE(opened.size(), 1);
+        QCOMPARE(opened.first(), QUrl(QStringLiteral("https://paypal.me/cnimiz")));
+        QVERIFY(d->config() == Config{}); // no setting involved
+    }
+
     void aFreshDaemonStartsWithTheDefaultsAndAPopup()
     {
         // The whole start-up with no config file and no history: nothing is written, the popup is built with the

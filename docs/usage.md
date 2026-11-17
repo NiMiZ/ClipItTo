@@ -400,6 +400,11 @@ unless you allow the program; temporarily allowing the local network is enough.
 - *Text is empty or wrong:* take the picture straight on and in good light; the text is read by the same engine as
   *Paste text from picture* (Settings › General › languages).
 
+## Support ClipItTo
+
+ClipItTo is free; donating is optional. *Settings › General › Support ClipItTo…* only opens a web page in your browser when you
+click it; ClipItTo itself makes no connection.
+
 ## When something does not work: Check this installation
 
 Start here. *Check this installation* tells you what works and what does not, one line per check, each with **PASS**, **WARN**,
