@@ -41,7 +41,10 @@
 #include <QMessageBox>
 #include <QRegularExpressionValidator>
 #include <QPointer>
+#include <QDesktopServices>
+#include <QMenu>
 #include <QPushButton>
+#include <QUrl>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QStyle>
@@ -54,6 +57,16 @@
 namespace clipitto::ui {
 
 namespace {
+
+// Where "Support ClipItTo" can lead. Another entry is one more line here (and in the FUNDING file); with more than
+// one the button becomes a small menu. ClipItTo contacts nothing: a link is opened only when chosen.
+struct SupportLink {
+    const char* label;
+    const char* url;
+};
+constexpr SupportLink kSupportLinks[] = {
+    {QT_TRANSLATE_NOOP("SettingsDialog", "PayPal"), "https://paypal.me/cnimiz"},
+};
 
 const QString kDefaultHotkey = Config{}.hotkey;
 
@@ -310,6 +323,32 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         }
     });
     form->addRow(QString(), m_phoneButton);
+    m_openUrl = [](const QUrl& url) { QDesktopServices::openUrl(url); };
+    m_supportButton = new QPushButton(tr("Support ClipItTo…"), this);
+    m_supportButton->setObjectName(QStringLiteral("supportButton"));
+    m_supportButton->setToolTip(QStringLiteral("<p>%1</p>")
+                                    .arg(tr("ClipItTo is free. If you want to support it, this opens a web page in your "
+                                            "browser. Donating is optional. ClipItTo itself makes no connection.")));
+    if (std::size(kSupportLinks) == 1) {
+        const QUrl url(QString::fromLatin1(kSupportLinks[0].url));
+        connect(m_supportButton, &QPushButton::clicked, this, [this, url] {
+            if (m_openUrl) {
+                m_openUrl(url);
+            }
+        });
+    } else {
+        auto* menu = new QMenu(m_supportButton);
+        for (const SupportLink& link : kSupportLinks) {
+            const QUrl url(QString::fromLatin1(link.url));
+            menu->addAction(tr(link.label), this, [this, url] {
+                if (m_openUrl) {
+                    m_openUrl(url);
+                }
+            });
+        }
+        m_supportButton->setMenu(menu);
+    }
+    form->addRow(QString(), m_supportButton);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());

@@ -51,6 +51,9 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | [Building from source](docs/building.md) | Linux, Windows, macOS |
 | [config.example.toml](data/config.example.toml) | every setting, with comments |
 
+**Support ClipItTo.** The app is free and GPL-3.0 licensed; donations are optional (the Sponsor button on this page, or
+*Settings › General › Support ClipItTo…*).
+
 ## Privacy
 
 Your clipboard history stays on your computer. ClipItTo makes no connections to the internet: no
@@ -63,7 +66,7 @@ Windows), readable by your account only; turn on [encryption](docs/passwords.md#
 protect them at rest as well. The daemon, the CLI and the GNOME extension talk to each
 other over your session's D-Bus or a local socket, never over the network. Logs never
 contain clipboard contents. Copies that password managers mark as secret are skipped, or kept
-only encrypted once you set a [master password](docs/passwords.md#password-copies). To erase everything, quit ClipItTo and delete those folders.
+only encrypted once you set a [master password](docs/passwords.md#password-copies). The *Support ClipItTo…* button in Settings only opens a web page in your browser when you click it; ClipItTo itself makes no connection. To erase everything, quit ClipItTo and delete those folders.
 
 ## Code signing policy
 
