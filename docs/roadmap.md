@@ -55,7 +55,11 @@ Known gaps first, then ideas. Nothing here is promised or scheduled. See also
   login session; it would be off by default with a warning.
 - **Touch ID is a gate, not a lock.** A Keychain item bound to the fingerprint needs a developer
   certificate (a keychain access group). Wanted: switch to it when the app is signed.
-- **Code signing.** Windows installer unsigned until SignPath approves; macOS ad-hoc signed, so permissions
+- **Code signing, SignPath Foundation (Windows).** Ready: the README "Code signing policy", builds only in GitHub Actions,
+  GPL-3.0, and version metadata (ProductName, version, copyright) in `clipitto.exe`, `clipitto-daemon.exe` and the setup
+  exe, checked by CI. Left: NiMiZ applies at signpath.org; after approval, add a signing step to the release job (secrets
+  and the SignPath project are set up then, not before).
+- **Code signing (other).** Windows installer unsigned until SignPath approves; macOS ad-hoc signed, so permissions
   are asked again after each update (a Developer ID would fix this and allow notarization).
 - **Backup:** "same password per note" makes a new copy if a note is renamed and the password re-copied.
 - **Pictures:** Windows paste-back decodes the PNG on the GUI thread; the hover preview is the 320 px

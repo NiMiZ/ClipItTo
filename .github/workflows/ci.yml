@@ -366,6 +366,24 @@ jobs:
             exit 1
           }
 
+      - name: Check the version information of the exe files
+        shell: pwsh
+        run: |
+          # Code signing (SignPath Foundation) needs ProductName and version metadata in every signed file.
+          $version = (Select-String -Path CMakeLists.txt -Pattern '^\s*VERSION (\d+\.\d+\.\d+)').Matches[0].Groups[1].Value
+          $bad = @()
+          foreach ($file in @('stage\bin\clipitto.exe', 'stage\bin\clipitto-daemon.exe') + @(Get-ChildItem installer\*.exe | ForEach-Object FullName)) {
+            $info = (Get-Item $file).VersionInfo
+            Write-Host "$file : $($info.ProductName) $($info.ProductVersion) / $($info.FileVersion) / $($info.CompanyName)"
+            if ($info.ProductName -ne 'ClipItTo') { $bad += "$file : ProductName is '$($info.ProductName)'" }
+            if ($info.ProductVersion -notlike "$version*") { $bad += "$file : ProductVersion is '$($info.ProductVersion)', expected $version" }
+            if (-not $info.FileDescription) { $bad += "$file : no FileDescription" }
+          }
+          if ($bad) {
+            Write-Host "::error title=version information::$($bad -join '%0A')"
+            exit 1
+          }
+
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:

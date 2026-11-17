@@ -1,0 +1,34 @@
+// Generated into the build directory by cmake/WindowsVersionInfo.cmake (configure_file); edit this template.
+// The version comes from project(... VERSION) in CMakeLists.txt, so a version bump needs no change here.
+#include <winver.h>
+
+IDI_ICON1 ICON "@CLIPITTO_RC_ICON@"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @CLIPITTO_RC_VERSION_COMMA@
+ PRODUCTVERSION @CLIPITTO_RC_VERSION_COMMA@
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0" // English (US), Unicode
+        BEGIN
+            VALUE "CompanyName", "NiMiZ"
+            VALUE "FileDescription", "@CLIPITTO_RC_DESCRIPTION@"
+            VALUE "FileVersion", "@CLIPITTO_RC_VERSION@"
+            VALUE "InternalName", "@CLIPITTO_RC_NAME@"
+            VALUE "LegalCopyright", "Copyright (C) 2026 NiMiZ. Licensed under the GPL-3.0."
+            VALUE "OriginalFilename", "@CLIPITTO_RC_NAME@.exe"
+            VALUE "ProductName", "ClipItTo"
+            VALUE "ProductVersion", "@CLIPITTO_RC_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

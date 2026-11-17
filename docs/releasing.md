@@ -12,7 +12,8 @@ Pushing a tag named `vX.Y.Z` makes GitHub Actions build every package and publis
 2. **Release branch and bump.** From an up-to-date `main`: `git switch -c release/X.Y.Z`. Change the version in
    `CMakeLists.txt` (`VERSION`), `vcpkg.json`, `gnome-extension/clipitto@nimiz.github.io/metadata.json`,
    `packaging/windows/clipitto.iss`, `snap/snapcraft.yaml`, and the `.deb` file names in `docs/install.md` and
-   `docs/building.md` (a `sed 's/OLD/NEW/'` over those files does it).
+   `docs/building.md` (a `sed 's/OLD/NEW/'` over those files does it). The Windows exe version information (`clipitto.rc.in`) is generated from
+   the `CMakeLists.txt` version, and CI checks it, so nothing else changes by hand.
 3. **Release notes.** Write `docs/releases/vX.Y.Z.md`, starting with the count ("4 bug fixes, 1 improvement") and the list.
    The release page opens with this file; GitHub's list of merged pull requests follows it.
 4. **Pull request.** Push the branch, open a PR into `main`, wait for CI to be green, merge it.
