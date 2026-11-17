@@ -33,6 +33,13 @@ WizardStyle=modern
 SetupIconFile=ClipItTo.ico
 UninstallDisplayIcon={app}\bin\clipitto-daemon.exe
 UninstallDisplayName=ClipItTo
+; Version metadata of the setup exe itself (code signing services require it); AppVersion is X.Y.Z.
+VersionInfoVersion={#AppVersion}.0
+VersionInfoProductName=ClipItTo
+VersionInfoProductVersion={#AppVersion}
+VersionInfoCompany=NiMiZ
+VersionInfoDescription=ClipItTo setup
+VersionInfoCopyright=Copyright (C) 2026 NiMiZ. Licensed under the GPL-3.0.
 
 [Messages]
 ; Say plainly what the installer does with a running ClipItTo (it quits it, see StopClipItTo below), so nobody has to

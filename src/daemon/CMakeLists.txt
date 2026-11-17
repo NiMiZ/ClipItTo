@@ -20,7 +20,7 @@ endif()
 qt_add_executable(clipitto-daemon WIN32 main.cpp)
 if(WIN32)
     # The icon of the program, the Start menu entry and the shortcuts (without it Windows shows a blank window).
-    target_sources(clipitto-daemon PRIVATE ${PROJECT_SOURCE_DIR}/packaging/windows/clipitto.rc)
+    clipitto_add_windows_resource(clipitto-daemon "ClipItTo clipboard history")
 endif()
 target_link_libraries(clipitto-daemon PRIVATE clipitto_daemon_lib Qt6::Widgets)
 target_compile_definitions(clipitto-daemon PRIVATE CLIPITTO_VERSION="${PROJECT_VERSION}")

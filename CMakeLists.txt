@@ -6,7 +6,7 @@ project(ClipItTo
     LANGUAGES C CXX)
 
 if(WIN32)
-    enable_language(RC) # the executables carry the ClipItTo icon (packaging/windows/clipitto.rc)
+    enable_language(RC) # the executables carry the ClipItTo icon and version info (packaging/windows/clipitto.rc.in)
 endif()
 
 if(APPLE)
@@ -60,6 +60,9 @@ endif()
 
 include(GNUInstallDirs)
 include(cmake/Dependencies.cmake)
+if(WIN32)
+    include(cmake/WindowsVersionInfo.cmake)
+endif()
 
 qt_standard_project_setup()
 
