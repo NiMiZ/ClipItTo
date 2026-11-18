@@ -707,7 +707,9 @@ jobs:
       - name: Release notes
         id: notes
         run: |
-          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then echo "path=docs/releases/${GITHUB_REF_NAME}.md" >> "$GITHUB_OUTPUT"; fi
+          # The notes (when there are any) and a standing footer: the code signing credit (SignPath Foundation) goes on every release page.
+          { if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then cat "docs/releases/${GITHUB_REF_NAME}.md"; fi; cat .github/release-footer.md; } > "$RUNNER_TEMP/release-body.md"
+          echo "path=$RUNNER_TEMP/release-body.md" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
           body_path: ${{ steps.notes.outputs.path }}

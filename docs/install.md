@@ -61,6 +61,8 @@ window has focus until the GNOME extension is installed (`backend_degraded: true
 
 # Windows 10/11
 
+Code signing: ClipItTo uses the [SignPath Foundation](https://signpath.org) for code signing of its Windows files. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by SignPath Foundation. Until the first signed release the Windows files are unsigned, and Windows shows "Unknown publisher"; see the [code signing policy](../README.md#code-signing-policy).
+
 **Install:** in PowerShell, run
 
 ```powershell
