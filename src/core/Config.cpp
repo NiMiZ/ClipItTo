@@ -419,6 +419,7 @@ Config Config::fromToml(std::string_view text, QStringList* warnings)
     r.boolean("auto_group", config.autoGroup);
     r.boolean("keep_formatting", config.keepFormatting);
     r.boolean("debug_log", config.debugLog);
+    r.boolean("update_check_auto", config.updateCheckAuto);
     r.languages("keyboard_layouts", config.keyboardLayouts);
     r.idList("paste_as_text", config.pasteAsText);
     r.idList("paste_as_picture", config.pasteAsPicture);
@@ -563,6 +564,7 @@ std::vector<Line> lines(const Config& c)
         {"ocr_languages", tomlString(c.ocrLanguages.toStdString()), "languages read in pictures, e.g. \"en, he\"; empty = automatic"},
         {"index_pictures", tomlBool(c.indexPictures), "read the text in copied pictures so a search finds them by it"},
         {"debug_log", tomlBool(c.debugLog), "write a diagnostic log file for troubleshooting (what ClipItTo does, never what you copied); off deletes it"},
+        {"update_check_auto", tomlBool(c.updateCheckAuto), "true = at start-up, at most once a day, ask cohenzco.com whether a newer version exists (sends only the version and platform); false = only when you click Check for updates"},
         {"auto_group", tomlBool(c.autoGroup), "file new copies in the group they match best, learned from the copies you put in groups (never creates a group)"},
         {"keep_formatting", tomlBool(c.keepFormatting), "also keep the formatted (HTML) version of a copy, for Paste with formatting"},
         {"keyboard_layouts", tomlString(c.keyboardLayouts.toStdString()),

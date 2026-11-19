@@ -3,6 +3,7 @@ add_library(clipitto_daemon_lib STATIC
     Daemon.cpp Daemon.h
     DaemonSelfTest.cpp
     DaemonPhone.cpp
+    DaemonUpdate.cpp
     GnomeShortcut.cpp GnomeShortcut.h
     LoginItem.cpp LoginItem.h
     SyncService.cpp SyncService.h

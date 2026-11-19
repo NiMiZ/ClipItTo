@@ -6,6 +6,7 @@
 #include "Translation.h"
 #include "Prompts.h"
 #include "PhoneWindow.h"
+#include "UpdateController.h"
 #include "SelfTestWindow.h"
 
 #include <QDialog>
@@ -128,6 +129,10 @@ public:
     using UrlOpener = std::function<void(const QUrl&)>;
     void setUrlOpener(UrlOpener opener) { m_openUrl = std::move(opener); }
     QPushButton* supportButton() const { return m_supportButton; }
+    // Check for updates (General tab): the button asks the daemon to run one check; nothing else here uses the network.
+    void setUpdates(UpdateSupport support);
+    QPushButton* updateButton() const { return m_updateButton; }
+    QCheckBox* updateAutoBox() const { return m_updateAuto; }
 
     Config config() const;
     bool groupsChanged() const { return m_groupsChanged; }
@@ -373,6 +378,9 @@ private:
     QPushButton* m_selfTestButton = nullptr;
     QPushButton* m_phoneButton = nullptr;
     QPushButton* m_supportButton = nullptr;
+    QPushButton* m_updateButton = nullptr;
+    QCheckBox* m_updateAuto = nullptr;
+    UpdateSupport m_updates;
     UrlOpener m_openUrl;
     PhoneSupport m_phone;
     QPointer<SelfTestWindow> m_selfTestWindow;

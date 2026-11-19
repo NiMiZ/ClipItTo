@@ -21,7 +21,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 - **Notes** give a clip a readable title.
 - **Password copies** from password managers are kept encrypted behind a master password, never in clear.
 - **Encrypted history** on disk (optional), and **backup** of copies and settings to one file; optional **sync between your PCs** through a folder you already sync (no network of its own).
-- **Private:** no cloud, no telemetry, and no network use unless you open [Receive from phone](docs/usage.md#send-a-picture-or-text-from-your-phone) (local network only, a few minutes, off until you start it).
+- **Private:** no cloud, no telemetry, and no network use unless you ask: [Check for updates](docs/usage.md#check-for-updates) (only when you click it) or [Receive from phone](docs/usage.md#send-a-picture-or-text-from-your-phone) (local network only, a few minutes, off until you start it).
 
 ## Keys
 
@@ -56,8 +56,12 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 
 ## Privacy
 
-Your clipboard history stays on your computer. ClipItTo makes no connections to the internet: no
-cloud sync, no accounts, no telemetry, no update checks. The one thing that listens on a network is
+Your clipboard history stays on your computer. ClipItTo has no cloud sync, no accounts and no telemetry,
+and it makes no connection to the internet unless you ask for one: only when you click
+[*Check for updates…*](docs/usage.md#check-for-updates) (or turn on the automatic check in Settings, which is off by default) it
+sends one request to `cohenzco.com` that contains the ClipItTo version number and your system (`windows`, `linux` or `macos`),
+and nothing else: no clipboard data, no id, no cookies. The server necessarily sees your IP address, as any web server does.
+Nothing is downloaded or installed: if a newer version exists you can open its download page. The one thing that listens on a network is
 [Receive from phone](docs/usage.md#send-a-picture-or-text-from-your-phone): only after you open its window, only for
 connections from your own local network, for 5 minutes at a time, and it is never on at program start. Copies, notes, groups and settings
 are stored only in local files under your user account (`~/.local/share/clipitto/` and

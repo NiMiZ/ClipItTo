@@ -101,6 +101,9 @@ auto_group = false         # true = a new copy that clearly matches one of your 
                             # or pictures. Settings > Groups can forget what was learned
 debug_log = false          # true = write a diagnostic log file for troubleshooting (what ClipItTo does, never what you
                             # copied); false deletes it. The daemon's --verbose does the same for one run
+update_check_auto = false   # true = at start-up, at most once a day, ask cohenzco.com whether a newer version exists
+                            # (sends only the version and the platform; the server sees your IP address); quiet unless
+                            # one is out. false = no connection at all unless you click Check for updates
 password_unlock_minutes = 5 # how long an unlock lasts (1-240)
 password_clear_seconds = 2  # a password pasted from ClipItTo leaves the clipboard this many seconds
                             # after the paste (0-60), but only if the clipboard still holds it:

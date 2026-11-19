@@ -158,6 +158,9 @@ Copyright (C) The Qt Company Ltd. and other contributors. Licensed under the GNU
 Public License v3.0; the text is in [licenses/LGPL-3.0.txt](licenses/LGPL-3.0.txt), and the
 LGPL-3.0 builds on the GPL-3.0 in [LICENSE](LICENSE).
 
+For the HTTPS request of *Check for updates*, Qt Network uses the system's TLS: OpenSSL on Linux (the system's libssl; the snap
+stages Ubuntu's `libssl3t64`, Apache-2.0), Schannel on Windows and Secure Transport on macOS. No library was added to the source.
+
 The Windows build ships the unmodified Qt 6.5.3 DLLs next to ClipItTo, which loads them
 dynamically: you may replace them with your own build of Qt 6.5. The Qt source code is at
 https://download.qt.io/archive/qt/6.5/6.5.3/. Qt itself includes third-party code; see

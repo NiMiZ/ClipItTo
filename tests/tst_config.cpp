@@ -33,6 +33,20 @@ private slots:
         QVERIFY(Config::fromToml("debug_log = true\n").debugLog);
     }
 
+    void updateCheckAuto()
+    {
+        QVERIFY(!Config().updateCheckAuto); // off by default: no connection unless the user clicks Check for updates
+        QVERIFY(!Config::fromToml("").updateCheckAuto);
+        QVERIFY(Config::fromToml("update_check_auto = true\n").updateCheckAuto);
+        QVERIFY(!Config::fromToml("update_check_auto = false\n").updateCheckAuto);
+        QStringList warnings;
+        QVERIFY(!Config::fromToml("update_check_auto = \"yes\"\n", &warnings).updateCheckAuto); // wrong type: default kept
+        QVERIFY(!warnings.isEmpty());
+        Config on;
+        on.updateCheckAuto = true;
+        QVERIFY(Config::fromToml(on.toToml()).updateCheckAuto);
+    }
+
     void autoGroup()
     {
         QVERIFY(!Config().autoGroup); // off by default

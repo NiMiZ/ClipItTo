@@ -405,6 +405,24 @@ unless you allow the program; temporarily allowing the local network is enough.
 ClipItTo is free; donating is optional. *Settings › General › Support ClipItTo…* only opens a web page in your browser when you
 click it; ClipItTo itself makes no connection.
 
+## Check for updates
+
+*Settings › General › Check for updates…* (on Windows and macOS also the tray / menu-bar menu) asks whether a newer ClipItTo
+exists. ClipItTo makes **no connection at all unless you click it**, or turn on *Look for a new version when ClipItTo starts*
+(off by default; then it asks at most once a day, shortly after start, and says something only if a newer version is out and you
+have not already chosen *Later* for that version; the choice is kept in a small file next to the history and never sent).
+
+- **What is sent:** one HTTPS request to `https://cohenzco.com/api/apps/clipitto/latest` with the ClipItTo **version** (for example
+  `0.18.0`) and the **platform** (`windows`, `linux` or `macos`) in the address, and `ClipItTo/<version>` as the program name.
+  The server necessarily sees your **IP address**, as any web server does.
+- **What is not sent:** nothing you copied, no computer or user id, no cookies, no settings, no list of programs.
+- **What happens:** the request runs in the background (it gives up after 8 seconds, is never repeated, and does not follow
+  redirects). If a newer version exists you see *ClipItTo X is available (you have Y)* with **Download** (opens the download
+  page on `cohenzco.com` in your browser, only if the address is on `cohenzco.com`) and **Later**; otherwise *You are up to
+  date (Y)*, or *Could not check for updates. Try again later.* ClipItTo never downloads, installs or runs anything itself.
+- The log says only that a check ran and how it ended (update available, up to date, failed).
+- In the config file: `update_check_auto = false` (the default).
+
 ## When something does not work: Check this installation
 
 Start here. *Check this installation* tells you what works and what does not, one line per check, each with **PASS**, **WARN**,

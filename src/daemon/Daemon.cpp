@@ -474,6 +474,12 @@ Daemon::StartResult Daemon::start(QString* error)
     }
     applyDesktopShortcut();
     applyPanicShortcut();
+    // The automatic check is a setting that is off unless the user turned it on; read when the timer fires.
+    QTimer::singleShot(m_options.updateAutoDelayMs, this, [this] {
+        if (m_config.updateCheckAuto) {
+            updates()->autoCheck(true);
+        }
+    });
     return StartResult::Ok;
 }
 
@@ -1027,6 +1033,7 @@ void Daemon::openSettings()
                               std::move(syncing));
     dialog.setSelfTest(selfTestSupport());
     dialog.setPhone(phoneSupport());
+    dialog.setUpdates(updateSupport());
     if (m_popup->execDialog(dialog) == QDialog::Accepted) {
         QString error;
         if (!applySettings(dialog.config(), &error)) {

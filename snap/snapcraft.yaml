@@ -7,9 +7,11 @@ description: |
   ClipItTo keeps a searchable history of copied text and pictures, with groups,
   favorites and notes.
 
-  Clipboard history stays on your computer. ClipItTo makes no connections to the
-  internet and has no cloud sync, accounts, telemetry or update checks. Its only
-  network use is the optional "Receive from phone" window, which listens on your
+  Clipboard history stays on your computer. ClipItTo has no cloud sync, accounts or
+  telemetry, and makes no connection to the internet unless you click "Check for
+  updates" (or turn on the optional automatic check, off by default): that sends the
+  version number and your system to cohenzco.com and nothing else. Its other network
+  use is the optional "Receive from phone" window, which listens on your
   local network for a few minutes after you open it. History is stored
   locally and can optionally be encrypted with a random key kept in your system
   keyring. Encryption is off by default.
@@ -64,6 +66,7 @@ apps:
       - desktop
       - desktop-legacy
       - home
+      - network
       - network-bind
       - password-manager-service
       - wayland
@@ -114,6 +117,8 @@ parts:
     stage-packages:
       - libqt6keychain1
       - libqt6network6
+      - libssl3t64
+      - ca-certificates
       - libtesseract5
       - tesseract-ocr-eng
       - libqt6waylandclient6
