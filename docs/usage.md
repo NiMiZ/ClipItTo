@@ -413,7 +413,7 @@ exists. ClipItTo makes **no connection at all unless you click it**, or turn on 
 have not already chosen *Later* for that version; the choice is kept in a small file next to the history and never sent).
 
 - **What is sent:** one HTTPS request to `https://cohenzco.com/api/apps/clipitto/latest` with the ClipItTo **version** (for example
-  `0.18.0`) and the **platform** (`windows`, `linux` or `macos`) in the address, and `ClipItTo/<version>` as the program name.
+  `0.18.0`) and the **platform** (`windows`, `linux` or `macos`) in the address, and `ClipItTo/<version>` as the program name, plus the ordinary headers every HTTP request has (host, accept).
   The server necessarily sees your **IP address**, as any web server does.
 - **What is not sent:** nothing you copied, no computer or user id, no cookies, no settings, no list of programs.
 - **What happens:** the request runs in the background (it gives up after 8 seconds, is never repeated, and does not follow
