@@ -205,8 +205,9 @@ int main(int argc, char* argv[])
     QMenu trayMenu;
     trayMenu.addAction(QObject::tr("Open ClipItTo"), daemon.popup(), [&daemon] { daemon.popup()->showPopup(); });
     trayMenu.addAction(QObject::tr("Reload settings"), &daemon, &clipitto::Daemon::reloadConfig);
+    trayMenu.addAction(QObject::tr("Check for updates…"), &daemon, [&daemon] { daemon.checkForUpdates(); }); // only on click
     trayMenu.addSeparator();
-    trayMenu.addAction(QObject::tr("Quit ClipItTo"), &app, &QCoreApplication::quit);
+    trayMenu.addAction(QObject::tr("Quit ClipItTo"),&app, &QCoreApplication::quit);
     tray.setContextMenu(&trayMenu);
     const auto updateTooltip = [&] {
         tray.setToolTip(hotkey.isRegistered() ? QStringLiteral("ClipItTo (%1)").arg(hotkey.shortcut())

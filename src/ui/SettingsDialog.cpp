@@ -349,6 +349,29 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
         m_supportButton->setMenu(menu);
     }
     form->addRow(QString(), m_supportButton);
+    m_updateButton = new QPushButton(tr("Check for updates…"), this);
+    m_updateButton->setObjectName(QStringLiteral("updateButton"));
+    m_updateButton->setToolTip(QStringLiteral("<p>%1</p>")
+                                   .arg(tr("Asks cohenzco.com whether a newer version of ClipItTo exists, when you click this and "
+                                           "not otherwise. It sends the version number and your system (Windows, Linux or macOS); "
+                                           "the server also sees your IP address, as any web server does. Nothing is downloaded "
+                                           "or installed: if there is a newer version you can open its download page.")));
+    m_updateButton->setEnabled(false); // until the daemon gives it the check (setUpdates)
+    connect(m_updateButton, &QPushButton::clicked, this, [this] {
+        if (m_updates.check) {
+            m_updates.check(this);
+        }
+    });
+    form->addRow(QString(), m_updateButton);
+    m_updateAuto = new QCheckBox(tr("Look for a new version when ClipItTo starts (once a day at most)"), this);
+    m_updateAuto->setObjectName(QStringLiteral("updateAutoBox"));
+    m_updateAuto->setChecked(config.updateCheckAuto);
+    m_updateAuto->setToolTip(QStringLiteral("<p>%1</p>")
+                                 .arg(tr("Off by default: ClipItTo then connects to the internet only when you click Check for "
+                                         "updates. When on, it asks cohenzco.com once a day when it starts (the version number "
+                                         "and your system are sent; the server sees your IP address) and says something only "
+                                         "if a newer version exists.")));
+    form->addRow(QString(), m_updateAuto);
     // Keyboard layouts that Paste as… can convert text to and from (text typed with the wrong layout).
     m_layoutsSetting = config.keyboardLayouts;
     const QStringList chosenLayouts = texttransform::enabledLayouts(config.keyboardLayouts, QLocale::system().bcp47Name());
@@ -1305,6 +1328,12 @@ void SettingsDialog::setSelfTest(SelfTestSupport support)
     m_selfTestButton->setEnabled(m_selfTest.create != nullptr);
 }
 
+void SettingsDialog::setUpdates(UpdateSupport support)
+{
+    m_updates = std::move(support);
+    m_updateButton->setEnabled(m_updates.check != nullptr);
+}
+
 void SettingsDialog::setPhone(PhoneSupport support)
 {
     m_phone = std::move(support);
@@ -1344,6 +1373,7 @@ Config SettingsDialog::config() const
     c.keepFormatting = m_keepFormatting->isChecked();
     c.autoGroup = m_autoGroup->isChecked();
     c.debugLog = m_debugLog->isChecked();
+    c.updateCheckAuto = m_updateAuto->isChecked();
     {
         QStringList ids;
         for (const QCheckBox* box : m_layoutBoxes) {

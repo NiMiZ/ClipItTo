@@ -379,6 +379,13 @@ private slots:
         QCOMPARE(warned.outcome, Outcome::Warn);
         QVERIFY(warned.detail.contains(QLatin1String("unknown key 'foo'")));
         QVERIFY(warned.detail.contains(QLatin1String("2 problem")));
+        {
+            Env e2 = env;
+            QVERIFY(updateCheckResult(e2).detail.contains(QLatin1String("automatic update check is off")));
+            e2.config.updateCheckAuto = true;
+            QVERIFY(updateCheckResult(e2).detail.contains(QLatin1String("automatic update check is on")));
+            QCOMPARE(updateCheckResult(e2).outcome, Outcome::Pass);
+        }
         QCOMPARE(logResult({true, {}}, env).outcome, Outcome::Pass);
         QVERIFY(logResult({true, {}}, env).detail.contains(QLatin1String("/data/debug.log")));
         QCOMPARE(logResult({false, QStringLiteral("denied")}, env).outcome, Outcome::Warn); // log off

@@ -49,6 +49,7 @@ using clipitto::Theme;
 using clipitto::ui::HistoryModel;
 using clipitto::ui::PopupWindow;
 using clipitto::ui::SettingsDialog;
+using clipitto::ui::UpdateSupport;
 
 #ifdef Q_OS_MACOS
 #define CLIPITTO_DEFAULT_HOTKEY "Alt+Cmd+V"
@@ -198,6 +199,7 @@ const std::map<QString, std::function<void(SettingsDialog&)>>& controlChanges()
         {"keep_formatting", [](SettingsDialog& d) { toggle(d.keepFormattingBox()); }},
         {"auto_group", [](SettingsDialog& d) { toggle(d.autoGroupBox()); }},
         {"debug_log", [](SettingsDialog& d) { toggle(d.debugLogBox()); }},
+        {"update_check_auto", [](SettingsDialog& d) { toggle(d.updateAutoBox()); }},
         {"keyboard_layouts", [](SettingsDialog& d) { toggle(d.layoutBox(QStringLiteral("he"))); }},
         {"paste_as_text",
          [](SettingsDialog& d) { d.pasteAsEditor(false).list->item(0)->setCheckState(Qt::Unchecked); }},
@@ -408,7 +410,7 @@ private slots:
             {"theme", "\"system\""},      {"popup_position", "\"cursor\""}, {"start_focus", "\"pinned\""},
             {"ignore_case", "false"},     {"encrypt_history", "false"},  {"keep_formatting", "true"},
             {"detect_secrets", "true"},   {"detect_passwords", "false"}, {"auto_group", "false"},
-            {"debug_log", "false"},       {"translate_timeout", "5"},    {"capture_primary", "false"},
+            {"debug_log", "false"},       {"update_check_auto", "false"}, {"translate_timeout", "5"},    {"capture_primary", "false"},
             {"index_pictures", "true"},   {"keep_passwords", "true"},    {"password_unlock_minutes", "5"},
             {"password_clear_seconds", "2"}, {"paste_once_clear_seconds", "2"},
             {"sync_enabled", "false"},    {"sync_folder", "\"\""},     {"sync_max_copies", "2000"}, {"sync_pictures", "true"},
@@ -449,6 +451,7 @@ private slots:
         QVERIFY(!d->detectPasswordsBox()->isChecked());
         QVERIFY(!d->autoGroupBox()->isChecked());
         QVERIFY(!d->debugLogBox()->isChecked());
+        QVERIFY(!d->updateAutoBox()->isChecked());
         QVERIFY(!d->ignoreCaseBox()->isChecked());
         QVERIFY(!d->encryptBox()->isChecked());
         // The same keys, whatever order the platform spells the modifiers in ("ctrl+alt+v" or "alt+ctrl+v").
@@ -462,6 +465,26 @@ private slots:
                  keys(QStringLiteral(CLIPITTO_DEFAULT_HOTKEY)));
         // Looking and leaving changes nothing, file-only settings included.
         QVERIFY(d->config() == Config{});
+    }
+
+    void theCheckForUpdatesButtonAsksOnlyWhenClicked()
+    {
+        DialogEnv env(false);
+        auto d = env.open(Config{});
+        QVERIFY(d->updateButton());
+        QCOMPARE(d->updateButton()->text(), QStringLiteral("Check for updates…"));
+        QVERIFY(d->updateButton()->toolTip().contains(QStringLiteral("IP address")));
+        QVERIFY(!d->updateButton()->isEnabled()); // until the daemon gives it the check
+        QVERIFY(!d->updateAutoBox()->isChecked()); // the automatic check is off by default
+        int checks = 0;
+        UpdateSupport support;
+        support.check = [&checks](QWidget*) { ++checks; };
+        d->setUpdates(support);
+        QTest::qWait(50);
+        QCOMPARE(checks, 0); // nothing on its own
+        QVERIFY(d->updateButton()->isEnabled());
+        d->updateButton()->click();
+        QCOMPARE(checks, 1);
     }
 
     void theSupportButtonOpensAPageOnlyWhenClicked()
@@ -744,7 +767,7 @@ private slots:
             QVERIFY2(!w->toolTip().isEmpty(), w->metaObject()->className());
         }
         for (QCheckBox* w : {d->ignoreCaseBox(), d->latestBox(), d->pasteBox(), d->keepFormattingBox(), d->indexPicturesBox(),
-                             d->debugLogBox(), d->autoGroupBox(), d->detectSecretsBox(), d->detectPasswordsBox(),
+                             d->debugLogBox(), d->updateAutoBox(), d->autoGroupBox(), d->detectSecretsBox(), d->detectPasswordsBox(),
                              d->passwordsPerNoteBox(), d->askNoteBox()}) {
             QVERIFY2(!w->toolTip().isEmpty(), qPrintable(w->text()));
         }

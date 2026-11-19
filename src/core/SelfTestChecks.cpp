@@ -353,6 +353,15 @@ Result logResult(const LogFacts& facts, const Env& env)
     return on ? Result::fail(detail, advice) : Result::warn(detail, advice);
 }
 
+Result updateCheckResult(const Env& env)
+{
+    return Result::pass(env.config.updateCheckAuto
+                            ? QStringLiteral("the automatic update check is on (once a day at start-up it asks cohenzco.com for the "
+                                             "newest version number; it sends the version and the platform)")
+                            : QStringLiteral("the automatic update check is off; ClipItTo contacts cohenzco.com only when you click "
+                                             "Check for updates"));
+}
+
 Result keyringCheck(KeyStore* store, bool needed, bool missingIsFail, const QString& what, const QString& neededFor)
 {
     if (!store) {
@@ -649,6 +658,7 @@ QList<Check> buildChecks(const Env& env)
     if (e.logFile) {
         worker(QStringLiteral("debug_log"), QStringLiteral("Diagnostic log"), [e] { return logResult(e.logFile(), e); });
     }
+    sync(QStringLiteral("update_check"), QStringLiteral("Update check"), [e] { return updateCheckResult(e); });
     // The keyrings: a locked one may show its own window and wait for the user, so these get a long limit.
     worker(QStringLiteral("keyring_history"), QStringLiteral("Keyring: history key"),
            [e] { return keyringCheck(e.historyKeys.get(), e.historyKeyNeeded, true, QStringLiteral("history key"), QStringLiteral("history encryption")); },

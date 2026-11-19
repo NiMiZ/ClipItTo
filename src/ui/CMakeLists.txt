@@ -12,6 +12,7 @@ add_library(clipitto_ui STATIC
     SelfTestWindow.cpp SelfTestWindow.h
     SettingsDialog.cpp SettingsDialog.h
     Theme.cpp Theme.h
+    UpdateController.cpp UpdateController.h
     MacApp.h PlatformKeys.h
 )
 # macOS: the menu-bar-only activation policy and bringing the popup to the front (AppKit).
@@ -24,5 +25,5 @@ else()
 endif()
 
 target_include_directories(clipitto_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(clipitto_ui PUBLIC clipitto_core Qt6::Widgets PRIVATE clipitto_qrcodegen)
+target_link_libraries(clipitto_ui PUBLIC clipitto_core clipitto_update Qt6::Widgets PRIVATE clipitto_qrcodegen)
 clipitto_set_warnings(clipitto_ui)

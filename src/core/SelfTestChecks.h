@@ -142,6 +142,8 @@ Result pasteWithoutBoxCheck(const Env& env); // the CLI: skipped (macOS: the per
 Result databaseResult(const DbFacts& facts, const Env& env);
 Result configResult(const ConfigFacts& facts, const Env& env);
 Result logResult(const LogFacts& facts, const Env& env);
+// States the update_check_auto setting. Makes no request: this program never contacts anything to check itself.
+Result updateCheckResult(const Env& env);
 // `store` may be null. `needed`: a real read is made. `missingIsFail`: no key in a reachable keyring is a failure.
 Result keyringCheck(KeyStore* store, bool needed, bool missingIsFail, const QString& what, const QString& neededFor);
 Result passwordChainCheck(const Env& env);

@@ -38,6 +38,7 @@ struct Config {
     QString ocrLanguages; // languages to read in pictures, e.g. "en, he"; empty = automatic
     bool indexPictures = true; // read the text in copied pictures, so a search finds them by it
     bool debugLog = false; // write a diagnostic log file (what ClipItTo does, never what was copied) for troubleshooting
+    bool updateCheckAuto = false; // look for a newer version at start-up, at most once a day (contacts cohenzco.com); off: only when you click Check for updates
     bool autoGroup = false; // file new copies in the group they match best, learned from the user's groups (off by default)
     bool keepFormatting = true; // also keep the HTML of a copy with bold, links, tables… for "Paste with formatting"
     QString keyboardLayouts; // layouts offered by Paste as…: "he, ru, el"; "" = the system language's; "none"

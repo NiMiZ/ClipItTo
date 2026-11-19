@@ -12,6 +12,7 @@
 #include "PhoneNet.h"
 #include "PhoneServer.h"
 #include "PhoneWindow.h"
+#include "UpdateController.h"
 #include "ScreenLockWatcher.h"
 #include "SelfTestChecks.h"
 #include "SelfTestWindow.h"
@@ -94,6 +95,11 @@ struct DaemonOptions {
     // "Receive from phone": tests shorten the timers and replace the network interfaces (null: this computer's).
     std::optional<phone::PhoneServer::Config> phoneConfig;
     std::function<QList<phone::InterfaceInfo>()> phoneInterfaces;
+    // "Check for updates" (src/update): tests replace the network (null: the real one, created at the first check), the file
+    // that remembers the last automatic check and the "Later" version (empty: next to the database), and the start-up delay.
+    std::shared_ptr<update::Fetcher> updateFetcher;
+    QString updateStatePath;
+    int updateAutoDelayMs = 20000; // the automatic check (only when update_check_auto is on) waits this long after start
     int panicQuietMs = 500; // after a panic, copies arriving this long are ignored (one on its way must not put back what was wiped)
     int autoForgetIntervalMs = 60000; // how often the auto_forget rules run (tests shorten it)
     std::function<QDateTime()> autoForgetClock; // what "now" is for the rules; null: the system clock (tests)
@@ -173,6 +179,11 @@ public:
     phone::PhoneServer* phoneServer() const { return m_phone.get(); }
     ui::PhoneWindow* phoneWindow() const { return m_phoneWindow; }
     ui::PhoneSupport phoneSupport();
+    // "Check for updates": asks cohenzco.com, in the background, and shows the answer. Only called by a click (Settings, tray
+    // menu) and, when update_check_auto is on, once a day at start-up. See src/update/UpdateCheck.h.
+    void checkForUpdates(QWidget* parent = nullptr);
+    ui::UpdateController* updates(); // made at first use
+    ui::UpdateSupport updateSupport();
 
 signals:
     void configReloaded();
@@ -271,6 +282,7 @@ private:
     QString m_helloReason;
     std::unique_ptr<phone::PhoneServer> m_phone; // exists from the first "Receive from phone"; listens only while started
     QPointer<ui::PhoneWindow> m_phoneWindow;
+    std::unique_ptr<ui::UpdateController> m_updates;
     QThreadPool m_phonePool; // one thread: pictures from the phone are decoded one after another
     quint64 m_phoneSession = 0; // counts stops: results of an earlier session are dropped
     bool m_suppressIndex = false; // a picture from the phone is being stored: its text is set by the phone code, not read again
