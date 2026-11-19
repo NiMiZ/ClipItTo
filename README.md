@@ -11,6 +11,8 @@ your clipboard.
 | **Windows 10/11** | `irm https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.ps1 \| iex` in PowerShell | [Windows](docs/install.md#windows-1011) |
 | **macOS 11+** | `ClipItTo-<version>-macos.dmg` from the [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) | [macOS](docs/install.md#macos-11) |
 
+Code signing: ClipItTo uses the [SignPath Foundation](https://signpath.org) for code signing of its Windows files. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by SignPath Foundation. Until the first signed release the Windows files are unsigned, and Windows shows "Unknown publisher"; see the [code signing policy](README.md#code-signing-policy).
+
 The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 
 ## What it does
