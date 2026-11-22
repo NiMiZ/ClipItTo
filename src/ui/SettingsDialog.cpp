@@ -1332,6 +1332,8 @@ void SettingsDialog::setUpdates(UpdateSupport support)
 {
     m_updates = std::move(support);
     m_updateButton->setEnabled(m_updates.check != nullptr);
+    m_updateButton->setVisible(!m_updates.hidden);
+    m_updateAuto->setVisible(!m_updates.hidden);
 }
 
 void SettingsDialog::setPhone(PhoneSupport support)

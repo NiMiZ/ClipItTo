@@ -183,6 +183,7 @@ public:
     // menu) and, when update_check_auto is on, once a day at start-up. See src/update/UpdateCheck.h.
     void checkForUpdates(QWidget* parent = nullptr);
     ui::UpdateController* updates(); // made at first use
+    static bool updatesDisabled(); // running as the Microsoft Store (MSIX) build: no update check at all
     ui::UpdateSupport updateSupport();
 
 signals:

@@ -26,7 +26,9 @@ add_library(clipitto_core STATIC
     SelfTestChecks.cpp SelfTestChecks.h
     SearchFilter.cpp SearchFilter.h
     RegexSearch.cpp RegexSearch.h
+    Similar.cpp Similar.h
     PasswordVault.cpp PasswordVault.h
+    PackagedApp.cpp PackagedApp.h
     Paths.cpp Paths.h
     Previews.cpp Previews.h
     RichText.cpp RichText.h

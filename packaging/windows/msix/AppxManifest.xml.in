@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ClipItTo as a Microsoft Store package (MSIX, full-trust desktop app). Template: scripts/make-msix.ps1 replaces every variable written between two at-signs.
+  Docs: docs/microsoft-store.md. NOT yet validated by MakeAppx or installed on a real Windows PC (see that file).
+
+  @MSIX_IDENTITY_NAME@, @MSIX_PUBLISHER@, @MSIX_PUBLISHER_DISPLAY_NAME@ come from Partner Center (Product identity), through the
+  environment variables of the same names or the script's parameters. Until then they are obvious placeholders; a package
+  built with them can be test-signed and sideloaded but the Store will reject it.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 desktop rescap">
+
+  <!-- Version: X.Y.Z.0 from CMakeLists.txt. The Store reserves the last part (it must be 0) and wants every upload higher than the last. -->
+  <Identity Name="@MSIX_IDENTITY_NAME@" Publisher="@MSIX_PUBLISHER@" Version="@MSIX_VERSION@" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>ClipItTo</DisplayName>
+    <PublisherDisplayName>@MSIX_PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Clipboard history with groups, favorites and search. Everything stays on your computer.</Description>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 10 1809 is also what Qt 6.5 needs. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22631.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <!-- The daemon (tray icon, hotkey, popup) is the main app. -->
+    <Application Id="ClipItTo" Executable="bin\clipitto-daemon.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="ClipItTo"
+        Description="Clipboard history with groups, favorites and search."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" Square71x71Logo="Assets\Square71x71Logo.png" Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Replaces the Start-up folder shortcut of the Inno Setup installer. The user can switch it in Settings > Apps > Startup
+             and in Task Manager. @MSIX_STARTUP_ENABLED@ is "true" (like the installer's ticked box) or "false" (off until the user turns it on). -->
+        <desktop:Extension Category="windows.startupTask" Executable="bin\clipitto-daemon.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="ClipItToStartup" Enabled="@MSIX_STARTUP_ENABLED@" DisplayName="ClipItTo" />
+        </desktop:Extension>
+
+        <!-- The command clipitto from a terminal (status, quit, ...). The alias is a console program of this package. -->
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="bin\clipitto.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="clipitto.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- A desktop program that runs outside the app sandbox. Required: ClipItTo reads the clipboard of every program, registers a global
+         hotkey, pastes into other windows and runs a tray icon. -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- "Receive from phone": a short-lived web server for the local network only (home / work networks), opened by the user. -->
+    <Capability Name="privateNetworkClientServer" />
+    <!-- No internetClient: the update check is switched off in the Store build (the Store updates the app) and nothing else
+         connects to the internet. -->
+  </Capabilities>
+</Package>

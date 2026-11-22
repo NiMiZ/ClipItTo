@@ -2,6 +2,9 @@
 // remembered "Later". The network is a fake (canned answers); no test here opens a socket.
 
 #include "Config.h"
+#include "Daemon.h"
+#include "PackagedApp.h"
+#include "SelfTestChecks.h"
 #include "UpdateCheck.h"
 #include "UpdateController.h"
 
@@ -293,6 +296,33 @@ private slots:
         QCOMPARE(back.lastAutoCheck, s.lastAutoCheck);
         QCOMPARE(back.laterVersion, s.laterVersion);
         QVERIFY(loadState(m_dir.filePath(QStringLiteral("missing.json"))).laterVersion.isEmpty());
+    }
+
+    // The Microsoft Store build (MSIX) is updated by the Store: the update check is off there, and nothing is requested.
+    void theStoreBuildHasNoUpdateCheck()
+    {
+        using clipitto::packaging::isPackaged;
+        using clipitto::packaging::packagedFromResult;
+        using clipitto::packaging::setPackagedOverrideForTest;
+        // GetCurrentPackageFullName(&len, nullptr): 122 (insufficient buffer) or 0 = packaged; 15700 = a plain exe.
+        QVERIFY(packagedFromResult(122));
+        QVERIFY(packagedFromResult(0));
+        QVERIFY(!packagedFromResult(15700));
+        QVERIFY(!packagedFromResult(5));
+        QVERIFY(!isPackaged()); // the test programs are plain exes (and this is not Windows on Linux)
+
+        setPackagedOverrideForTest(true);
+        QVERIFY(isPackaged());
+        QVERIFY(clipitto::Daemon::updatesDisabled());
+        selftest::Env env;
+        env.config.updateCheckAuto = true;
+        const QString text = selftest::updateCheckResult(env).detail;
+        QVERIFY2(text.contains(QLatin1String("Microsoft Store")), qPrintable(text));
+        QVERIFY(!text.contains(QLatin1String("cohenzco.com")));
+        setPackagedOverrideForTest(std::nullopt);
+        QVERIFY(!isPackaged());
+        QVERIFY(!clipitto::Daemon::updatesDisabled());
+        QVERIFY(selftest::updateCheckResult(env).detail.contains(QLatin1String("cohenzco.com")));
     }
 
     void aBuildWithoutAVersionSendsNothing()

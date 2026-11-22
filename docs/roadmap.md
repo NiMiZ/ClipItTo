@@ -192,8 +192,15 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
 21. **Source app and time on every row** (needed by the `app:` filter above and by auto grouping by app). ClipItTo stores the
     source app only for password copies today. Open: one more column and its cost for 50,000 copies, privacy of the list of apps
     (encrypted with the history), and platforms where the source cannot be found (Wayland outside GNOME).
-22. **Duplicate finder and "similar to this".** Copies that differ only by spaces, case or a trailing newline are shown together
-    with a way to keep one.
+22. **DONE (reduced): "Show similar copies".** Right-click a text copy › *Show similar copies* lists the copies whose text is
+    the same after trimming, collapsing white space and line breaks, and ignoring case, or very close (lengths within 10% and
+    at most 10% of the longer text edited), and *Keep this one, delete the others* removes the rest after asking, never
+    pinned, starred, grouped or noted copies, with one Undo. Newest 5,000 copies, first 5,000 characters each, 200 ms budget,
+    in slices on the GUI thread; passwords and pictures are never compared; only counts are logged. Code: `src/core/Similar.*`,
+    `src/ui/PopupSimilar.cpp`, `Repository::similarPage`; tests `tst_similar`; user view in `docs/usage.md`.
+    *Dropped:* the separate duplicates screen. Exact duplicates are already merged when a text is copied (one copy per text,
+    a re-copy moves it to the top; with *Ignore case* also copies that differ only in case), so there is little left for a
+    screen to list; what remains are near copies, which the action above handles one copy at a time.
 23. **Saved searches.** Pin a query such as `group:work since:today` as a button in the popup.
 24. **DONE: Regex search** behind `re:` (`re:^https?://.*\.pdf$`, also next to the filters: `group:work re:foo\d+`). Case-insensitive, `(?-i)`
     switches it off. Qt 6.4's `QRegularExpression` has no match time limit, so the pattern is compiled with PCRE2's own

@@ -13,7 +13,9 @@
 #include <QWidget>
 
 #include <functional>
+#include <memory>
 #include <optional>
+#include <vector>
 
 class QDialog;
 class QLabel;
@@ -152,6 +154,22 @@ public:
     QMenu* createPasteAsMenu(const Entry& entry, QWidget* parent);
     QAction* addPasteOnceItem(QMenu* menu, const QString& label, const Entry& entry); // the "Paste once" toggle, an item of the Paste as list
     void showQrCode(qint64 id);
+
+    // "Show similar copies" (roadmap 22, PopupSimilar.cpp): the list shows only the copies whose text is the same as
+    // copy `id`'s once normalised, or very close to it (see Similar.h). The scan runs in slices of a few ms on the GUI
+    // thread's event loop, newest copies first, and stops after similar::kBudgetMs of scanning (a note says so). A
+    // password or a picture is never compared (nothing happens for one). Esc, typing in the search box or closing the
+    // popup leaves the view.
+    void showSimilar(qint64 id);
+    void leaveSimilar() { endSimilar(true); }
+    bool similarActive() const { return m_similar != nullptr; }
+    bool similarScanning() const; // the scan has not finished yet
+    // "Keep this one, delete the others": asks ("Delete N similar copies and keep this one?"), then deletes the other
+    // copies of the view, except pinned, starred, grouped and noted ones (counted in the message). One Undo (Ctrl+Shift+Z).
+    void keepOnlyThis(qint64 keepId);
+    QToolButton* keepOneButton() const { return m_keepOneButton; }
+    // Tests: the scanning time allowed (default similar::kBudgetMs).
+    void setSimilarBudgetMs(int ms) { m_similarBudgetMs = ms; }
     static void fixMnemonics(QMenu* menu);
     void addKeyboardLayoutEntries(QMenu* menu, const QString& text);
     void addNumberBits(QMenu* target, const QString& text);
@@ -246,6 +264,10 @@ private:
     void forgetPasteOnce(qint64 id);
     void showUndoNotice();
     void endUndo();
+    struct SimilarScan;
+    void endSimilar(bool refreshList);
+    void similarStep();
+    void showSimilarRows();
     void openGroups();
     void toggleFavorite(qint64 id);
     void togglePin(qint64 id);
@@ -269,6 +291,10 @@ private:
     void placeOnScreen();
     void endSystemMove();
 
+    // First of all: event() reads these while the child widgets below are still being constructed (their ChildAdded
+    // events reach this object before the later members exist), so they must be initialised before any of them.
+    bool m_systemMove = false; // the compositor is moving us: don't hide on focus loss
+    bool m_pointerLeftDuringMove = false;
     db::Repository& m_repo;
     HistoryModel* m_model;
     SearchController* m_controller;
@@ -282,6 +308,12 @@ private:
     QToolButton* m_undoButton; // "Undo" after a Paste once removal, for kUndoMs
     QTimer* m_undoTimer;
     std::optional<db::Repository::Removed> m_undo;
+    std::vector<db::Repository::Removed> m_undoMore; // the other copies of one "keep this one, delete the others"
+    QString m_undoNotice; // the footer line while an Undo is on offer, when it is not the Paste once one
+    std::unique_ptr<SimilarScan> m_similar;
+    QTimer* m_similarTimer;
+    QToolButton* m_keepOneButton;
+    int m_similarBudgetMs = 200;
     int m_onceAskDelayMs = 250;
     bool m_askingDelete = false;
     Prompt m_groupPrompt;
@@ -318,8 +350,6 @@ private:
     std::optional<QPoint> m_lastPosition; // where it last closed
     QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss
-    bool m_systemMove = false; // the compositor is moving us: don't hide on focus loss
-    bool m_pointerLeftDuringMove = false;
     QTimer* m_moveEnd = nullptr; // ends the move (backstop, or shortly after the pointer is back)
     SystemMoveStarter m_systemMoveStarter;
     std::optional<Selection> m_restore; // reselected after the next refresh
