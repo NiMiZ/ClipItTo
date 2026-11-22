@@ -10,8 +10,9 @@ class SearchBar : public QLineEdit {
 public:
     explicit SearchBar(QWidget* parent = nullptr);
 
-    // Typing the keyword and a space (e.g. "p[] ") switches to a password search: what follows
-    // is kept here, never in the line edit, which shows "p[] ****" instead.
+    // Typing the keyword and a space (e.g. "p[] "), or "pw: " (always, whatever the keyword), switches to a
+    // password search: what follows is kept here, never in the line edit, which shows the prefix as typed and
+    // "****" instead.
     void setPasswordKeyword(const QString& keyword);
     QString passwordKeyword() const { return m_keyword; }
     bool isPasswordMode() const { return m_passwordMode; }
@@ -42,14 +43,18 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override; // no middle-click paste into a hidden password
 
 private:
-    QString prefix() const { return m_keyword + QLatin1Char(' '); }
+    // The password prefix (with its space) that `text` starts with: the keyword as typed, or "pw: " in any
+    // case; empty when it starts with neither.
+    QString matchPrefix(const QString& text) const;
     void onTextChanged(const QString& text);
     void showMasked(); // prefix + one '*' per character, cursor at the end
     void appendSecret(const QString& typed);
 
     QString m_keyword = QStringLiteral("p[]");
+    QString m_activePrefix; // the prefix of the running password search, as typed ("p[] " / "PW: ")
     QString m_secret;
     bool m_passwordMode = false;
     bool m_updating = false; // our own setText while masking

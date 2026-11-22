@@ -695,7 +695,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_passwordsInRecent->setToolTip(QStringLiteral("<p>%1</p>")
                                         .arg(tr("Password copies in the Passwords group also appear in the Recent list, "
                                                 "shown as asterisks (●●●●●●●●), never as text. Off: they appear only in "
-                                                "the group and in the %1 search.")
+                                                "the group and in the password search (%1 or pw:).")
                                                  .arg(config.passwordSearchKeyword.toHtmlEscaped())));
     passwordsForm->addRow(QString(), m_passwordsInRecent);
     connect(m_passwordsInGroup, &QCheckBox::toggled, this, &SettingsDialog::updatePasswordDependents);
@@ -1006,7 +1006,8 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     m_keyword->setMaxLength(16);
     m_keyword->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\S{1,16}")), m_keyword));
     m_keyword->setToolTip(tr("Type it in the search box with a space after it to search inside your password "
-                             "copies; what you type next is shown as asterisks."));
+                             "copies; what you type next is shown as asterisks. \"pw:\" with a space always works "
+                             "too, whatever you set here. Type /? in the search box for everything it understands."));
     passwordsForm->addRow(tr("Password search keyword:"), m_keyword);
     connect(m_setMaster, &QPushButton::clicked, this, [this] {
         if (m_passwordSupport.keeper && m_passwordSupport.keeper->isSetUp() && !m_passwordSupport.keeper->isOpen()) {

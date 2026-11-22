@@ -115,6 +115,10 @@ submenu; the result opens in a window and is pasted only if you choose *Paste* t
 Example: `star: budget since:1w`. Words and filters are all required. Anything else with a colon (a URL,
 `foo:bar`) is searched as ordinary text.
 
+**Help in the search box.** Type exactly `/?` (spaces around it are ignored) and the list shows what the box understands:
+the filters above, `re:`, password search with `pw:` or your own keyword, and the quoting rules. It is not a search: it reads
+nothing from your history, and Esc or any edit of the text brings the normal list back.
+
 **Regular expressions.** `re:` followed by a pattern searches with a regular expression (Qt / PCRE syntax), for example
 `re:^https?://.*\.pdf$` or `group:work re:invoice\s+\d{4}`. It combines with the filters and words above, which narrow the copies
 the pattern is tried on, in the same way. Details:
@@ -131,8 +135,9 @@ the pattern is tried on, in the same way. Details:
 - A pattern that is not complete or not valid (for example `re:(` while you are typing) shows a note, "not a valid pattern: ...",
   instead of results. Patterns starting with `(*` are not supported.
 - Results are listed newest first, like every other search. Matches are not highlighted.
-- Password copies are never searched inside: only their note and group can match (like an ordinary search). Use `p[]` to search
-  passwords. A picture is matched by its label ("Image 1920×1080"), note and group, not by the text read from it.
+- Password copies are never searched inside: only their note and group can match (like an ordinary search). Use `pw:` (or your password
+  keyword, `p[]` by default; see *Passwords*) to search passwords: type `pw: ` with a space, then the text, which is hidden.
+  A password search is its own mode: it ignores filters and `re:`. A picture is matched by its label ("Image 1920×1080"), note and group, not by the text read from it.
 - Nothing about the pattern or the copies it matched is written to the log, only that a regex search ran and whether it
   was ok, invalid or timed out.
 
