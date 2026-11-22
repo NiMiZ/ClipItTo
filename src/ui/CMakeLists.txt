@@ -4,6 +4,7 @@ add_library(clipitto_ui STATIC
     HistoryModel.cpp HistoryModel.h
     HistoryView.cpp HistoryView.h
     PopupWindow.cpp PopupWindow.h
+    PopupSimilar.cpp PopupSimilar.h
     PhoneWindow.cpp PhoneWindow.h
     QrImage.cpp QrImage.h
     Prompts.cpp Prompts.h

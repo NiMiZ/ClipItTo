@@ -160,6 +160,11 @@ public:
     std::optional<qint64> newestId();
     void remove(qint64 id);
 
+    // "Show similar copies" (roadmap 22): one page of text copies, newest first, for comparing. Never passwords or
+    // pictures (their rows are not read at all). `content` is cut to `maxChars` characters; note, group, star and pin
+    // are filled in (they decide what may be deleted). `offset` counts the text copies already read.
+    std::vector<Entry> similarPage(int offset, int limit, int maxChars);
+
     // --- Paste once (roadmap 17)
     // Marks a copy to be forgotten after its paste, or takes the mark off. Not in a backup.
     void setPasteOnce(qint64 id, bool once);
