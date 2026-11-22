@@ -123,9 +123,9 @@ Ordered by how much they would likely help, not by effort. Items marked **DONE**
     (`text/html` and RTF on Wayland and X11, `HTML Format` and `Rich Text Format` on Windows, `public.html`
     on macOS), and the writer putting both flavours on the clipboard. Encrypted history covers it too.
 15. **Previews for more kinds:** **DONE: colour swatch** (`#rrggbb`, `rgb()`...), **file-path list** (names and an icon;
-    files copied in Explorer or Finder are recorded as paths) **and QR code view** (right-click › *Show as QR code…*, to
-    scan with a phone; MIT library by Project Nayuki). Still open: code highlighting, thumbnails of copied picture
-    files, and files copied on GNOME (the extension reads text only).
+    files copied in Explorer or Finder are recorded as paths), **thumbnails of copied picture files and files copied on
+    GNOME** (see 30) **and QR code view** (right-click › *Show as QR code…*, to scan with a phone; MIT library by Project
+    Nayuki). Still open: code highlighting.
 16. **DONE: Auto grouping** (Settings › *Groups*; `auto_group`, **off by default**). ClipItTo learns from what you move into a
     group and, when it is turned on, files new copies in the group they match best. The groups are only ever the
     ones you made: it never creates a group, and a copy with no clear match stays where it is (in Recent, no group).
@@ -243,7 +243,24 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     *Clear*. Not in backups, not synced, nothing in `--status`, counts only in the log. *Not done:* "paste one after another" (the paste queue,
     item 4, is not on main; a queue is not a small, safe add-on), several selected copies (the popup has single selection), pictures,
     a Settings page (the window opens from the popup). Tests: `tst_snapshots`, `tst_panic`.
-30. **Thumbnails of copied picture files** and files copied on GNOME (the extension reads text only). Open items from previews.
+30. **DONE: Thumbnails of copied picture files, and files copied on GNOME.**
+    - *Thumbnails* (`src/ui/FileThumbnails.{h,cpp}`): a file list with a picture (suffix Qt reads here, not SVG; the first one
+      among the first 8 files) shows a thumbnail instead of the file icon, and a larger one (at most 128 px) on hover. Made
+      lazily when the row is painted, on a 2-thread pool (the GUI thread never opens a file), from the file as it is when the
+      popup opens (the cache is cleared on show), in an in-memory LRU of 64 (failures too, so a row is not retried at every
+      paint), never written or stored. Not decoded: over 50 MB or 80 megapixels (checked from the header), a missing or
+      moved file, a directory/pipe, a file that is not a picture despite its name, a network path (`//`, `\\`, `smb:`,
+      `/gvfs/`, NFS/CIFS/sshfs/... file systems on Linux): these keep the icon. A symlink is read as the one file it names.
+      Only counts and outcome classes are logged (`clipitto.thumbnails`), never a path or name.
+    - *GNOME*: the extension sends `x-special/gnome-copied-files` (always) or `text/uri-list` (when the copy has no plain text)
+      through the unchanged `Ingest(s, as)` with the file list as the text and a pseudo MIME type
+      `x-clipitto-files:gnome|uri-list` (like `x-clipitto-source:`; the extension drops any such type an app offers itself, and
+      the daemon accepts the label from GNOME Shell only). `preview::copiedFilesText` (Previews.cpp, unit-tested) decodes and
+      validates: `file:` URIs of this computer only, percent-decoding as UTF-8, no control characters (a `%0A` would forge a
+      line), no `.`/`..` parts, at most 200 files of 4096 characters and 64 KiB; anything else drops the whole copy. The
+      stored copy is the existing path-list text, so the row, preview, search and paste are the existing ones. Marked copies
+      are never read as files. Not verified on a real GNOME session (see `docs/untested.md`). wl-paste (KDE, wlroots) already
+      shows a `text/uri-list` copy, as its text is `file://` lines.
 
 ### Quality and trust
 31. **DONE: A self-test** (*Check this installation*): `clipitto --selftest` and Settings › General › *Check this installation…*

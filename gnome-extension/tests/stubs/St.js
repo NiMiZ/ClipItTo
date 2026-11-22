@@ -12,7 +12,8 @@ const clipboard = {
     },
     get_content(type, mimeType, callback) {
         state.contentReads.push(mimeType);
-        const data = mimeType === 'text/html' ? state.html[type] : state.content[type];
+        const data = state.mimeData[mimeType]?.[type] ??
+            (mimeType === 'text/html' ? state.html[type] : state.content[type]);
         callback(clipboard, data instanceof Uint8Array ? new GLib.Bytes(data) : null);
     },
     set_content(type, mimeType, bytes) {

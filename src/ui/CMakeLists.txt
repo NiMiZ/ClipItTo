@@ -1,5 +1,6 @@
 add_library(clipitto_ui STATIC
     AppIcon.cpp AppIcon.h
+    FileThumbnails.cpp FileThumbnails.h
     HistoryDelegate.cpp HistoryDelegate.h
     HistoryModel.cpp HistoryModel.h
     HistoryView.cpp HistoryView.h

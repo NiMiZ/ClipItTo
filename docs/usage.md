@@ -65,8 +65,21 @@ On GNOME (Wayland) it needs the updated extension (log out and in once after the
 `file://` links) shows a file icon and, for several files, the names (`report.pdf, notes.txt, +1 more`); a single path is shown in
 full (cut in the middle if long), since it may be just text copied from a chat or a terminal. The paths are still the text, so
 search and paste work on them. Files copied in a file manager that gives no text (Windows Explorer, macOS Finder) are
-recorded as their paths, which is what pasting them into a text box gives. Only paths and colours are looked at: the
-files are never opened or read, and the disk is not touched to draw the list.
+recorded as their paths, which is what pasting them into a text box gives. On GNOME (Wayland and X11) the shell extension
+also records files copied in Files (Nautilus): it hands the daemon the file list the clipboard holds
+(`x-special/gnome-copied-files`, or `text/uri-list` when the copy has no text of its own), and the daemon keeps only plain
+`file://` links to this computer, decoded to paths; a list with a remote location (`smb://`, another host), a `..` part, a
+control character in a name, more than 200 files or paths over 4096 characters is not recorded. Update the extension and the
+daemon together (log out and in again for the extension).
+
+**Thumbnails of picture files.** When a file list holds a picture (PNG, JPEG, GIF, BMP, WebP... whatever this computer's Qt
+reads; not SVG), its row shows a small thumbnail in place of the file icon, and hovering the row shows it larger (up to
+128 pixels). The thumbnail is made in the background from the file as it is when the popup opens, kept in memory only (the
+last 64, forgotten when the popup opens again) and never saved or stored in the history. Only the picture files themselves are
+opened (for a list, the first picture among the first eight files): a file that is missing, moved, not really a picture, over 50 MB or
+over 80 megapixels, or on a network share (`\\server\share`, `smb://`, a mounted NFS/CIFS/sshfs folder) keeps the file icon.
+Nothing about the files is logged. Without a picture file in the list, the files are not opened or read, and the disk is not
+touched to draw the list.
 
 **QR code.** Right-click a text copy › *Show as QR code…* shows it as a QR code you scan with your phone's camera:
 a link to open there, Wi-Fi details (`WIFI:T:WPA;S:name;P:password;;`), a short note. It is drawn on this computer

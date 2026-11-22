@@ -4,6 +4,7 @@
 #include "AppIcon.h"
 #include "Config.h"
 #include "GroupPath.h"
+#include "FileThumbnails.h"
 #include "HistoryDelegate.h"
 #include "HistoryView.h"
 #include "MacApp.h"
@@ -219,7 +220,13 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     connect(m_moveEnd, &QTimer::timeout, this, &PopupWindow::endSystemMove);
 
     m_view->setHistoryModel(m_model);
-    m_view->setItemDelegate(new HistoryDelegate(m_view));
+    auto* delegate = new HistoryDelegate(m_view);
+    // Thumbnails of picture files in a file list: made in the background when a row is painted, kept in memory only.
+    m_fileThumbnails = new FileThumbnails(this);
+    delegate->setThumbnails(m_fileThumbnails);
+    m_view->setFileThumbnails(m_fileThumbnails);
+    connect(m_fileThumbnails, &FileThumbnails::ready, m_view->viewport(), qOverload<>(&QWidget::update));
+    m_view->setItemDelegate(delegate);
 
     const QIcon gear = QIcon::fromTheme(QStringLiteral("preferences-system"),
                                         QIcon::fromTheme(QStringLiteral("emblem-system")));
@@ -2448,12 +2455,14 @@ void PopupWindow::changeEvent(QEvent* event)
 void PopupWindow::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
+    m_fileThumbnails->clear(); // a file may have changed or gone since the popup was last open
     emit visibilityChanged(true);
 }
 
 void PopupWindow::hideEvent(QHideEvent* event)
 {
     QWidget::hideEvent(event);
+    m_fileThumbnails->clear(); // nothing of the files stays in memory while the popup is closed
     // Nothing of a password stays on screen or in the search box once closed.
     m_revealTimer->stop();
     m_model->clearRevealed();

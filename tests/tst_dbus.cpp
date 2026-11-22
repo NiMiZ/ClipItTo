@@ -191,6 +191,38 @@ private slots:
         QDBusConnection::disconnectFromBus(QStringLiteral("gnome-shell"));
     }
 
+    // Files copied in Nautilus (roadmap 30): the extension's Ingest carries the clipboard's file list and a pseudo MIME type;
+    // the daemon stores the decoded paths as a file-list copy. Same method and signature as any text copy.
+    void ingestOfCopiedFilesOnlyFromGnomeShell()
+    {
+        const QStringList types{QStringLiteral("x-special/gnome-copied-files"), QStringLiteral("x-clipitto-files:gnome")};
+        const QVariantList args{QStringLiteral("copy\nfile:///home/me/a%20b.png\nfile:///home/me/c.txt"), types};
+        const qint64 before = m_daemon->repository()->count();
+
+        // Any other session client: refused.
+        QCOMPARE(call(QStringLiteral("Ingest"), args).type(), QDBusMessage::ErrorMessage);
+        QCOMPARE(m_daemon->repository()->count(), before);
+
+        QDBusConnection shell = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("gnome-shell-files"));
+        QVERIFY(shell.registerService(QStringLiteral("org.gnome.Shell")));
+        const auto fromShell = [&](const QVariantList& arguments) {
+            auto msg = QDBusMessage::createMethodCall(QString::fromLatin1(clipitto::ipc::kServiceName),
+                                                      QString::fromLatin1(clipitto::ipc::kObjectPath),
+                                                      QString::fromLatin1(clipitto::ipc::kInterface), QStringLiteral("Ingest"));
+            msg.setArguments(arguments);
+            shell.asyncCall(msg);
+        };
+        // A list that is anything but local `file:` URIs is dropped, not stored as text.
+        fromShell({QStringLiteral("copy\nsmb://server/share/a.png"), types});
+        fromShell({QStringLiteral("copy\nfile:///home/me/a%0Ab.png"), types});
+        fromShell(args);
+        QTRY_COMPARE(m_daemon->repository()->count(), before + 1);
+        QCOMPARE(m_daemon->repository()->recent(1, false).front().content,
+                 QStringLiteral("/home/me/a b.png\n/home/me/c.txt"));
+        shell.unregisterService(QStringLiteral("org.gnome.Shell"));
+        QDBusConnection::disconnectFromBus(QStringLiteral("gnome-shell-files"));
+    }
+
     // "Check this installation" over the bus: a delayed reply with the report (roadmap 31). The live capture check puts a
     // test text on the clipboard; it must be gone from the history again afterwards.
     void selfTestAnswersWithTheReportAndLeavesNoTestCopy()
