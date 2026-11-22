@@ -56,6 +56,15 @@ before tagging or when Actions is short of minutes. Files go to `dist/<version>/
 the snap step (snapcraft's LXD container had no network in that session), the Windows script, the macOS script, `--publish`,
 `--sums` and `--upload`. Treat those as unverified and read the script before the first real use.
 
+## Microsoft Store package (MSIX, optional, spike)
+
+The Windows job also builds `ClipItTo-<version>.msix` (unsigned, for Partner Center; Microsoft signs it) from the same staged
+files as the installer, with `scripts/make-msix.ps1`. It is the artifact `clipitto-windows-msix` on tag builds and manual runs,
+never part of the GitHub Release, and nothing uploads it for you: you upload it in Partner Center. The version is
+`X.Y.Z.0` from `CMakeLists.txt`, so a release bump needs nothing extra. The package identity comes from the repository
+variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`, `MSIX_PUBLISHER_DISPLAY_NAME` (placeholders until the Partner Center account
+exists). Setup, sideload testing, policy risks and what is unverified: [microsoft-store.md](microsoft-store.md).
+
 ## Why builds fail
 
 - **"Artifact storage quota has been hit"** at the last step of a build job: GitHub's free storage for build files is

@@ -476,7 +476,7 @@ Daemon::StartResult Daemon::start(QString* error)
     applyPanicShortcut();
     // The automatic check is a setting that is off unless the user turned it on; read when the timer fires.
     QTimer::singleShot(m_options.updateAutoDelayMs, this, [this] {
-        if (m_config.updateCheckAuto) {
+        if (m_config.updateCheckAuto && !updatesDisabled()) {
             updates()->autoCheck(true);
         }
     });

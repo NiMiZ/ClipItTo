@@ -487,6 +487,20 @@ private slots:
         QCOMPARE(checks, 1);
     }
 
+    void theStoreBuildShowsNoUpdateRows()
+    {
+        DialogEnv env(false);
+        auto d = env.open(Config{});
+        QVERIFY(!d->updateButton()->isHidden());
+        QVERIFY(!d->updateAutoBox()->isHidden());
+        UpdateSupport support;
+        support.hidden = true; // the Microsoft Store (MSIX) build: the Store updates the app
+        d->setUpdates(support);
+        QVERIFY(d->updateButton()->isHidden());
+        QVERIFY(d->updateAutoBox()->isHidden());
+        QVERIFY(!d->updateButton()->isEnabled());
+    }
+
     void theSupportButtonOpensAPageOnlyWhenClicked()
     {
         DialogEnv env(false);

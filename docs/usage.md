@@ -422,6 +422,8 @@ have not already chosen *Later* for that version; the choice is kept in a small 
   date (Y)*, or *Could not check for updates. Try again later.* ClipItTo never downloads, installs or runs anything itself.
 - The log says only that a check ran and how it ended (update available, up to date, failed).
 - In the config file: `update_check_auto = false` (the default).
+- In the Microsoft Store version (an MSIX package, see [microsoft-store.md](microsoft-store.md)) there is no update check at all:
+  the Store updates the app, the menu item and the Settings rows are not shown, and nothing connects to the internet.
 
 ## When something does not work: Check this installation
 
