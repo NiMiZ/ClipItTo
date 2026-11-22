@@ -34,6 +34,7 @@ class Repository;
 
 namespace clipitto::ui {
 
+class FileThumbnails;
 class HistoryView;
 class SearchBar;
 class SearchController;
@@ -203,6 +204,12 @@ public:
     // Deletes the history after asking: unsaved copies, or with `everything` also starred,
     // pinned and grouped ones (groups stay). The Clear button and its menu call these.
     void clearHistory(bool everything);
+    // Snapshots (roadmap 29, docs/snapshots-design.md). The menus call these. Each asks for a name where one is needed and
+    // says what it did, including how many copies were skipped (passwords, pictures...).
+    void saveCopyAsSnapshot(qint64 id);
+    void addCopyToSnapshot(qint64 id, qint64 snapshotId);
+    void saveGroupAsSnapshot(const QString& path);
+    void openSnapshots(); // the Snapshots window (modal, like Settings' boxes)
     QWidget* dragHandle() const { return m_dragHandle; }
 
     // Hands a drag of the popup to the compositor (Wayland, where only it may move windows).
@@ -303,6 +310,7 @@ private:
     QToolButton* m_clearButton;
     QWidget* m_dragHandle; // the app name: drag it to move the popup
     HistoryView* m_view;
+    FileThumbnails* m_fileThumbnails = nullptr; // thumbnails of picture files in file lists (child)
     QLabel* m_footer;
     QLabel* m_searchNote; // regex search: "not a valid pattern: ..." / "stopped after 0.3 s: ..."; hidden otherwise
     QToolButton* m_undoButton; // "Undo" after a Paste once removal, for kUndoMs

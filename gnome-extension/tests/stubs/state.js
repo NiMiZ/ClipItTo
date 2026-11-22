@@ -131,6 +131,7 @@ export function resetState() {
     state.textReads = 0;
     state.contentReads = [];
     state.html = {};
+    state.mimeData = {}; // {mimeType: {clipboardType: Uint8Array}} for get_content of other formats
     state.clipboardSet = [];
     state.activated = [];
     state.moved = [];

@@ -3,12 +3,16 @@
 #include "ControlAdaptor.h"
 #include "ClipFilter.h"
 #include "DbusNames.h"
+#include "Previews.h"
 
 #include <QDBusConnectionInterface>
 #include <QDBusError>
 #include <QDebug>
+#include <QLoggingCategory>
 
 namespace clipitto::ipc {
+
+Q_LOGGING_CATEGORY(lcIpcFiles, "clipitto.ipc.files")
 
 DbusControlChannel::DbusControlChannel(QDBusConnection bus, QObject* parent)
     : ControlChannel(parent)
@@ -101,6 +105,21 @@ void DbusControlChannel::Ingest(const QString& text, const QStringList& mimeType
     // extension may hand those in, so other programs can't plant "passwords".
     if (ClipFilter::isSensitive(mimeTypes) && !calledFromShell("Ingest of a marked copy")) {
         sendErrorReply(QDBusError::AccessDenied, QStringLiteral("marked copies are accepted from GNOME Shell only"));
+        return;
+    }
+    if (preview::hasFilesMimeType(mimeTypes)) {
+        // Files copied in Nautilus: the extension sends the clipboard's file list as it is, with a pseudo MIME type
+        // naming the format; the paths are read (and refused when anything is odd) here, where they can be tested.
+        if (!calledFromShell("Ingest of a file list")) {
+            sendErrorReply(QDBusError::AccessDenied, QStringLiteral("file lists are accepted from GNOME Shell only"));
+            return;
+        }
+        const QString paths = preview::copiedFilesText(text);
+        if (paths.isEmpty()) {
+            qCDebug(lcIpcFiles) << "copied files refused (not a plain list of local files, or too many)"; // no paths
+            return;
+        }
+        emit ingestRequested(paths, preview::withoutFilesMimeType(mimeTypes));
         return;
     }
     emit ingestRequested(text, mimeTypes);

@@ -4,6 +4,8 @@
 #include <QRegularExpression>
 #include <QUrl>
 
+#include <algorithm>
+
 namespace clipitto::preview {
 
 namespace {
@@ -142,6 +144,78 @@ QStringList filePaths(const QString& text)
         }
     }
     return paths;
+}
+
+QString copiedFilesText(const QString& raw)
+{
+    constexpr int kMaxPathLength = 4096;
+    if (raw.size() > 64 * 1024) {
+        return {};
+    }
+    QStringList paths;
+    bool first = true;
+    for (const QString& part : raw.split(QLatin1Char('\n'))) {
+        const QString line = part.trimmed(); // also drops the CR of a CRLF list
+        if (first) {
+            first = false;
+            // Nautilus: the action comes first.
+            if (line == QLatin1String("copy") || line == QLatin1String("cut")) {
+                continue;
+            }
+        }
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+            continue;
+        }
+        if (!line.startsWith(QLatin1String("file:"), Qt::CaseInsensitive)) {
+            return {};
+        }
+        QUrl url(line, QUrl::StrictMode);
+        const bool here = url.host().isEmpty() || url.host() == QLatin1String("localhost");
+        if (!url.isValid() || !url.isLocalFile() || !here || url.hasQuery() || url.hasFragment()) {
+            return {};
+        }
+        url.setHost(QString()); // file://localhost/x is /x, not a share called localhost
+        const QString path = url.toLocalFile();
+        if (path.isEmpty() || path.size() > kMaxPathLength || !path.startsWith(QLatin1Char('/'))) {
+            return {};
+        }
+        for (const QChar c : path) {
+            if (c.unicode() < 0x20 || c.unicode() == 0x7f || c == QChar(0xFFFD)) {
+                return {}; // a newline would forge a line; U+FFFD means invalid UTF-8
+            }
+        }
+        for (const QString& name : path.split(QLatin1Char('/'))) {
+            if (name == QLatin1String("..") || name == QLatin1String(".")) {
+                return {};
+            }
+        }
+        paths << path;
+        if (paths.size() > kMaxFiles) {
+            return {};
+        }
+    }
+    return paths.join(QLatin1Char('\n'));
+}
+
+namespace {
+const QString kFilesPrefix = QStringLiteral("x-clipitto-files:");
+}
+
+QString filesMimeType(const QString& format)
+{
+    return kFilesPrefix + format;
+}
+
+bool hasFilesMimeType(const QStringList& mimeTypes)
+{
+    return std::any_of(mimeTypes.begin(), mimeTypes.end(),
+                       [](const QString& type) { return type.startsWith(kFilesPrefix); });
+}
+
+QStringList withoutFilesMimeType(QStringList mimeTypes)
+{
+    mimeTypes.removeIf([](const QString& type) { return type.startsWith(kFilesPrefix); });
+    return mimeTypes;
 }
 
 QString fileSummary(const QStringList& paths)

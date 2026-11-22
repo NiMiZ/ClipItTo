@@ -5,7 +5,8 @@
 // things for the ClipItTo daemon:
 //   - reports every clipboard change to the daemon (io.github.nimiz.ClipItTo.Ingest, or
 //     IngestImage for a copied picture); a copy marked by a password manager only when the
-//     daemon keeps password copies (WantsPasswords), with the app it came from;
+//     daemon keeps password copies (WantsPasswords), with the app it came from; files copied in a file manager
+//     are sent as their list (Ingest, labelled x-clipitto-files:<format>) for the daemon to read;
 //   - exports io.github.nimiz.ClipItTo.Shell so the daemon can focus its popup (placing it
 //     where the user's popup_position says: a Wayland client cannot place its own window),
 //     set the clipboard and paste;
@@ -68,6 +69,11 @@ const SENSITIVE_MIME_TYPES = [
     'application/x-nspasteboard-concealed-type',
 ];
 const X11_TEXT_TARGETS = ['UTF8_STRING', 'STRING', 'TEXT', 'COMPOUND_TEXT'];
+// Files copied in a file manager: Nautilus offers the first (and a uri-list too); other managers only the second.
+// The daemon reads the list (Previews.cpp copiedFilesText: decoding, validation, caps); this only fetches and labels it.
+const FILES_FORMATS = {'x-special/gnome-copied-files': 'gnome', 'text/uri-list': 'uri-list'};
+const FILES_PREFIX = 'x-clipitto-files:';
+const MAX_FILES_BYTES = 64 * 1024;
 // Names the app a password copy came from, for its default note (see ClipFilter::sourceApp).
 const SOURCE_PREFIX = 'x-clipitto-source:';
 
@@ -91,6 +97,23 @@ export function hasPlainText(mimeTypes) {
 export function imageType(mimeTypes) {
     const lower = mimeTypes.map(type => type.toLowerCase());
     return IMAGE_TYPES.find(type => lower.includes(type)) ?? null;
+}
+
+// The file-list format to fetch ('x-special/gnome-copied-files' always; 'text/uri-list' only when the copy has no plain
+// text of its own, as with a link dragged from a browser), or null for an ordinary copy.
+export function filesType(mimeTypes) {
+    const lower = mimeTypes.map(type => type.toLowerCase());
+    if (lower.includes('x-special/gnome-copied-files'))
+        return 'x-special/gnome-copied-files';
+    if (lower.includes('text/uri-list') && !hasPlainText(mimeTypes))
+        return 'text/uri-list';
+    return null;
+}
+
+// What the daemon is told the copy offers: the owner's types without a files label of its own (an app can't claim
+// "these are files"), plus ours for the format that was fetched.
+export function filesMimeTypes(mimeTypes, type) {
+    return [...mimeTypes.filter(t => !t.startsWith(FILES_PREFIX)), FILES_PREFIX + FILES_FORMATS[type]];
 }
 
 // The app's name for a window ("KeePassXC"), or its WM_CLASS; '' when unknown.
@@ -230,6 +253,11 @@ export default class ClipItToExtension extends Extension {
             this._sendImage(stType, picture, mimeTypes);
             return;
         }
+        const files = stType === St.ClipboardType.CLIPBOARD ? filesType(mimeTypes) : null;
+        if (files) {
+            this._sendFiles(stType, files, mimeTypes);
+            return;
+        }
         if (!hasText(mimeTypes))
             return;
 
@@ -288,6 +316,23 @@ export default class ClipItToExtension extends Extension {
                         Gio.DBusCallFlags.NO_AUTO_START);
                 });
             });
+    }
+
+    // Copied files: the list is sent as it is (the daemon decodes, validates and caps it) as the text of an Ingest call,
+    // labelled with a pseudo MIME type for its format, so the D-Bus signature stays the same. (An older daemon, which
+    // does not know the label, would store the raw list as text: update the daemon with the extension.)
+    _sendFiles(stType, type, mimeTypes) {
+        St.Clipboard.get_default().get_content(stType, type, (_clipboard, bytes) => {
+            const size = bytes?.get_size() ?? 0;
+            // The clipboard may have changed since the types were read: only the same kinds of data, none marked.
+            const now = this._selection?.get_mimetypes(Meta.SelectionType.SELECTION_CLIPBOARD) ?? [];
+            const same = now.length === mimeTypes.length && now.every((t, i) => t === mimeTypes[i]);
+            if (!same || isSensitive(now) || size === 0 || size > MAX_FILES_BYTES)
+                return;
+            const text = new TextDecoder().decode(bytes.toArray());
+            this._callDaemon('Ingest', new GLib.Variant('(sas)', [text, filesMimeTypes(mimeTypes, type)]),
+                Gio.DBusCallFlags.NO_AUTO_START);
+        });
     }
 
     _sendImage(stType, mimeType, mimeTypes) {

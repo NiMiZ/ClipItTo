@@ -8,6 +8,7 @@ class QKeyEvent;
 
 namespace clipitto::ui {
 
+class FileThumbnails;
 class HistoryModel;
 
 // The popup's list: copies in sections plus the expandable group tree. The delegate draws
@@ -33,6 +34,8 @@ public:
     QString emptyText() const { return m_emptyText; }
     // The larger preview of a picture row, shown on hover (null until first shown).
     QWidget* imagePreview() const { return m_preview; }
+    // Thumbnails of picture files in a file list, for the hover preview (not owned).
+    void setFileThumbnails(FileThumbnails* thumbnails) { m_thumbnails = thumbnails; }
 
 signals:
     void focusSearchRequested(); // Up on the first row
@@ -63,7 +66,8 @@ private:
     HistoryModel* m_model = nullptr;
     QString m_emptyText;
     bool m_emptyAsList = false;
-    void showImagePreview(const QModelIndex& index, const QPoint& globalPos);
+    void showImagePreview(const QModelIndex& index, const QPoint& globalPos, const QPixmap& pixmap);
+    FileThumbnails* m_thumbnails = nullptr;
     void hideImagePreview();
     QWidget* m_preview = nullptr; // a QLabel in a tooltip-style window
     QPersistentModelIndex m_previewIndex;

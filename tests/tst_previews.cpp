@@ -75,6 +75,69 @@ private slots:
         QCOMPARE(filePaths(text), paths);
     }
 
+    void copiedFiles_data()
+    {
+        QTest::addColumn<QString>("raw");
+        QTest::addColumn<QString>("text");
+        QTest::newRow("nautilus copy") << "copy\nfile:///home/me/a.png\nfile:///home/me/b.txt"
+                                       << "/home/me/a.png\n/home/me/b.txt";
+        QTest::newRow("nautilus cut") << "cut\nfile:///home/me/a.png" << "/home/me/a.png";
+        QTest::newRow("percent escapes") << "copy\nfile:///home/me/a%20b%C3%A9.png" << QString::fromUtf8("/home/me/a bé.png");
+        QTest::newRow("percent hash and percent") << "copy\nfile:///home/me/100%25%20%23x.png" << "/home/me/100% #x.png";
+        QTest::newRow("uri-list, CRLF and comments") << "# copied\r\nfile:///tmp/x.txt\r\nfile://localhost/tmp/y.txt\r\n"
+                                                     << "/tmp/x.txt\n/tmp/y.txt";
+        QTest::newRow("no trailing newline, blank lines") << "copy\n\nfile:///a/b.png\n\n" << "/a/b.png";
+        QTest::newRow("upper case scheme") << "FILE:///a/b.png" << "/a/b.png";
+        QTest::newRow("a file called copy is not the action") << "file:///home/me/copy" << "/home/me/copy";
+        QTest::newRow("action only") << "copy" << "";
+        QTest::newRow("empty") << "" << "";
+        QTest::newRow("remote host") << "copy\nfile://server/share/a.png" << "";
+        QTest::newRow("smb") << "copy\nsmb://server/share/a.png" << "";
+        QTest::newRow("one remote entry refuses all") << "copy\nfile:///a/b.png\nsmb://server/c.png" << "";
+        QTest::newRow("https") << "https://example.org/a.png" << "";
+        QTest::newRow("a plain path is not a uri") << "copy\n/home/me/a.png" << "";
+        QTest::newRow("dot dot") << "copy\nfile:///home/me/../../etc/passwd" << "";
+        QTest::newRow("encoded dot dot") << "copy\nfile:///home/me/%2e%2e/x" << "";
+        QTest::newRow("dot part") << "copy\nfile:///home/./me/x" << "";
+        QTest::newRow("encoded newline forges a line") << "copy\nfile:///home/me/a%0A/etc/passwd" << "";
+        QTest::newRow("encoded carriage return") << "copy\nfile:///home/me/a%0Db" << "";
+        QTest::newRow("encoded nul") << "copy\nfile:///home/me/a%00b" << "";
+        QTest::newRow("invalid utf-8 escape") << "copy\nfile:///home/me/%FF%FEx.png" << "";
+        QTest::newRow("query") << "copy\nfile:///home/me/a.png?x=1" << "";
+        QTest::newRow("fragment") << "copy\nfile:///home/me/a.png#x" << "";
+        QTest::newRow("no scheme slashes") << "copy\nfile:home/me/a.png" << "";
+        QTest::newRow("too long a path") << "copy\nfile:///" + QString(5000, QLatin1Char('a')) << "";
+        QTest::newRow("too much input") << "copy\nfile:///a/b\n" + QString(70000, QLatin1Char('\n')) << "";
+    }
+    void copiedFiles()
+    {
+        QFETCH(QString, raw);
+        QFETCH(QString, text);
+        QCOMPARE(copiedFilesText(raw), text);
+        // What comes out is a list the row understands (every line a path), unless it is one single-component path.
+        if (!text.isEmpty()) {
+            QCOMPARE(filePaths(text).join(QLatin1Char('\n')), text);
+        }
+    }
+    void copiedFilesCapsTheCount()
+    {
+        QStringList lines{QStringLiteral("copy")};
+        for (int i = 0; i < 200; ++i) {
+            lines << QStringLiteral("file:///a/f%1").arg(i);
+        }
+        QCOMPARE(copiedFilesText(lines.join(QLatin1Char('\n'))).split(QLatin1Char('\n')).size(), 200);
+        lines << QStringLiteral("file:///a/one-more");
+        QVERIFY(copiedFilesText(lines.join(QLatin1Char('\n'))).isEmpty());
+    }
+    void filesMimeTypeIsLikeTheSourceLabel()
+    {
+        const QStringList types{QStringLiteral("text/uri-list"), filesMimeType(QStringLiteral("gnome"))};
+        QVERIFY(hasFilesMimeType(types));
+        QVERIFY(!hasFilesMimeType({QStringLiteral("text/plain")}));
+        QCOMPARE(withoutFilesMimeType(types), QStringList{QStringLiteral("text/uri-list")});
+        QCOMPARE(filesMimeType(QStringLiteral("uri-list")), QStringLiteral("x-clipitto-files:uri-list"));
+    }
+
     void summaryNamesTheFirstFiles()
     {
         QCOMPARE(fileSummary({"/a/b.txt"}), QStringLiteral("/a/b.txt")); // one path: all of it

@@ -192,7 +192,8 @@ public:
     qint64 restore(const Removed& removed);
     // Deletes the history: unsaved copies (text and pictures) only, or with `everything` also
     // starred, pinned and grouped ones. Groups themselves stay. Returns the number deleted.
-    qint64 clearHistory(bool everything);
+    // `alsoSnapshots` (the panic action, Wipe everything) deletes every snapshot in the same transaction; Clear leaves them.
+    qint64 clearHistory(bool everything, bool alsoSnapshots = false);
 
     // Deletes the oldest unsaved text entries so at most maxUnsaved remain. Returns the number
     // deleted. Images have their own limit (pruneImages).
@@ -316,6 +317,58 @@ public:
     // The hash that identifies `text` as a copy, under the current choice.
     QString textHash(const QString& text) const;
 
+    // --- Snapshots (roadmap 29, docs/snapshots-design.md): named sets of text copies that keep their own text in the
+    // history file (so they are encrypted with it). Never a password copy, picture or Paste once copy.
+    static constexpr int kMaxSnapshots = 50;
+    static constexpr int kMaxSnapshotItems = 500;
+    static constexpr int kMaxSnapshotNameChars = 80;
+    static constexpr qint64 kMaxSnapshotItemBytes = 1024 * 1024; // UTF-8 bytes of one copy
+    struct SnapshotInfo {
+        qint64 id = 0;
+        QString name;
+        int items = 0;
+        QDateTime created;
+    };
+    enum class SnapshotStatus { Done, NameEmpty, NameTooLong, NameTaken, TooManySnapshots, Missing, Nothing };
+    struct SnapshotResult {
+        SnapshotStatus status = SnapshotStatus::Nothing;
+        qint64 id = 0;
+        int saved = 0; // copies newly put in
+        int alreadyIn = 0; // the same text was in the snapshot
+        int skippedPasswords = 0;
+        int skippedPictures = 0;
+        int skippedOnce = 0; // Paste once copies
+        int skippedTooLarge = 0; // over kMaxSnapshotItemBytes
+        int skippedOverLimit = 0; // beyond kMaxSnapshotItems
+        int skippedTotal() const
+        {
+            return skippedPasswords + skippedPictures + skippedOnce + skippedTooLarge + skippedOverLimit;
+        }
+    };
+    // A new snapshot from these copies in this order (a group's: groupedEntries order). Nothing is created when nothing
+    // can be saved (status Nothing, with the counts of what was skipped).
+    SnapshotResult createSnapshot(const QString& name, const std::vector<qint64>& ids);
+    // From a group and its sub-groups.
+    SnapshotResult createSnapshotFromGroup(const QString& name, const QString& group);
+    // Adds copies to an existing snapshot (at its end).
+    SnapshotResult addToSnapshot(qint64 snapshotId, const std::vector<qint64>& ids);
+    std::vector<SnapshotInfo> snapshots(); // newest first
+    qint64 countSnapshots();
+    SnapshotStatus renameSnapshot(qint64 id, const QString& name);
+    bool deleteSnapshot(qint64 id); // pages zeroed, log folded in
+    struct SnapshotRestoreOptions {
+        bool savedOrder = false; // the first copy of the snapshot ends on top; else the copy made last
+        bool intoGroup = false; // new copies and unfiled existing ones join a group named after the snapshot
+    };
+    struct SnapshotRestoreResult {
+        bool ok = false;
+        int added = 0;
+        int alreadyThere = 0; // moved to the top, not duplicated
+        int filed = 0; // copies put in the group
+        QString group;
+    };
+    SnapshotRestoreResult restoreSnapshot(qint64 id, const SnapshotRestoreOptions& options);
+
     // --- Auto grouping (AutoGroup.h). Learning happens in setGroup, only while `on` (auto_group).
     struct AutoExamples {
         QString group;
@@ -360,6 +413,8 @@ private:
     Change roomForStar(const QString& group);
     void learn(const QString& group, const QString& text, int delta); // delta < 0 unlearns
     void ensureAutoSeeded();
+    SnapshotResult storeInSnapshot(qint64 snapshotId, const std::vector<qint64>& ids);
+    static QString cleanSnapshotName(const QString& name, SnapshotStatus* status);
 
     Db& m_db;
     Clock m_clock;
