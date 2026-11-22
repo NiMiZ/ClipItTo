@@ -139,6 +139,11 @@ private slots:
 
     void aSymlinkToADirectoryOrBrokenIsNotAPicture()
     {
+        // A Windows shortcut (.lnk) is not a picture by its name: it keeps the icon.
+        QVERIFY(!FileThumbnails::looksLikeImage(QStringLiteral("C:\\Users\\me\\shot.png.lnk")));
+#ifdef Q_OS_WIN
+        QSKIP("QFile::link makes a .lnk shortcut here, not a symbolic link");
+#endif
         const QString real = m_dir.filePath(QStringLiteral("real.png"));
         QVERIFY(makeImage(real, 10, 10, "PNG"));
         const QString link = m_dir.filePath(QStringLiteral("link.png"));
