@@ -752,6 +752,14 @@ jobs:
             dist/SHA256SUMS
           fail_on_unmatched_files: true
           generate_release_notes: true
+      # The project page and the app's "Check for updates" (cohenzco.com) read the newest release from GitHub and keep
+      # it for an hour; this asks the site to read it now. No secret is involved (the site only re-reads the public
+      # release, once a minute at most), and a failure never fails the release: the site catches up on its own.
+      - name: Tell cohenzco.com there is a new version
+        continue-on-error: true
+        run: |
+          curl -fsS -m 30 --retry 2 --retry-delay 5 -X POST https://cohenzco.com/api/apps/clipitto/refresh \
+            || echo "::warning title=cohenzco.com::the site could not be refreshed; it reads the new release within an hour"
 
   # The snap goes to the Snap Store (the Ubuntu App Center), channel "candidate", when the repository has the
   # SNAPCRAFT_STORE_CREDENTIALS secret (snapcraft export-login, see docs/snap-store.md). Promote to "stable" in
