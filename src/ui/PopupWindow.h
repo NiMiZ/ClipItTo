@@ -103,6 +103,7 @@ public:
     bool undoPasteOnce();
     bool undoPending() const { return m_undo.has_value(); }
     QToolButton* undoButton() const { return m_undoButton; }
+    QLabel* searchNote() const { return m_searchNote; }
     static constexpr int kUndoMs = 10000;
     void setUndoMs(int ms); // tests shorten it
     void setQrView(QrView view) { m_qrView = std::move(view); }
@@ -303,6 +304,7 @@ private:
     QWidget* m_dragHandle; // the app name: drag it to move the popup
     HistoryView* m_view;
     QLabel* m_footer;
+    QLabel* m_searchNote; // regex search: "not a valid pattern: ..." / "stopped after 0.3 s: ..."; hidden otherwise
     QToolButton* m_undoButton; // "Undo" after a Paste once removal, for kUndoMs
     QTimer* m_undoTimer;
     std::optional<db::Repository::Removed> m_undo;

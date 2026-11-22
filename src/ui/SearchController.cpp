@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "HistoryModel.h"
 #include "PasswordKeeper.h"
+#include "RegexSearch.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -19,8 +20,13 @@ SearchController::SearchController(db::Repository& repo, HistoryModel& model, QO
 {
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(100);
-    connect(&m_debounce, &QTimer::timeout, this, &SearchController::run);
+    connect(&m_debounce, &QTimer::timeout, this, [this] { run(); });
+    m_regexTimer.setSingleShot(true);
+    m_regexTimer.setInterval(0); // after the events that are already waiting (a keystroke comes first)
+    connect(&m_regexTimer, &QTimer::timeout, this, &SearchController::stepRegex);
 }
+
+SearchController::~SearchController() = default;
 
 void SearchController::applyConfig(const Config& config)
 {
@@ -34,6 +40,7 @@ void SearchController::applyConfig(const Config& config)
 void SearchController::setQuery(const QString& query)
 {
     m_query = query;
+    cancelRegex(); // the next keystroke ends a scan that is still going
     if (m_query.trimmed().isEmpty()) {
         m_debounce.stop();
         run();
@@ -44,6 +51,7 @@ void SearchController::setQuery(const QString& query)
 
 void SearchController::setPasswordQuery(const QString& query, bool active)
 {
+    cancelRegex();
     PasswordVault::wipe(m_passwordQuery);
     m_passwordSearch = active;
     m_passwordQuery = active ? query : QString();
@@ -58,7 +66,7 @@ void SearchController::setPasswordQuery(const QString& query, bool active)
 void SearchController::refresh()
 {
     m_debounce.stop();
-    run();
+    run(/*synchronous=*/true);
 }
 
 void SearchController::setSuspended(bool suspended)
@@ -66,12 +74,102 @@ void SearchController::setSuspended(bool suspended)
     m_suspended = suspended;
     if (suspended) {
         m_debounce.stop();
+        cancelRegex();
     }
 }
 
-void SearchController::run()
+void SearchController::cancelRegex()
+{
+    m_regexTimer.stop();
+    m_scan.reset();
+}
+
+void SearchController::startRegex(const QString& query, bool synchronous)
+{
+    ++m_regexQueries;
+    const RegexQuery rq = RegexQuery::parse(query);
+    m_regexNote.clear();
+    if (!rq.error.isEmpty()) {
+        m_regexState = RegexState::Invalid;
+        m_regexNote = tr("not a valid pattern: %1").arg(rq.error);
+        qCInfo(lcSearch) << "regex search: invalid"; // never the pattern
+        std::vector<HistoryModel::Section> sections;
+        sections.push_back({QString(), {}});
+        m_model.setContent(std::move(sections), {}, {}, {});
+        emit updated();
+        return;
+    }
+    m_regexState = RegexState::Ok;
+    RegexScan::Options options;
+    options.resultLimit = searchLimit;
+    options.budgetMs = m_regexBudgetMs;
+    m_scan = std::make_unique<RegexScan>(m_repo, rq.rest.isEmpty() ? SearchFilter() : SearchFilter::parse(rq.rest),
+                                         rq.regex, options);
+    if (synchronous) {
+        while (!m_scan->step()) {
+        }
+        finishRegex();
+    } else {
+        m_regexTimer.start();
+    }
+}
+
+void SearchController::stepRegex()
+{
+    if (!m_scan) {
+        return;
+    }
+    try {
+        if (m_scan->step()) {
+            finishRegex();
+        } else {
+            m_regexTimer.start();
+        }
+    } catch (const db::DbError& e) {
+        qCWarning(lcSearch) << "query failed:" << e.what();
+        m_scan.reset();
+        std::vector<HistoryModel::Section> none;
+        none.push_back({QString(), {}});
+        m_model.setContent(std::move(none), {}, {}, {});
+        emit updated();
+    }
+}
+
+void SearchController::finishRegex()
+{
+    std::unique_ptr<RegexScan> scan = std::move(m_scan);
+    const bool stopped = scan->outcome() == RegexScan::Outcome::Stopped;
+    m_regexState = stopped ? RegexState::Stopped : RegexState::Ok;
+    if (stopped) {
+        const QString seconds = QString::number(scan->budgetMs() / 1000.0, 'f', 1);
+        m_regexNote = scan->patternTooHeavy()
+            ? tr("stopped after %1 s: simplify the pattern").arg(seconds)
+            : tr("stopped after %1 s: only the newest %2 copies were searched").arg(seconds).arg(scan->copiesTried());
+    }
+    qCInfo(lcSearch) << "regex search:" << (stopped ? "timed out" : "ok"); // never the pattern or what matched
+    std::vector<HistoryModel::Section> sections;
+    sections.push_back({QString(), std::move(scan->results())});
+    m_model.setContent(std::move(sections), {}, {}, {});
+    emit updated();
+}
+
+void SearchController::run(bool synchronous)
 {
     if (m_suspended) {
+        return;
+    }
+    cancelRegex();
+    m_regexState = RegexState::None;
+    m_regexNote.clear();
+    if (!m_passwordSearch && m_query.contains(QLatin1Char(':')) && RegexQuery::parse(m_query).present) {
+        ++m_queriesRun;
+        m_needsUnlock = false;
+        try {
+            startRegex(m_query, synchronous);
+        } catch (const db::DbError& e) {
+            qCWarning(lcSearch) << "query failed:" << e.what();
+            m_scan.reset();
+        }
         return;
     }
     ++m_queriesRun;
