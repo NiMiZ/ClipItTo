@@ -105,6 +105,18 @@ tree: each group lists its sub-groups, then its copies. Put a copy in a group wi
 and a path such as `Work/Servers` (missing groups are created). Groups appear in the order
 you give them (`Alt+↑/↓`, or Move up/down in Settings); new ones go last.
 
+**Snapshots.** A snapshot is a named set of text copies ("project X") that you can put back into the history later. Right-click a
+group › *Save group as snapshot…* (the group and its sub-groups), or right-click a copy › *Save as snapshot* › *New snapshot with this
+copy…* or *Add to "name"*. *Snapshots…* (in the *Clear* button's menu, and in the menu of a group or of the Groups row) lists them with
+their number of copies: *Restore*, *Rename…*, *Delete…* (asks first). Restoring puts the copies back at the top of the history, the one
+copied last on top (*as copied*) or the first of the snapshot on top (*as saved*); a copy that is in the history already is not doubled,
+only moved up. Tick *Put them in a group named after the snapshot* to file them (copies already in another group stay there). A
+snapshot keeps its own copies, so it stays when the history is pruned or cleared (also *Clear everything*); the panic action and *Wipe
+everything now…* remove snapshots with the rest. **Passwords, pictures and Paste once copies are never put in a snapshot**; the message
+after saving says how many were skipped. Limits: 50 snapshots, 500 copies each, 1 MB per copy. If the history is encrypted, so are the
+snapshots (they are inside the same file). Snapshots are **not** in a backup and are not synced. There is no "paste one after another"
+yet (it needs the paste queue).
+
 **Auto grouping** (Settings › *Groups*, off by default; `auto_group`). ClipItTo learns from the copies you put in
 your groups, and files a *new* copy in the group it matches best, with a small **auto** tag on its group chip. It
 uses only words and shapes of the text (a link's site and first folder, a path's folders, a command's first word),

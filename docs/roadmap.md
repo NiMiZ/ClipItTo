@@ -214,7 +214,18 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     which needs no network code of its own.
 
 ### Keeping the clipboard useful
-29. **Snapshots:** a named set of copies ("project X") that can be put back later, or pasted as a queue.
+29. **DONE (without the paste queue): Snapshots:** a named set of copies ("project X") that can be put back later. *Design: [snapshots-design.md](snapshots-design.md).*
+    Right-click a group › *Save group as snapshot…* (the group and its sub-groups), or a copy › *Save as snapshot* › *New snapshot with this
+    copy…* / *Add to "…"*; the *Clear* button's menu, the Groups row and a group's menu open *Snapshots…* (list with counts, *Restore*,
+    *Rename…*, *Delete…* which asks). A snapshot keeps its own text: it survives pruning, auto-forget, *Clear Recent* and *Clear everything*.
+    Restore puts the copies back, deduped against the history (an existing copy is only moved to the top), in the order *as copied* or
+    *as saved*, optionally into a group named after the snapshot. **Never in a snapshot (and counted in the message):** password copies,
+    pictures, Paste once copies, copies over 1 MB. Limits: 50 snapshots, 500 copies each, 1 MB per copy, names 80 characters, unique.
+    Stored in the history file (migration 012: `snapshots`, `snapshot_items`), so it is encrypted exactly when the history is, with no
+    search index and no trigger. **Wiped** by the panic action and *Wipe everything now…* (`clearHistory(true, alsoSnapshots=true)`), not by
+    *Clear*. Not in backups, not synced, nothing in `--status`, counts only in the log. *Not done:* "paste one after another" (the paste queue,
+    item 4, is not on main; a queue is not a small, safe add-on), several selected copies (the popup has single selection), pictures,
+    a Settings page (the window opens from the popup). Tests: `tst_snapshots`, `tst_panic`.
 30. **Thumbnails of copied picture files** and files copied on GNOME (the extension reads text only). Open items from previews.
 
 ### Quality and trust
