@@ -118,9 +118,10 @@ void HistoryView::toggleExpanded(const QModelIndex& index)
     }
 }
 
-void HistoryView::setEmptyText(const QString& text)
+void HistoryView::setEmptyText(const QString& text, bool list)
 {
     m_emptyText = text;
+    m_emptyAsList = list;
     viewport()->update();
 }
 
@@ -130,7 +131,7 @@ void HistoryView::paintEvent(QPaintEvent* event)
     if (m_model && m_model->rowCount() == 0 && !m_emptyText.isEmpty()) {
         QPainter painter(viewport());
         painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
-        painter.drawText(viewport()->rect().adjusted(16, 16, -16, -16), Qt::AlignCenter | Qt::TextWordWrap,
+        painter.drawText(viewport()->rect().adjusted(16, 16, -16, -16), (m_emptyAsList ? Qt::AlignLeft | Qt::AlignTop : Qt::AlignCenter) | Qt::TextWordWrap,
                          m_emptyText);
     }
 }

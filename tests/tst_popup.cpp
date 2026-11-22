@@ -8,6 +8,7 @@
 #include "Prompts.h"
 #include "SearchBar.h"
 #include "SearchController.h"
+#include "SearchHelp.h"
 #include "TestDb.h"
 
 #include <QAction>
@@ -36,6 +37,14 @@ using clipitto::Config;
 using clipitto::Entry;
 using clipitto::ui::HistoryModel;
 using clipitto::ui::PopupWindow;
+
+namespace {
+QStringList g_popupLog; // every message the Qt logging system saw while a test collected them
+void collectPopupLog(QtMsgType, const QMessageLogContext&, const QString& message)
+{
+    g_popupLog << message;
+}
+} // namespace
 
 // Keyboard/mouse behavior of the popup on the offscreen platform.
 class TestPopup : public QObject {
@@ -2401,6 +2410,247 @@ private slots:
         f.popup->hidePopup();
         QVERIFY(!search->isPasswordMode());
         QVERIFY(search->passwordQuery().isEmpty());
+    }
+
+    // ---------------- "/?" help and the pw: prefix ----------------
+
+    void slashQuestionMarkShowsTheHelpInsteadOfSearching()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        auto* controller = f.popup->controller();
+        QTest::keyClicks(search, QStringLiteral("/"));
+        QTRY_VERIFY(!controller->isPending());
+        const int before = controller->queriesRun();
+        QTest::keyClicks(search, QStringLiteral("?"));
+        QTRY_VERIFY(controller->isHelp());
+        QCOMPARE(f.model()->rowCount(), 0); // no rows to select or paste
+        QCOMPARE(controller->queriesRun(), before); // "/?" ran no search
+        const QString help = f.popup->view()->emptyText();
+        QCOMPARE(help, clipitto::searchhelp::text(QStringLiteral("p[]")));
+        for (const QString& prefix : {QStringLiteral("img:"), QStringLiteral("text:"), QStringLiteral("pin:"), QStringLiteral("star:"),
+                                      QStringLiteral("group:"), QStringLiteral("note:"), QStringLiteral("today:"),
+                                      QStringLiteral("since:"), QStringLiteral("re:"), QStringLiteral("pw:"), QStringLiteral("p[]")}) {
+            QVERIFY2(help.contains(prefix), qPrintable(prefix));
+        }
+        // Enter does not paste anything from an empty list.
+        QTest::keyClick(search, Qt::Key_Return);
+        QVERIFY(controller->isHelp());
+
+        // Editing the text brings the normal results back.
+        QTest::keyClick(search, Qt::Key_Backspace); // "/"
+        QTRY_VERIFY(!controller->isHelp());
+        search->setText(QStringLiteral("  /?  ")); // spaces around it are ignored
+        QTRY_VERIFY(controller->isHelp());
+        search->setText(QStringLiteral("/? alpha"));
+        QTRY_VERIFY(!controller->isHelp());
+        search->setText(QStringLiteral("/?"));
+        QTRY_VERIFY(controller->isHelp());
+        search->clear();
+        QTRY_VERIFY(!controller->isHelp());
+        QCOMPARE(f.model()->rowCount(), 6);
+        QVERIFY(f.popup->view()->emptyText() != help);
+
+        // Esc closes the popup, and the help is gone when it opens again.
+        search->setText(QStringLiteral("/?"));
+        QTRY_VERIFY(controller->isHelp());
+        QTest::keyClick(search, Qt::Key_Escape);
+        QVERIFY(!f.popup->isVisible());
+        QVERIFY(f.show()); // opening starts from an empty box
+        QVERIFY(search->text().isEmpty());
+        QTRY_VERIFY(!controller->isHelp());
+        QCOMPARE(f.model()->rowCount(), 6);
+    }
+
+    void helpNeverLogsTypedText()
+    {
+        Fixture f;
+        QVERIFY(f.show());
+        g_popupLog.clear();
+        const QtMessageHandler previous = qInstallMessageHandler(collectPopupLog);
+        f.popup->searchBar()->setText(QStringLiteral("/?"));
+        QTRY_VERIFY(f.popup->controller()->isHelp());
+        f.popup->searchBar()->setText(QStringLiteral("  /?  zqTypedWord"));
+        QTRY_VERIFY(!f.popup->controller()->isHelp());
+        qInstallMessageHandler(previous);
+        const QString all = g_popupLog.join(QLatin1Char('\n'));
+        QVERIFY2(!all.contains(QStringLiteral("zqTypedWord")), qPrintable(all));
+    }
+
+    void pwAndTheKeywordSearchPasswordsIdentically_data()
+    {
+        QTest::addColumn<QString>("prefix");
+        QTest::addColumn<QString>("left");
+        QTest::newRow("keyword") << "p[] " << "p[]";
+        QTest::newRow("pw:") << "pw: " << "pw:";
+        QTest::newRow("PW: as typed") << "PW: " << "PW:";
+    }
+
+    void pwAndTheKeywordSearchPasswordsIdentically()
+    {
+        QFETCH(QString, prefix);
+        QFETCH(QString, left);
+        PasswordFixture f;
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        QTest::keyClicks(search, prefix);
+        QVERIFY(search->isPasswordMode());
+        QTRY_COMPARE(f.model()->rowCount(), 1); // all password copies while empty
+        QVERIFY(f.model()->entryAt(f.model()->index(0, 0))->secret);
+
+        QTest::keyClicks(search, QStringLiteral("hunt"));
+        QCOMPARE(search->text(), prefix + QStringLiteral("****")); // the prefix as typed, then masked
+        QCOMPARE(search->passwordQuery(), QStringLiteral("hunt"));
+        QTRY_VERIFY(!f.popup->controller()->isPending());
+        QCOMPARE(f.model()->rowCount(), 0); // locked: part of a password does not match
+        QVERIFY(f.popup->controller()->passwordSearchNeedsUnlock());
+        QTest::keyClick(search, Qt::Key_Return); // unlock: now it does
+        QTRY_COMPARE(f.model()->rowCount(), 1);
+        QCOMPARE(f.prompts.size(), 1);
+
+        // Backspace edits the hidden text, then leaves the mode.
+        for (int i = 0; i < 4; ++i) {
+            QTest::keyClick(search, Qt::Key_Backspace);
+        }
+        QCOMPARE(search->text(), prefix);
+        QTest::keyClick(search, Qt::Key_Backspace);
+        QVERIFY(!search->isPasswordMode());
+        QVERIFY(search->passwordQuery().isEmpty());
+        QCOMPARE(search->text(), left);
+
+        // Pasted in one go, and wiped on hide.
+        search->clear();
+        QGuiApplication::clipboard()->setText(prefix + QStringLiteral("hunter2"));
+        QTest::keyClick(search, Qt::Key_V, Qt::ControlModifier);
+        QVERIFY(search->isPasswordMode());
+        QCOMPARE(search->passwordQuery(), QStringLiteral("hunter2"));
+        QCOMPARE(search->text(), prefix + QStringLiteral("*******"));
+        f.popup->hidePopup();
+        QVERIFY(!search->isPasswordMode());
+        QVERIFY(search->passwordQuery().isEmpty());
+        QCOMPARE(search->text(), left); // only the prefix is left, nothing of what was typed
+        QVERIFY(!f.popup->controller()->isPasswordSearch());
+
+        // Esc wipes it too.
+        QVERIFY(f.show());
+        QTest::keyClicks(search, prefix + QStringLiteral("abc"));
+        QVERIFY(search->isPasswordMode());
+        QTest::keyClick(search, Qt::Key_Escape);
+        QVERIFY(!search->isPasswordMode());
+        QVERIFY(search->passwordQuery().isEmpty());
+    }
+
+    void lockedWholePasswordMatchesWithBothPrefixes()
+    {
+        for (const QString& prefix : {QStringLiteral("p[] "), QStringLiteral("pw: ")}) {
+            PasswordFixture f;
+            QVERIFY(f.show());
+            auto* search = f.popup->searchBar();
+            QTest::keyClicks(search, prefix + QStringLiteral("hunter2"));
+            QTRY_VERIFY(!f.popup->controller()->isPending());
+            // Same as the keyword always did: the whole password is found by its keyed hash when the keyring
+            // can open it, or the popup asks to unlock; either way both prefixes end in the same state.
+            QVERIFY2(f.model()->rowCount() == 1 || f.popup->controller()->passwordSearchNeedsUnlock(), qPrintable(prefix));
+        }
+    }
+
+    void pwWorksBesideACustomKeyword()
+    {
+        Config cfg;
+        cfg.passwordSearchKeyword = QStringLiteral("zz>");
+        PasswordFixture f(cfg);
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        for (const QString& prefix : {QStringLiteral("zz> "), QStringLiteral("pw: ")}) {
+            QTest::keyClicks(search, prefix);
+            QVERIFY2(search->isPasswordMode(), qPrintable(prefix));
+            QTRY_COMPARE(f.model()->rowCount(), 1);
+            QTest::keyClicks(search, QStringLiteral("hunter2"));
+            QCOMPARE(search->text(), prefix + QStringLiteral("*******"));
+            search->clear();
+            QVERIFY(!search->isPasswordMode());
+        }
+        // The old default is now an ordinary search word.
+        QTest::keyClicks(search, QStringLiteral("p[] x"));
+        QVERIFY(!search->isPasswordMode());
+        QCOMPARE(search->text(), QStringLiteral("p[] x"));
+        // The help lists the custom keyword and pw:.
+        search->setText(QStringLiteral("/?"));
+        QTRY_VERIFY(f.popup->controller()->isHelp());
+        QVERIFY(f.popup->view()->emptyText().contains(QStringLiteral("zz> hunter")));
+        QVERIFY(f.popup->view()->emptyText().contains(QStringLiteral("pw: hunter")));
+    }
+
+    void pwWithoutPasswordsBehavesLikeTheKeyword()
+    {
+        QStringList texts;
+        for (const QString& prefix : {QStringLiteral("p[] "), QStringLiteral("pw: ")}) {
+            Fixture f; // no master password, no keeper
+            QVERIFY(f.show());
+            auto* search = f.popup->searchBar();
+            QTest::keyClicks(search, prefix + QStringLiteral("hunter2"));
+            QVERIFY(search->isPasswordMode());
+            QTRY_VERIFY(!f.popup->controller()->isPending());
+            QVERIFY(f.popup->controller()->isPasswordSearch());
+            QCOMPARE(f.model()->rowCount(), 0);
+            QCOMPARE(search->text(), prefix + QStringLiteral("*******"));
+            texts << f.popup->view()->emptyText();
+            // the text typed after the prefix never reached the ordinary search
+            QVERIFY(!f.popup->controller()->query().contains(QStringLiteral("hunter2")));
+        }
+        QCOMPARE(texts.size(), 2);
+        QVERIFY(!texts.at(0).isEmpty());
+        QCOMPARE(texts.at(0), texts.at(1));
+    }
+
+    void nothingTypedAfterAPasswordPrefixIsLogged()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        g_popupLog.clear();
+        const QtMessageHandler previous = qInstallMessageHandler(collectPopupLog);
+        for (const QString& prefix : {QStringLiteral("pw: "), QStringLiteral("p[] ")}) {
+            QTest::keyClicks(search, prefix + QStringLiteral("zqHiddenWord"));
+            QTRY_VERIFY(!f.popup->controller()->isPending());
+            QTest::keyClick(search, Qt::Key_Return); // the unlock prompt (injected)
+            QGuiApplication::clipboard()->setText(prefix + QStringLiteral("zqPastedWord"));
+            search->clear();
+            QTest::keyClick(search, Qt::Key_V, Qt::ControlModifier);
+            QTRY_VERIFY(!f.popup->controller()->isPending());
+            search->clear();
+        }
+        f.popup->hidePopup();
+        qInstallMessageHandler(previous);
+        const QString all = g_popupLog.join(QLatin1Char('\n'));
+        QVERIFY2(!all.contains(QStringLiteral("zqHiddenWord")), qPrintable(all));
+        QVERIFY2(!all.contains(QStringLiteral("zqPastedWord")), qPrintable(all));
+    }
+
+    void regexAndFiltersAreUnaffectedByPw()
+    {
+        PasswordFixture f;
+        QVERIFY(f.show());
+        auto* search = f.popup->searchBar();
+        search->setText(QStringLiteral("re:^al"));
+        QTRY_VERIFY(!f.popup->controller()->isPending());
+        QVERIFY(!search->isPasswordMode());
+        QCOMPARE(f.model()->rowCount(), 1); // alpha
+        search->setText(QStringLiteral("pin:"));
+        QTRY_VERIFY(!f.popup->controller()->isPending());
+        QCOMPARE(f.model()->rowCount(), 1); // ssh
+        // "pw:" without the space is an ordinary word.
+        search->setText(QStringLiteral("pw:hunter2"));
+        QVERIFY(!search->isPasswordMode());
+        QCOMPARE(search->text(), QStringLiteral("pw:hunter2"));
+        // A password search ignores filters and re:, as the keyword always did: they are just the hidden text.
+        search->setText(QStringLiteral("pw: re:^al"));
+        QVERIFY(search->isPasswordMode());
+        QCOMPARE(search->passwordQuery(), QStringLiteral("re:^al"));
+        QTRY_VERIFY(!f.popup->controller()->isPending());
+        QVERIFY(f.popup->controller()->isPasswordSearch());
+        QCOMPARE(f.popup->controller()->regexState(), clipitto::ui::SearchController::RegexState::None);
     }
 };
 

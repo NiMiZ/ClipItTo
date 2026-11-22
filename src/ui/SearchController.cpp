@@ -4,6 +4,7 @@
 #include "HistoryModel.h"
 #include "PasswordKeeper.h"
 #include "RegexSearch.h"
+#include "SearchHelp.h"
 #include "db/Repository.h"
 #include "db/Sqlite.h"
 
@@ -41,7 +42,7 @@ void SearchController::setQuery(const QString& query)
 {
     m_query = query;
     cancelRegex(); // the next keystroke ends a scan that is still going
-    if (m_query.trimmed().isEmpty()) {
+    if (m_query.trimmed().isEmpty() || (searchhelp::isHelpQuery(m_query) && !m_passwordSearch)) {
         m_debounce.stop();
         run();
     } else {
@@ -161,6 +162,16 @@ void SearchController::run(bool synchronous)
     cancelRegex();
     m_regexState = RegexState::None;
     m_regexNote.clear();
+    m_help = !m_passwordSearch && searchhelp::isHelpQuery(m_query);
+    if (m_help) {
+        // The help list: nothing to search, nothing read, nothing logged.
+        m_needsUnlock = false;
+        std::vector<HistoryModel::Section> none;
+        none.push_back({QString(), {}});
+        m_model.setContent(std::move(none), {}, {}, {});
+        emit updated();
+        return;
+    }
     if (!m_passwordSearch && m_query.contains(QLatin1Char(':')) && RegexQuery::parse(m_query).present) {
         ++m_queriesRun;
         m_needsUnlock = false;

@@ -73,15 +73,15 @@ how to keep them. Once you set a master password in Settings › *Passwords*:
   starred one is never deleted, so it is not asked). The password is taken off the clipboard after `paste_once_clear_seconds`
   (2 s by default, own setting next to the one above) if the clipboard still holds it. After a deletion the popup offers an
   Undo for 10 seconds, which puts the sealed copy back (never in clear). See the usage guide, *Paste once*.
-- **Searched with a keyword.** Type `p[] ` (the keyword and a space; Settings can change it):
-  what follows shows as asterisks and searches inside your passwords while unlocked, or for a
+- **Searched with a prefix.** Type `pw: ` (always works) or `p[] ` (the keyword and a space; Settings can
+  change the keyword, and `pw:` keeps working): what follows shows as asterisks and searches inside your passwords while unlocked, or for a
   whole password while locked. Locked searching needs the system keyring, which keeps the key
   for it; the history file alone can't be used to test guesses, and with the keyring each guess
   still costs a memory-hard hash (Argon2id, 16 MiB).
 - Right-click *Mark as password* turns any copy into one (its text is wiped from the file);
   *Put new password copies in the "Passwords" group* files them there (on by default). With
   that on, *Show passwords entries in Recent* chooses whether they also appear in the Recent list
-  (as `●●●●`) or only in the group and the `p[]` search.
+  (as `●●●●`) or only in the group and the password search (`pw:` or the keyword).
 - *After copying a password, ask for a name* (on by default): when a **new** password is
   copied, ClipItTo opens with a box to name it. The app it came from is suggested as grey
   text that goes away when you type; leave the box empty (or cancel) to keep that name. The

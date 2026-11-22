@@ -213,6 +213,11 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     list and a harmless pattern, "only the newest N copies were searched"). Password copies: only note and group, never the text
     or the label; pictures: label, note and group (not the text read from them); the log only says ok / invalid / timed out.
     No setting, no new dependency. Not done: highlighting (no search mode highlights matches), the text read from pictures.
+    **Search help and `pw:`:** typing exactly `/?` lists what the box understands, generated from one table
+    (`src/core/SearchHelp.*`; tests check each row against `SearchFilter`, `RegexQuery` and `SearchBar`, so a new filter must
+    get a row). `pw: ` now starts a password search for everyone, besides the configured keyword (`p[]` or your own), with the
+    same hidden buffer. A query is one mode: a password search ignores filters and `re:` (as before), and a `re:` query is
+    never a password search.
 
 ### Pasting
 25. **More Paste as transforms:** camelCase, snake_case, kebab-case, slugify, remove duplicate lines, sort lines, number lines,

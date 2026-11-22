@@ -29,7 +29,9 @@ public:
     QModelIndex firstSelectable() const;
     QModelIndex nextSelectable(QModelIndex from, bool down) const; // invalid at either end
     void toggleExpanded(const QModelIndex& index);
-    void setEmptyText(const QString& text); // shown when the model has no rows
+    // Shown when the model has no rows; `list` left-aligns it from the top (the "/?" help).
+    void setEmptyText(const QString& text, bool list = false);
+    QString emptyText() const { return m_emptyText; }
     // The larger preview of a picture row, shown on hover (null until first shown).
     QWidget* imagePreview() const { return m_preview; }
     // Thumbnails of picture files in a file list, for the hover preview (not owned).
@@ -63,6 +65,7 @@ private:
 
     HistoryModel* m_model = nullptr;
     QString m_emptyText;
+    bool m_emptyAsList = false;
     void showImagePreview(const QModelIndex& index, const QPoint& globalPos, const QPixmap& pixmap);
     FileThumbnails* m_thumbnails = nullptr;
     void hideImagePreview();

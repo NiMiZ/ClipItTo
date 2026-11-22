@@ -40,6 +40,8 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | right-click | the same actions in a menu |
 | `img:` `pin:` `star:` `group:x` `since:3d` | search filters, next to your words |
 | `re:^https?://.*\.pdf$` | regular-expression search (stops after 0.3 s; see [usage](docs/usage.md)) |
+| `pw: ` or `p[] ` + text | search inside your password copies (typed text is hidden; see [passwords](docs/passwords.md)) |
+| `/?` | list what the search box understands |
 | `Ctrl+,`, `Esc` | settings, close |
 
 ## More
