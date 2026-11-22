@@ -74,6 +74,21 @@ and goes nowhere else. About 2,900 characters fit at most; a longer copy says so
 (their text is never put on the screen) or pictures. A code is on the screen like any text: a screenshot or screen
 sharing can capture it, so close it when done (Esc), especially for Wi-Fi details.
 
+**Similar copies.** Right-click a text copy › *Show similar copies* lists only the copies that are the same text or
+very close to it. Two texts are close when, after trimming, turning every run of spaces, tabs and line breaks (any
+kind) into one space and ignoring upper and lower case, they are equal, or their lengths differ by at most 10% and at most
+10% of the longer text would have to be changed to make them equal. So "Hello  World\r\n" and "hello world" are the
+same, and a sentence with a word swapped or a few characters added is close. Pictures and password copies are never
+compared (and the menu entry is not offered for them). To stay quick the scan reads the newest 5,000 text copies, looks at
+the first 5,000 characters of each, and stops after 200 ms of work; it runs in small slices, so the popup stays usable,
+and if time runs out the list shows what was found so far with a note saying how many copies were checked. Esc, typing
+in the search box or closing the popup leaves the view. Nothing is stored or logged but counts.
+In that view, the button at the bottom (or right-click › *Keep this one, delete the others*) keeps the copy you selected
+and deletes the other copies shown, after asking: "Delete N similar copies and keep this one?". Pinned, starred,
+grouped and noted copies are never deleted; they are skipped and the question and the result say how many. *Undo*
+(the button, or Ctrl+Shift+Z, for 10 seconds) puts all of them back.
+Deleting here is the same as the ordinary Delete: the deleted texts can stay in the database's free pages until its next cleanup.
+
 **Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
 with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
 screenshot that shows it, together with `img:`. Pictures copied before are read a few seconds after the start.

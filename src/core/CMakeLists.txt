@@ -25,6 +25,7 @@ add_library(clipitto_core STATIC
     SelfTest.cpp SelfTest.h
     SelfTestChecks.cpp SelfTestChecks.h
     SearchFilter.cpp SearchFilter.h
+    Similar.cpp Similar.h
     PasswordVault.cpp PasswordVault.h
     PackagedApp.cpp PackagedApp.h
     Paths.cpp Paths.h

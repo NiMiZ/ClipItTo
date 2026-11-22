@@ -1249,6 +1249,25 @@ void Repository::remove(qint64 id)
     }
 }
 
+std::vector<Entry> Repository::similarPage(int offset, int limit, int maxChars)
+{
+    std::vector<Entry> out;
+    Stmt s(m_db, "SELECT id, substr(content, 1, ?3), tag_or_note, group_name, is_favorite, pin_position FROM clips "
+                 "WHERE kind = 'text' AND secret = 0 ORDER BY last_used DESC, id DESC LIMIT ?1 OFFSET ?2");
+    s.bindInt(1, limit).bindInt(2, offset).bindInt(3, maxChars);
+    while (s.step()) {
+        Entry e;
+        e.id = s.colInt(0);
+        e.content = s.colText(1);
+        e.note = s.colText(2);
+        e.group = s.colText(3);
+        e.favorite = s.colInt(4) != 0;
+        e.pinPosition = s.colIsNull(5) ? -1 : int(s.colInt(5));
+        out.push_back(std::move(e));
+    }
+    return out;
+}
+
 void Repository::setPasteOnce(qint64 id, bool once)
 {
     Stmt s(m_db, "UPDATE clips SET paste_once = ?2 WHERE id = ?1");

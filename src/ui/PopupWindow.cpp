@@ -1,4 +1,5 @@
 #include "PopupWindow.h"
+#include "PopupSimilar.h"
 
 #include "AppIcon.h"
 #include "Config.h"
@@ -193,6 +194,8 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_footer(new QLabel(this))
     , m_undoButton(new QToolButton(this))
     , m_undoTimer(new QTimer(this))
+    , m_similarTimer(new QTimer(this))
+    , m_keepOneButton(new QToolButton(this))
     , m_groupPrompt(askGroup)
     , m_editPrompt(defaultEditPrompt())
     , m_textPrompt(defaultTextPrompt())
@@ -306,7 +309,22 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     auto* footerRow = new QHBoxLayout;
     footerRow->setContentsMargins(0, 0, 0, 0);
     footerRow->addWidget(m_footer, 1);
+    footerRow->addWidget(m_keepOneButton);
     footerRow->addWidget(m_undoButton);
+    m_keepOneButton->setObjectName(QStringLiteral("keepOneButton"));
+    m_keepOneButton->setText(tr("Keep this one, delete the others"));
+    m_keepOneButton->setAutoRaise(true);
+    m_keepOneButton->setFocusPolicy(Qt::NoFocus);
+    m_keepOneButton->setVisible(false);
+    connect(m_keepOneButton, &QToolButton::clicked, this, [this] {
+        const Entry* current = entryFor(m_view->currentIndex());
+        if (current && m_similar) {
+            keepOnlyThis(current->id);
+        }
+    });
+    m_similarTimer->setSingleShot(true);
+    m_similarTimer->setInterval(0);
+    connect(m_similarTimer, &QTimer::timeout, this, &PopupWindow::similarStep);
     inner->addLayout(footerRow);
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -316,6 +334,9 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_view->installEventFilter(this);
 
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString& text) {
+        if (m_similar) {
+            endSimilar(false); // typing leaves the "similar copies" view; the query below fills the list
+        }
         if (!m_search->isPasswordMode()) { // a password search shows only "p[] ****" there
             m_controller->setQuery(text);
         }
@@ -558,6 +579,7 @@ void PopupWindow::togglePopup(const QString& activationToken)
 void PopupWindow::setBusy(const QString& message)
 {
     m_busyMessage = message;
+    endSimilar(false);
     m_controller->setSuspended(isBusy()); // also drops a search still waiting for its delay
     m_search->setEnabled(!isBusy());
     m_view->setEnabled(!isBusy());
@@ -608,6 +630,7 @@ void PopupWindow::panicReset(bool hide, bool keepBusy)
         }
     }
     endUndo();
+    endSimilar(false);
     m_revealTimer->stop();
     m_model->clearRevealed();
     if (m_search->isPasswordMode()) {
@@ -867,13 +890,20 @@ void PopupWindow::showUndoNotice()
 {
     m_undoButton->setVisible(m_undo.has_value());
     if (m_undo) {
-        m_footer->setText(platformKeys(tr("Pasted and forgotten. Undo: Ctrl+Shift+Z")));
+        m_footer->setText(m_undoNotice.isEmpty() ? platformKeys(tr("Pasted and forgotten. Undo: Ctrl+Shift+Z"))
+                                                 : platformKeys(m_undoNotice));
     }
 }
 
 void PopupWindow::endUndo()
 {
     m_undoTimer->stop();
+    for (db::Repository::Removed& more : m_undoMore) {
+        more.entry.content.fill(QLatin1Char('\0'));
+        more.html.fill(QLatin1Char('\0'));
+    }
+    m_undoMore.clear();
+    m_undoNotice.clear();
     if (m_undo) { // the copy is gone for good: its bytes are overwritten before they are freed
         m_undo->entry.content.fill(QLatin1Char('\0'));
         m_undo->png.fill('\0');
@@ -891,13 +921,22 @@ bool PopupWindow::undoPasteOnce()
         return false;
     }
     const db::Repository::Removed removed = *m_undo; // a copy: endUndo wipes the original
+    const std::vector<db::Repository::Removed> more = m_undoMore;
     endUndo();
+    endSimilar(false); // the list is read again below
     qint64 id = 0;
     try {
         id = m_repo.restore(removed); // without the once mark
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "paste once: undo failed:" << err.what();
         return false;
+    }
+    for (const db::Repository::Removed& other : more) { // each on its own: one failure does not lose the rest
+        try {
+            m_repo.restore(other);
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "undo: restoring one copy failed:" << err.what();
+        }
     }
     flash(tr("Put back."));
     refreshSelecting(Selection{Kind::Entry, id, {}}, /*focusList=*/false);
@@ -1606,6 +1645,10 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     } else {
         menu->addMenu(createPasteAsMenu(entry, menu));
         menu->addAction(tr("Show as QR code…"), this, [this, id] { showQrCode(id); });
+        menu->addAction(tr("Show similar copies"), this, [this, id] { showSimilar(id); });
+        if (m_similar) {
+            menu->addAction(tr("Keep this one, delete the others"), this, [this, id] { keepOnlyThis(id); });
+        }
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
         if (!m_passwords || !m_passwords->isSetUp()) {
             mark->setEnabled(false);
@@ -2202,6 +2245,10 @@ void PopupWindow::showContextMenu(const QModelIndex& index, const QPoint& global
 bool PopupWindow::eventFilter(QObject* watched, QEvent* event)
 {
     if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
+        if (m_similar) { // the first Esc leaves the "similar copies" view, the next one closes the popup
+            endSimilar(true);
+            return true;
+        }
         hidePopup();
         return true;
     }
@@ -2285,6 +2332,7 @@ void PopupWindow::hideEvent(QHideEvent* event)
     m_revealTimer->stop();
     m_model->clearRevealed();
     m_search->leavePasswordMode();
+    endSimilar(false);
     m_systemMove = false;
     m_moveEnd->stop();
     if (QGuiApplication::platformName() != QLatin1String("wayland") && m_lastPosition != pos()) {
