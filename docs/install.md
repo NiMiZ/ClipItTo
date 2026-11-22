@@ -14,8 +14,8 @@ curl -fsSL https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.sh
 
 Or get `clipitto_<version>_amd64.deb` from the
 [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) and run
-`sudo apt install ./clipitto_0.18.0_amd64.deb` (Ubuntu 24.04) or
-`sudo apt install ./clipitto_0.18.0_ubuntu26.04_amd64.deb` (Ubuntu 26.04). The two differ in the
+`sudo apt install ./clipitto_0.19.0_amd64.deb` (Ubuntu 24.04) or
+`sudo apt install ./clipitto_0.19.0_ubuntu26.04_amd64.deb` (Ubuntu 26.04). The two differ in the
 library packages they depend on (Qt's `t64` names, `liblept5` vs `libleptonica6`), so pick the one for
 your release. Other Debian-based systems: use the AppImage below. [install.sh](../install.sh) also takes
 `--version X.Y.Z` and `--download-only DIR`.
@@ -61,7 +61,7 @@ window has focus until the GNOME extension is installed (`backend_degraded: true
 
 # Windows 10/11
 
-Code signing: ClipItTo uses the [SignPath Foundation](https://signpath.org) for code signing of its Windows files. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by SignPath Foundation. Until the first signed release the Windows files are unsigned, and Windows shows "Unknown publisher"; see the [code signing policy](../README.md#code-signing-policy).
+Windows files: the installer and program files are **not code-signed yet**, so Windows shows "Unknown publisher". Check a download against `SHA256SUMS` (the install script does this for you); see the [code signing policy](../README.md#code-signing-policy).
 
 **Install:** in PowerShell, run
 

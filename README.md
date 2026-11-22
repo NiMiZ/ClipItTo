@@ -11,7 +11,7 @@ your clipboard.
 | **Windows 10/11** | `irm https://github.com/NiMiZ/ClipItTo/releases/latest/download/install.ps1 \| iex` in PowerShell | [Windows](docs/install.md#windows-1011) |
 | **macOS 11+** | `ClipItTo-<version>-macos.dmg` from the [latest release](https://github.com/NiMiZ/ClipItTo/releases/latest) | [macOS](docs/install.md#macos-11) |
 
-Code signing: ClipItTo uses the [SignPath Foundation](https://signpath.org) for code signing of its Windows files. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by SignPath Foundation. Until the first signed release the Windows files are unsigned, and Windows shows "Unknown publisher"; see the [code signing policy](README.md#code-signing-policy).
+Windows files: the installer and program files are **not code-signed yet**, so Windows shows "Unknown publisher". Check a download against `SHA256SUMS` (the install script does this for you); see the [code signing policy](README.md#code-signing-policy).
 
 The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 
@@ -80,11 +80,9 @@ only encrypted once you set a [master password](docs/passwords.md#password-copie
 ## Code signing policy
 
 The Windows release files (`ClipItTo-<version>-setup.exe`, `clipitto.exe`,
-`clipitto-daemon.exe`) are being set up for free code signing provided by
-[SignPath.io](https://about.signpath.io), with a certificate by the
-[SignPath Foundation](https://signpath.org). Until that is in place they are unsigned, and
-Windows warns about an unknown publisher; each release lists SHA-256 checksums in
-`SHA256SUMS`.
+`clipitto-daemon.exe`) are **not code-signed**, and Windows warns about an unknown publisher.
+Ways to sign them are being looked at (a Microsoft Store package, or a certificate).
+Each release lists SHA-256 checksums in `SHA256SUMS`, and the install script checks them.
 
 - Releases are built only by this repository's GitHub Actions workflow
   ([ci.yml](.github/workflows/ci.yml)) from the tagged source; nothing is built or signed on a
