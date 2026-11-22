@@ -244,6 +244,29 @@ private slots:
         QVERIFY(ingest(d, QStringLiteral("after the panic")) != 0);
     }
 
+    // Snapshots hold copy text of their own: the panic action (and the Wipe everything button, the same call) removes them
+    // and leaves nothing of them in the file or its log.
+    void panicAlsoWipesSnapshots()
+    {
+        writeConfig("password_ask_note = false\n");
+        Daemon d(options(), std::make_unique<FakeControl>());
+        QVERIFY(d.start() == Daemon::StartResult::Ok);
+        auto* repo = d.repository();
+        const qint64 id = ingest(d, QStringLiteral("panic-snapshot-text-0008"));
+        QVERIFY(repo->createSnapshot(QStringLiteral("panic-snapshot-name-0009"), {id}).status
+                == clipitto::db::Repository::SnapshotStatus::Done);
+        QCOMPARE(repo->countSnapshots(), qint64(1));
+        QVERIFY(historyFileHolds("panic-snapshot-text-0008"));
+
+        const Daemon::PanicResult r = d.panic();
+
+        QVERIFY(r.wiped);
+        QCOMPARE(repo->countSnapshots(), qint64(0));
+        QCOMPARE(repo->count(), qint64(0));
+        QVERIFY(!historyFileHolds("panic-snapshot-text-0008"));
+        QVERIFY(!historyFileHolds("panic-snapshot-name-0009"));
+    }
+
     void theOpenModeCannotLockButItsPasswordCopiesAreWiped()
     {
         writeConfig("password_ask_note = false\n");

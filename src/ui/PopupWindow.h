@@ -203,6 +203,12 @@ public:
     // Deletes the history after asking: unsaved copies, or with `everything` also starred,
     // pinned and grouped ones (groups stay). The Clear button and its menu call these.
     void clearHistory(bool everything);
+    // Snapshots (roadmap 29, docs/snapshots-design.md). The menus call these. Each asks for a name where one is needed and
+    // says what it did, including how many copies were skipped (passwords, pictures...).
+    void saveCopyAsSnapshot(qint64 id);
+    void addCopyToSnapshot(qint64 id, qint64 snapshotId);
+    void saveGroupAsSnapshot(const QString& path);
+    void openSnapshots(); // the Snapshots window (modal, like Settings' boxes)
     QWidget* dragHandle() const { return m_dragHandle; }
 
     // Hands a drag of the popup to the compositor (Wayland, where only it may move windows).

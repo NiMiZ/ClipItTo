@@ -490,7 +490,7 @@ private slots:
 
         // The menu's second entry: everything, also in groups.
         const QList<QAction*> actions = clear->menu()->actions();
-        QCOMPARE(actions.size(), 2);
+        QCOMPARE(actions.size(), 4); // Clear Recent, Clear everything, a separator, Snapshots…
         actions.at(1)->trigger();
         QVERIFY2(asked.last().contains(QLatin1String("Delete all 2 copies")), qPrintable(asked.last()));
         QCOMPARE(f.t.repo->count(), 0);
