@@ -290,6 +290,10 @@ private:
     void placeOnScreen();
     void endSystemMove();
 
+    // First of all: event() reads these while the child widgets below are still being constructed (their ChildAdded
+    // events reach this object before the later members exist), so they must be initialised before any of them.
+    bool m_systemMove = false; // the compositor is moving us: don't hide on focus loss
+    bool m_pointerLeftDuringMove = false;
     db::Repository& m_repo;
     HistoryModel* m_model;
     SearchController* m_controller;
@@ -344,8 +348,6 @@ private:
     std::optional<QPoint> m_lastPosition; // where it last closed
     QString m_busyMessage;
     int m_modalDepth = 0; // dialogs/menus open: don't hide on focus loss
-    bool m_systemMove = false; // the compositor is moving us: don't hide on focus loss
-    bool m_pointerLeftDuringMove = false;
     QTimer* m_moveEnd = nullptr; // ends the move (backstop, or shortly after the pointer is back)
     SystemMoveStarter m_systemMoveStarter;
     std::optional<Selection> m_restore; // reselected after the next refresh

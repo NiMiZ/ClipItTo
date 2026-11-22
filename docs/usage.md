@@ -87,6 +87,7 @@ In that view, the button at the bottom (or right-click › *Keep this one, delet
 and deletes the other copies shown, after asking: "Delete N similar copies and keep this one?". Pinned, starred,
 grouped and noted copies are never deleted; they are skipped and the question and the result say how many. *Undo*
 (the button, or Ctrl+Shift+Z, for 10 seconds) puts all of them back.
+Deleting here is the same as the ordinary Delete: the deleted texts can stay in the database's free pages until its next cleanup.
 
 **Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
 with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
