@@ -1,10 +1,12 @@
 #include "SearchBar.h"
 
 #include "PasswordVault.h"
+#include "SearchHelp.h"
 
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMouseEvent>
 
 namespace clipitto::ui {
 
@@ -12,11 +14,12 @@ SearchBar::SearchBar(QWidget* parent) : QLineEdit(parent)
 {
     setPlaceholderText(tr("Search clipboard history…"));
     setClearButtonEnabled(true);
-    setToolTip(tr("Words and filters: img: text: pin: star: group:work note:todo today: since:3d\n"
+    setToolTip(tr("Type /? for the list of what this box understands.\n"
+                  "Words and filters: img: text: pin: star: group:work note:todo today: since:3d\n"
                   "Regular expression: re:^https?://.*\\.pdf$ (ignores case; start the pattern with "
                   "(?-i) to match case; use \\s for a space or put the pattern in quotes). Only the first 20,000 "
                   "characters of each copy are tried, and the search stops after 0.3 s. Passwords are never "
-                  "searched inside."));
+                  "searched inside by these: type pw: and a space to search them (what you type is hidden)."));
     connect(this, &QLineEdit::textChanged, this, &SearchBar::onTextChanged);
 }
 
@@ -40,11 +43,24 @@ void SearchBar::leavePasswordMode()
     clipitto::PasswordVault::wipe(m_secret);
     setAcceptDrops(true);
     emit passwordQueryChanged(QString(), false);
-    if (text().startsWith(prefix())) {
+    if (text().startsWith(m_activePrefix)) {
         m_updating = true;
-        setText(m_keyword);
+        setText(m_activePrefix.chopped(1)); // the prefix without its space
         m_updating = false;
     }
+}
+
+QString SearchBar::matchPrefix(const QString& text) const
+{
+    const QString keyword = m_keyword + QLatin1Char(' ');
+    if (text.startsWith(keyword)) {
+        return keyword;
+    }
+    const QString pw = clipitto::searchhelp::passwordPrefix() + QLatin1Char(' ');
+    if (text.startsWith(pw, Qt::CaseInsensitive)) {
+        return text.left(pw.size()); // as typed
+    }
+    return QString();
 }
 
 void SearchBar::onTextChanged(const QString& text)
@@ -54,7 +70,7 @@ void SearchBar::onTextChanged(const QString& text)
     }
     if (m_passwordMode) {
         // Cleared or edited past the keyword (the clear button, select-all + type, ...).
-        if (!text.startsWith(prefix())) {
+        if (!text.startsWith(m_activePrefix)) {
             m_passwordMode = false;
             clipitto::PasswordVault::wipe(m_secret);
             setAcceptDrops(true);
@@ -62,10 +78,11 @@ void SearchBar::onTextChanged(const QString& text)
         }
         return;
     }
-    if (text.startsWith(prefix())) {
+    if (const QString entered = matchPrefix(text); !entered.isEmpty()) {
         // Typed, or pasted in one go ("p[] hunter2"): what follows goes out of the line edit.
         m_passwordMode = true;
-        m_secret = text.mid(prefix().size());
+        m_activePrefix = entered;
+        m_secret = text.mid(entered.size());
         setAcceptDrops(false);
         showMasked();
         emit passwordQueryChanged(m_secret, true);
@@ -75,7 +92,7 @@ void SearchBar::onTextChanged(const QString& text)
 void SearchBar::showMasked()
 {
     m_updating = true;
-    setText(prefix() + QString(m_secret.size(), QLatin1Char('*')));
+    setText(m_activePrefix + QString(m_secret.size(), QLatin1Char('*')));
     setCursorPosition(int(text().size()));
     m_updating = false;
 }
@@ -112,6 +129,15 @@ void SearchBar::contextMenuEvent(QContextMenuEvent* event)
     QLineEdit::contextMenuEvent(event);
 }
 
+void SearchBar::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (m_passwordMode && event->button() == Qt::MiddleButton) {
+        event->accept(); // X11 would insert the primary selection in clear
+        return;
+    }
+    QLineEdit::mouseReleaseEvent(event);
+}
+
 void SearchBar::keyPressEvent(QKeyEvent* event)
 {
     if (!m_passwordMode && event->matches(QKeySequence::Paste)) {
@@ -119,15 +145,16 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
         // text, so the password never enters the line edit.
         const int start = hasSelectedText() ? selectionStart() : cursorPosition();
         const QString pasted = QGuiApplication::clipboard()->text();
-        if ((text().left(start) + pasted).startsWith(prefix())) {
-            QString combined = text().left(start) + pasted;
+        QString combined = text().left(start) + pasted;
+        if (const QString entered = matchPrefix(combined); !entered.isEmpty()) {
             m_passwordMode = true;
+            m_activePrefix = entered;
             m_secret.clear();
             setAcceptDrops(false);
             m_updating = true;
-            setText(prefix());
+            setText(m_activePrefix);
             m_updating = false;
-            appendSecret(combined.mid(prefix().size()));
+            appendSecret(combined.mid(entered.size()));
             clipitto::PasswordVault::wipe(combined);
             if (m_secret.isEmpty()) {
                 emit passwordQueryChanged(m_secret, true);
@@ -143,7 +170,7 @@ void SearchBar::keyPressEvent(QKeyEvent* event)
         }
         if (event->key() == Qt::Key_Backspace) {
             if (m_secret.isEmpty()) {
-                leavePasswordMode(); // back to "p[]", a normal search
+                leavePasswordMode(); // back to "p[]" / "pw:", a normal search
             } else {
                 m_secret.chop(1);
                 showMasked();

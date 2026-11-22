@@ -57,6 +57,9 @@ public:
     void setRegexBudgetMs(int ms) { m_regexBudgetMs = ms; } // for tests
     int regexQueriesRun() const { return m_regexQueries; }
 
+    // "/?" typed: the list is empty and the popup shows the help (core/SearchHelp). No database access, no logging.
+    bool isHelp() const { return m_help; }
+
     int queriesRun() const { return m_queriesRun; } // for tests and diagnostics
 
     static constexpr int searchLimit = 100;
@@ -80,6 +83,7 @@ private:
     bool m_showSavedOnTop = true;
     int m_queriesRun = 0;
     bool m_suspended = false;
+    bool m_help = false;
     const PasswordKeeper* m_passwords = nullptr;
     bool m_passwordSearch = false;
     QString m_passwordQuery;

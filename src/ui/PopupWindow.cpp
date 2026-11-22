@@ -13,6 +13,7 @@
 #include "PlatformKeys.h"
 #include "SearchBar.h"
 #include "SearchController.h"
+#include "SearchHelp.h"
 #include "TextTransform.h"
 #include "Theme.h"
 #include "db/Repository.h"
@@ -1538,7 +1539,9 @@ void PopupWindow::onResultsUpdated()
     const QString regexNote = m_controller->regexNote();
     m_searchNote->setText(regexNote);
     m_searchNote->setVisible(!regexNote.isEmpty());
-    if (m_controller->isPasswordSearch()) {
+    if (m_controller->isHelp()) {
+        m_view->setEmptyText(searchhelp::text(m_search->passwordKeyword()), /*list=*/true);
+    } else if (m_controller->isPasswordSearch()) {
         const bool canMatch = m_passwords && m_passwords->canMatch();
         m_view->setEmptyText(!m_controller->passwordSearchNeedsUnlock() ? tr("No password copies match.")
                                  : canMatch ? tr("Locked: only a whole password matches. Press Enter to unlock "
