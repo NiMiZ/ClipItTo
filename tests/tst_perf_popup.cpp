@@ -9,6 +9,7 @@
 #include "PasswordKeeper.h"
 #include "PerfData.h"
 #include "PopupWindow.h"
+#include "RegexSearch.h"
 #include "SearchBar.h"
 #include "SearchController.h"
 #include "StallWatchdog.h"
@@ -16,6 +17,7 @@
 
 #include <QElapsedTimer>
 #include <QHelpEvent>
+#include <QLabel>
 #include <QScrollBar>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -263,6 +265,72 @@ private slots:
         QTest::qWait(300);
         QVERIFY(popup.isVisible());
         QVERIFY_NO_STALL(wd, "popup hide/show during search x10");
+    }
+
+    // ---------------- Regex search (re:) ----------------
+
+    // A pattern that backtracks without end on long texts: typed in the popup, it must neither stall the GUI thread nor
+    // run past the 0.3 s budget, and it says so.
+    void catastrophicRegexNeitherStallsNorOverruns()
+    {
+        TestDb t;
+        const QString heavy = QStringLiteral("see ") + QString(clipitto::RegexQuery::kMaxScanChars - 20, QLatin1Char('a')) + QLatin1Char('b');
+        {
+            clipitto::db::Transaction tx(t.db);
+            for (int i = 0; i < 300; ++i) {
+                t.repo->ingest(heavy + QString::number(i));
+            }
+            tx.commit();
+        }
+        const Config cfg = quietConfig();
+        PopupWindow popup(*t.repo, cfg);
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowExposed(&popup));
+        StallWatchdog wd;
+        QElapsedTimer timer;
+        timer.start();
+        QTest::keyClicks(popup.searchBar(), QStringLiteral("re:(a+)+$"));
+        QTRY_VERIFY_WITH_TIMEOUT(popup.controller()->regexState() == SearchController::RegexState::Stopped,
+                                 StallWatchdog::scaled(2000));
+        const qint64 took = timer.elapsed();
+        QVERIFY(!popup.controller()->isRegexRunning());
+        QCOMPARE(popup.searchNote()->text(), QStringLiteral("stopped after 0.3 s: simplify the pattern"));
+        QVERIFY(!popup.searchNote()->isHidden());
+        perf::note("re:(a+)+$ typed to stopped (ms)", QString::number(took));
+        // typing (about 100 ms debounce) + the 300 ms budget + one slice
+        QVERIFY2(took <= StallWatchdog::scaled(900), qPrintable(QStringLiteral("took %1 ms").arg(took)));
+        QVERIFY_NO_STALL(wd, "regex: catastrophic pattern typed");
+    }
+
+    void aRegexOverFiftyThousandCopiesDoesNotStall()
+    {
+        TestDb& t = big();
+        const Config cfg = quietConfig();
+        PopupWindow popup(*t.repo, cfg);
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowExposed(&popup));
+        StallWatchdog wd;
+        QTest::keyClicks(popup.searchBar(), QStringLiteral("re:docker\\s+compose.*n4\\d{3}$"));
+        QTRY_VERIFY_WITH_TIMEOUT(popup.controller()->regexState() != SearchController::RegexState::None
+                                     && !popup.controller()->isRegexRunning() && !popup.controller()->isPending(),
+                                 StallWatchdog::scaled(3000));
+        QVERIFY_NO_STALL(wd, "regex: docker.*compose over 50k");
+    }
+
+    void typingARegexKeyByKeyNeverStalls()
+    {
+        TestDb& t = big();
+        const Config cfg = quietConfig();
+        PopupWindow popup(*t.repo, cfg);
+        popup.showPopup();
+        QVERIFY(QTest::qWaitForWindowExposed(&popup));
+        StallWatchdog wd;
+        for (const QChar c : QStringLiteral("re:(kube|git)\\s+(com|dep)")) { // incomplete patterns on the way
+            QTest::keyClick(popup.searchBar(), c.toLatin1());
+            QTest::qWait(30);
+        }
+        QTest::qWait(500);
+        QVERIFY_NO_STALL(wd, "regex: typing a pattern in 50k copies");
     }
 
     // ---------------- Search ----------------

@@ -100,6 +100,27 @@ submenu; the result opens in a window and is pasted only if you choose *Paste* t
 Example: `star: budget since:1w`. Words and filters are all required. Anything else with a colon (a URL,
 `foo:bar`) is searched as ordinary text.
 
+**Regular expressions.** `re:` followed by a pattern searches with a regular expression (Qt / PCRE syntax), for example
+`re:^https?://.*\.pdf$` or `group:work re:invoice\s+\d{4}`. It combines with the filters and words above, which narrow the copies
+the pattern is tried on, in the same way. Details:
+
+- Like the filters, the pattern ends at the first space: write `\s` or `[ ]` for a space, or put the pattern in double quotes:
+  `re:"error \d+ at"`. Only one `re:` per search. `re:` alone, or `Re:` in a word, is ordinary text.
+- Not case sensitive. Start the pattern with `(?-i)` to match case. `^` and `$` mean the start and the end of the copy;
+  `(?m)` makes them mean each line.
+- The pattern may have 200 characters at most. Only the first 20,000 characters of each copy are tried (the rest is ignored).
+- The matching can never freeze the popup: it runs in small steps and every key you type cancels it. It stops for good after
+  0.3 s and then shows what it found so far with the note "stopped after 0.3 s: simplify the pattern" (a pattern such as
+  `(a+)+$` that backtracks forever on a long copy). On a very long history a harmless pattern can also reach 0.3 s; the note then
+  says how many of the newest copies were searched.
+- A pattern that is not complete or not valid (for example `re:(` while you are typing) shows a note, "not a valid pattern: ...",
+  instead of results. Patterns starting with `(*` are not supported.
+- Results are listed newest first, like every other search. Matches are not highlighted.
+- Password copies are never searched inside: only their note and group can match (like an ordinary search). Use `p[]` to search
+  passwords. A picture is matched by its label ("Image 1920×1080"), note and group, not by the text read from it.
+- Nothing about the pattern or the copies it matched is written to the log, only that a regex search ran and whether it
+  was ok, invalid or timed out.
+
 **Groups** sit collapsed right under the search box. Open them to browse your groups as a
 tree: each group lists its sub-groups, then its copies. Put a copy in a group with `Ctrl+G`
 and a path such as `Work/Servers` (missing groups are created). Groups appear in the order

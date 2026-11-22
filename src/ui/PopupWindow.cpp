@@ -191,6 +191,7 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_dragHandle(new DragHandle(this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
+    , m_searchNote(new QLabel(this))
     , m_undoButton(new QToolButton(this))
     , m_undoTimer(new QTimer(this))
     , m_groupPrompt(askGroup)
@@ -302,6 +303,11 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     inner->setContentsMargins(8, 8, 8, 6);
     inner->setSpacing(6);
     inner->addLayout(top);
+    m_searchNote->setFont(scaledFont(m_searchNote->font(), 0.85));
+    m_searchNote->setWordWrap(true);
+    m_searchNote->setEnabled(false); // dim, like the footer
+    m_searchNote->hide();
+    inner->addWidget(m_searchNote);
     inner->addWidget(m_view, 1);
     auto* footerRow = new QHBoxLayout;
     footerRow->setContentsMargins(0, 0, 0, 0);
@@ -1489,6 +1495,10 @@ void PopupWindow::refreshSelecting(std::optional<Selection> selection, bool focu
 
 void PopupWindow::onResultsUpdated()
 {
+    // Regex search: the calm hint under the search box (invalid pattern, or the scan was stopped).
+    const QString regexNote = m_controller->regexNote();
+    m_searchNote->setText(regexNote);
+    m_searchNote->setVisible(!regexNote.isEmpty());
     if (m_controller->isPasswordSearch()) {
         const bool canMatch = m_passwords && m_passwords->canMatch();
         m_view->setEmptyText(!m_controller->passwordSearchNeedsUnlock() ? tr("No password copies match.")
@@ -1498,7 +1508,8 @@ void PopupWindow::onResultsUpdated()
     } else {
         m_view->setEmptyText(m_controller->query().trimmed().isEmpty()
                                  ? tr("Nothing copied yet. Copied text will show up here.")
-                                 : tr("No matches"));
+                                 : m_controller->regexState() == SearchController::RegexState::Invalid ? regexNote
+                                                                                                     : tr("No matches"));
     }
 
     // Re-open what was open (the model rebuild collapsed everything).

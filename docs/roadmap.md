@@ -195,7 +195,17 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
 22. **Duplicate finder and "similar to this".** Copies that differ only by spaces, case or a trailing newline are shown together
     with a way to keep one.
 23. **Saved searches.** Pin a query such as `group:work since:today` as a button in the popup.
-24. **Regex search** behind a prefix such as `re:` (Ditto offers it). Open: a time limit so a bad pattern cannot freeze the popup.
+24. **DONE: Regex search** behind `re:` (`re:^https?://.*\.pdf$`, also next to the filters: `group:work re:foo\d+`). Case-insensitive, `(?-i)`
+    switches it off. Qt 6.4's `QRegularExpression` has no match time limit, so the pattern is compiled with PCRE2's own
+    `(*NO_JIT)(*LIMIT_MATCH=3000000)` in front (about 15 ms of backtracking per copy at most; a pattern that starts with `(*` is
+    refused so it cannot raise that), at most 200 pattern characters, only the first 20,000 characters of each copy, and
+    `RegexScan` (`src/core/RegexSearch.*`) works in 15 ms slices from the event loop with a 300 ms total budget; the next
+    keystroke cancels it (`SearchController`). One sort of the ids (`Repository::regexCandidateIds`), then `get()` per copy,
+    newest first like every other search. A bad pattern shows "not a valid pattern: <reason>" under the search box (also while
+    typing `re:(`); a stopped scan keeps what it found and says "stopped after 0.3 s: simplify the pattern" (or, for a long
+    list and a harmless pattern, "only the newest N copies were searched"). Password copies: only note and group, never the text
+    or the label; pictures: label, note and group (not the text read from them); the log only says ok / invalid / timed out.
+    No setting, no new dependency. Not done: highlighting (no search mode highlights matches), the text read from pictures.
 
 ### Pasting
 25. **More Paste as transforms:** camelCase, snake_case, kebab-case, slugify, remove duplicate lines, sort lines, number lines,

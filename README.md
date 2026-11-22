@@ -39,6 +39,7 @@ The default shortcut is **Ctrl+Alt+V** (**⌘⌥V** on a Mac).
 | `Del` | delete (or take it off Recent) |
 | right-click | the same actions in a menu |
 | `img:` `pin:` `star:` `group:x` `since:3d` | search filters, next to your words |
+| `re:^https?://.*\.pdf$` | regular-expression search (stops after 0.3 s; see [usage](docs/usage.md)) |
 | `Ctrl+,`, `Esc` | settings, close |
 
 ## More

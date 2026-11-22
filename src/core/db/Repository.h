@@ -139,6 +139,11 @@ public:
     // Returns nothing for a blank query.
     std::vector<Entry> search(const QString& query, int limit = 100, SearchMode mode = SearchMode::Auto);
 
+    // Regex search (RegexSearch.h): the ids of the copies that pass the ordinary filters and words of `filter`, newest
+    // first (one sort, no row data); the caller reads them one by one with get(). Every kind comes back, passwords too:
+    // the caller must not look into a password copy's text (its `content` is only a label).
+    std::vector<qint64> regexCandidateIds(const SearchFilter& filter);
+
     std::optional<Entry> get(qint64 id);
     void touch(qint64 id); // last_used = now
     // Starring counts against the Favorites limit (no group) or the clip's group's limit.
@@ -344,6 +349,7 @@ private:
     std::vector<Entry> searchPictureText(const QStringList& tokens, int limit);
     static std::vector<Entry> mergeNewest(std::vector<Entry> a, std::vector<Entry> b, int limit);
     std::vector<Entry> searchFiltered(const SearchFilter& filter, int limit);
+    static void filterWhere(const SearchFilter& filter, QStringList& where, QStringList& binds);
     Stmt& likeStatement(int tokenCount);
     int starsIn(const QString& group); // "" = Favorites (starred, no group)
     Change roomForStar(const QString& group);

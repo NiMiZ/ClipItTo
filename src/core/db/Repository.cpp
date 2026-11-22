@@ -812,10 +812,8 @@ Stmt& Repository::likeStatement(int tokenCount)
     return ref;
 }
 
-std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int limit)
+void Repository::filterWhere(const SearchFilter& filter, QStringList& where, QStringList& binds)
 {
-    QStringList where;
-    QStringList binds; // text values, bound in order as ?1, ?2, ...
     const auto bind = [&binds](const QString& value) {
         binds << value;
         return QStringLiteral("?%1").arg(binds.size());
@@ -850,6 +848,13 @@ std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int li
         where << QStringLiteral(R"((c.tag_or_note LIKE %1 ESCAPE '\' OR c.group_name LIKE %1 ESCAPE '\' OR c.content LIKE %1 ESCAPE '\'
             OR EXISTS (SELECT 1 FROM clip_text t WHERE t.clip_id = c.id AND t.text LIKE %1 ESCAPE '\')))").arg(p);
     }
+}
+
+std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int limit)
+{
+    QStringList where;
+    QStringList binds; // text values, bound in order as ?1, ?2, ...
+    filterWhere(filter, where, binds);
     const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS " FROM clips c WHERE %1 "
                                        "ORDER BY c.last_used DESC, c.id DESC LIMIT ?%2")
                             .arg(where.join(QLatin1String(" AND ")))
@@ -860,6 +865,27 @@ std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int li
     }
     s.bindInt(int(binds.size()) + 1, limit);
     return collect(s);
+}
+
+std::vector<qint64> Repository::regexCandidateIds(const SearchFilter& filter)
+{
+    QStringList where;
+    QStringList binds;
+    filterWhere(filter, where, binds);
+    if (where.isEmpty()) {
+        where << QStringLiteral("1 = 1");
+    }
+    const QString sql = QStringLiteral("SELECT c.id FROM clips c WHERE %1 ORDER BY c.last_used DESC, c.id DESC")
+                            .arg(where.join(QLatin1String(" AND ")));
+    Stmt s(m_db, sql.toUtf8());
+    for (int i = 0; i < binds.size(); ++i) {
+        s.bindText(i + 1, binds[i]);
+    }
+    std::vector<qint64> ids;
+    while (s.step()) {
+        ids.push_back(s.colInt(0));
+    }
+    return ids;
 }
 
 std::vector<Entry> Repository::searchLike(const QStringList& tokens, int limit)
