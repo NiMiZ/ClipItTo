@@ -1,5 +1,6 @@
 #include "SelfTestChecks.h"
 
+#include "PackagedApp.h"
 #include "PasswordIgnore.h"
 #include "SecretScan.h"
 #include "db/Migrator.h"
@@ -355,6 +356,10 @@ Result logResult(const LogFacts& facts, const Env& env)
 
 Result updateCheckResult(const Env& env)
 {
+    if (packaging::isPackaged()) {
+        return Result::pass(QStringLiteral("installed from the Microsoft Store: the Store updates ClipItTo, and ClipItTo has no "
+                                           "update check and never contacts the internet to look for a new version"));
+    }
     return Result::pass(env.config.updateCheckAuto
                             ? QStringLiteral("the automatic update check is on (once a day at start-up it asks cohenzco.com for the "
                                              "newest version number; it sends the version and the platform)")

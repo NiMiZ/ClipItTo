@@ -70,7 +70,7 @@ if(APPLE)
 endif()
 clipitto_add_test(tst_passwordkeeper)
 clipitto_add_test(tst_phone clipitto_phone)
-clipitto_add_test(tst_update clipitto_ui)
+clipitto_add_test(tst_update clipitto_ui clipitto_daemon_lib)
 
 if(NOT CLIPITTO_DBUS)
     # The local-socket transport (Windows; Unix socket elsewhere) and the CLI built on it.
