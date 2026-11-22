@@ -30,6 +30,9 @@ Pushing a tag named `vX.Y.Z` makes GitHub Actions build every package and publis
    (sanitizers), the `.deb`, the AppImage, the snap, Windows, macOS; then *GitHub Release* publishes the files and
    `SHA256SUMS`, *Install the release* checks them on fresh Ubuntu and Windows machines, and *Snap Store* uploads the snap to the
    `candidate` channel (when the `SNAPCRAFT_STORE_CREDENTIALS` secret exists).
+   The last step of the release job asks cohenzco.com to read the new release at once (`POST /api/apps/clipitto/refresh`), so
+   the project page and the app's *Check for updates* show the new version without waiting for the site's one-hour cache. It
+   never fails the release; if the site is down, it catches up by itself.
 7. **Check:** the release page lists the `.deb`, AppImage, snap, Windows installer, macOS `.dmg`, `install.sh`,
    `install.ps1` and `SHA256SUMS`. Promote the snap to stable in the store when it has been tried.
 
