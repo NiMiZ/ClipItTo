@@ -12,6 +12,11 @@ SearchBar::SearchBar(QWidget* parent) : QLineEdit(parent)
 {
     setPlaceholderText(tr("Search clipboard history…"));
     setClearButtonEnabled(true);
+    setToolTip(tr("Words and filters: img: text: pin: star: group:work note:todo today: since:3d\n"
+                  "Regular expression: re:^https?://.*\\.pdf$ (ignores case; start the pattern with "
+                  "(?-i) to match case; use \\s for a space or put the pattern in quotes). Only the first 20,000 "
+                  "characters of each copy are tried, and the search stops after 0.3 s. Passwords are never "
+                  "searched inside."));
     connect(this, &QLineEdit::textChanged, this, &SearchBar::onTextChanged);
 }
 

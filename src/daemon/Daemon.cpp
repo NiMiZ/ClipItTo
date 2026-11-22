@@ -181,14 +181,14 @@ Daemon::PanicResult Daemon::panic()
 
 // The same database path as "Clear everything, also in groups" (Repository::clearHistory(true): every copy including
 // pinned, starred, grouped and password copies, rich text with them; learned auto-grouping data; the search index merged;
-// pages zeroed; the write-ahead log folded in), and the same ending (the popup forgets thumbnails and its undo buffer).
+// pages zeroed; the write-ahead log folded in; and every snapshot, the one thing "Clear everything" leaves), and the same ending (the popup forgets thumbnails and its undo buffer).
 bool Daemon::wipeHistory(qint64* deleted)
 {
     if (!m_repo) {
         return false;
     }
     try {
-        const qint64 n = m_repo->clearHistory(true);
+        const qint64 n = m_repo->clearHistory(true, /*alsoSnapshots=*/true); // snapshots hold copy text too
         if (deleted) {
             *deleted = n;
         }
@@ -476,7 +476,7 @@ Daemon::StartResult Daemon::start(QString* error)
     applyPanicShortcut();
     // The automatic check is a setting that is off unless the user turned it on; read when the timer fires.
     QTimer::singleShot(m_options.updateAutoDelayMs, this, [this] {
-        if (m_config.updateCheckAuto) {
+        if (m_config.updateCheckAuto && !updatesDisabled()) {
             updates()->autoCheck(true);
         }
     });

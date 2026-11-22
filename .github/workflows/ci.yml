@@ -6,6 +6,7 @@ on:
   push:
     tags: ['v*']
   pull_request:
+  workflow_dispatch: # a manual run (Actions > CI > Run workflow) also keeps the Microsoft Store package as a file
 
 # A newer push to the same branch or tag cancels the run still going for the older one.
 concurrency:
@@ -385,6 +386,25 @@ jobs:
             exit 1
           }
 
+      # The Microsoft Store package (MSIX, docs/microsoft-store.md): the staged files above plus a manifest, packed with MakeAppx
+      # from the runner's Windows SDK. Unsigned (the Store signs it), no secrets, nothing is published. The package identity is
+      # a placeholder until the repository variables MSIX_IDENTITY_NAME, MSIX_PUBLISHER and MSIX_PUBLISHER_DISPLAY_NAME exist
+      # (Settings > Secrets and variables > Actions > Variables; the values come from Partner Center and are not secret).
+      - name: Build the Microsoft Store package (MSIX)
+        shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          try {
+            scripts\make-msix.ps1 -StageDir "$PWD\stage" -OutputDir "$PWD\msix"
+            if (-not (Test-Path msix\*.msix)) { throw 'no .msix was written' }
+          } catch {
+            Write-Host "::error title=MSIX failed::$($_.Exception.Message -replace '\r?\n', ' ')"
+            exit 1
+          }
+
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
@@ -393,6 +413,14 @@ jobs:
           # Three days for a release tag (the release job copies the files into the GitHub Release at once), a day for the
           # rest; the free storage
           # quota filled up with 90-day copies of every run's snap, AppImage, installer and disk image.
+          retention-days: 3
+
+      # Not part of the GitHub Release (the release job downloads only the artifacts it names): upload it to Partner Center by hand.
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        with:
+          name: clipitto-windows-msix
+          path: msix/*.msix
           retention-days: 3
 
       - uses: actions/upload-artifact@v4

@@ -17,6 +17,7 @@ namespace clipitto::ui {
 // What Settings needs for "Check for updates...": the daemon starts a check with `parent` as the owner of the dialog.
 struct UpdateSupport {
     std::function<void(QWidget* parent)> check; // null: not available here
+    bool hidden = false; // the update check does not exist in this build (Microsoft Store): Settings shows no row for it
 };
 
 // The dialogs of "Check for updates" (replaceable, so tests never open a real one).

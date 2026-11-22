@@ -2,12 +2,20 @@
 // The network is touched only from checkForUpdates (a click) and from the start-up timer when update_check_auto is on.
 
 #include "Daemon.h"
+#include "PackagedApp.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 
 namespace clipitto {
+
+// The Microsoft Store build (an MSIX package) is updated by the Store, and Store policy does not allow an app to point users
+// to another place for updates: no menu item, no Settings rows, no automatic check, no request.
+bool Daemon::updatesDisabled()
+{
+    return packaging::isPackaged();
+}
 
 ui::UpdateController* Daemon::updates()
 {
@@ -24,12 +32,19 @@ ui::UpdateController* Daemon::updates()
 
 void Daemon::checkForUpdates(QWidget* parent)
 {
+    if (updatesDisabled()) {
+        return; // the Store build: the Store updates the app
+    }
     updates()->checkNow(parent);
 }
 
 ui::UpdateSupport Daemon::updateSupport()
 {
     ui::UpdateSupport support;
+    if (updatesDisabled()) {
+        support.hidden = true;
+        return support;
+    }
     support.check = [this](QWidget* parent) { checkForUpdates(parent); };
     return support;
 }

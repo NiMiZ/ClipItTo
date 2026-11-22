@@ -953,7 +953,7 @@ SettingsDialog::SettingsDialog(const Config& config, db::Repository& repo, Short
     connect(m_wipeNow, &QPushButton::clicked, this, [this] {
         if (!m_passwordSupport.panicNow
             || !m_confirm(this, tr("Wipe everything now?\n\nThis deletes every copy in the history (also pinned, starred, "
-                                   "grouped and password copies), locks the password copies and empties the clipboard. "
+                                   "grouped and password copies) and every snapshot, locks the password copies and empties the clipboard. "
                                    "It cannot be undone. Your settings, groups and master password stay."))) {
             return;
         }
@@ -1332,6 +1332,8 @@ void SettingsDialog::setUpdates(UpdateSupport support)
 {
     m_updates = std::move(support);
     m_updateButton->setEnabled(m_updates.check != nullptr);
+    m_updateButton->setVisible(!m_updates.hidden);
+    m_updateAuto->setVisible(!m_updates.hidden);
 }
 
 void SettingsDialog::setPhone(PhoneSupport support)

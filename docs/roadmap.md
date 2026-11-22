@@ -192,10 +192,27 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
 21. **Source app and time on every row** (needed by the `app:` filter above and by auto grouping by app). ClipItTo stores the
     source app only for password copies today. Open: one more column and its cost for 50,000 copies, privacy of the list of apps
     (encrypted with the history), and platforms where the source cannot be found (Wayland outside GNOME).
-22. **Duplicate finder and "similar to this".** Copies that differ only by spaces, case or a trailing newline are shown together
-    with a way to keep one.
+22. **DONE (reduced): "Show similar copies".** Right-click a text copy › *Show similar copies* lists the copies whose text is
+    the same after trimming, collapsing white space and line breaks, and ignoring case, or very close (lengths within 10% and
+    at most 10% of the longer text edited), and *Keep this one, delete the others* removes the rest after asking, never
+    pinned, starred, grouped or noted copies, with one Undo. Newest 5,000 copies, first 5,000 characters each, 200 ms budget,
+    in slices on the GUI thread; passwords and pictures are never compared; only counts are logged. Code: `src/core/Similar.*`,
+    `src/ui/PopupSimilar.cpp`, `Repository::similarPage`; tests `tst_similar`; user view in `docs/usage.md`.
+    *Dropped:* the separate duplicates screen. Exact duplicates are already merged when a text is copied (one copy per text,
+    a re-copy moves it to the top; with *Ignore case* also copies that differ only in case), so there is little left for a
+    screen to list; what remains are near copies, which the action above handles one copy at a time.
 23. **Saved searches.** Pin a query such as `group:work since:today` as a button in the popup.
-24. **Regex search** behind a prefix such as `re:` (Ditto offers it). Open: a time limit so a bad pattern cannot freeze the popup.
+24. **DONE: Regex search** behind `re:` (`re:^https?://.*\.pdf$`, also next to the filters: `group:work re:foo\d+`). Case-insensitive, `(?-i)`
+    switches it off. Qt 6.4's `QRegularExpression` has no match time limit, so the pattern is compiled with PCRE2's own
+    `(*NO_JIT)(*LIMIT_MATCH=3000000)` in front (about 15 ms of backtracking per copy at most; a pattern that starts with `(*` is
+    refused so it cannot raise that), at most 200 pattern characters, only the first 20,000 characters of each copy, and
+    `RegexScan` (`src/core/RegexSearch.*`) works in 15 ms slices from the event loop with a 300 ms total budget; the next
+    keystroke cancels it (`SearchController`). One sort of the ids (`Repository::regexCandidateIds`), then `get()` per copy,
+    newest first like every other search. A bad pattern shows "not a valid pattern: <reason>" under the search box (also while
+    typing `re:(`); a stopped scan keeps what it found and says "stopped after 0.3 s: simplify the pattern" (or, for a long
+    list and a harmless pattern, "only the newest N copies were searched"). Password copies: only note and group, never the text
+    or the label; pictures: label, note and group (not the text read from them); the log only says ok / invalid / timed out.
+    No setting, no new dependency. Not done: highlighting (no search mode highlights matches), the text read from pictures.
 
 ### Pasting
 25. **More Paste as transforms:** camelCase, snake_case, kebab-case, slugify, remove duplicate lines, sort lines, number lines,
@@ -214,7 +231,18 @@ command line, undo, clean links, sync through a folder, smart paste keys per app
     which needs no network code of its own.
 
 ### Keeping the clipboard useful
-29. **Snapshots:** a named set of copies ("project X") that can be put back later, or pasted as a queue.
+29. **DONE (without the paste queue): Snapshots:** a named set of copies ("project X") that can be put back later. *Design: [snapshots-design.md](snapshots-design.md).*
+    Right-click a group › *Save group as snapshot…* (the group and its sub-groups), or a copy › *Save as snapshot* › *New snapshot with this
+    copy…* / *Add to "…"*; the *Clear* button's menu, the Groups row and a group's menu open *Snapshots…* (list with counts, *Restore*,
+    *Rename…*, *Delete…* which asks). A snapshot keeps its own text: it survives pruning, auto-forget, *Clear Recent* and *Clear everything*.
+    Restore puts the copies back, deduped against the history (an existing copy is only moved to the top), in the order *as copied* or
+    *as saved*, optionally into a group named after the snapshot. **Never in a snapshot (and counted in the message):** password copies,
+    pictures, Paste once copies, copies over 1 MB. Limits: 50 snapshots, 500 copies each, 1 MB per copy, names 80 characters, unique.
+    Stored in the history file (migration 012: `snapshots`, `snapshot_items`), so it is encrypted exactly when the history is, with no
+    search index and no trigger. **Wiped** by the panic action and *Wipe everything now…* (`clearHistory(true, alsoSnapshots=true)`), not by
+    *Clear*. Not in backups, not synced, nothing in `--status`, counts only in the log. *Not done:* "paste one after another" (the paste queue,
+    item 4, is not on main; a queue is not a small, safe add-on), several selected copies (the popup has single selection), pictures,
+    a Settings page (the window opens from the popup). Tests: `tst_snapshots`, `tst_panic`.
 30. **DONE: Thumbnails of copied picture files, and files copied on GNOME.**
     - *Thumbnails* (`src/ui/FileThumbnails.{h,cpp}`): a file list with a picture (suffix Qt reads here, not SVG; the first one
       among the first 8 files) shows a thumbnail instead of the file icon, and a larger one (at most 128 px) on hover. Made

@@ -812,10 +812,8 @@ Stmt& Repository::likeStatement(int tokenCount)
     return ref;
 }
 
-std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int limit)
+void Repository::filterWhere(const SearchFilter& filter, QStringList& where, QStringList& binds)
 {
-    QStringList where;
-    QStringList binds; // text values, bound in order as ?1, ?2, ...
     const auto bind = [&binds](const QString& value) {
         binds << value;
         return QStringLiteral("?%1").arg(binds.size());
@@ -850,6 +848,13 @@ std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int li
         where << QStringLiteral(R"((c.tag_or_note LIKE %1 ESCAPE '\' OR c.group_name LIKE %1 ESCAPE '\' OR c.content LIKE %1 ESCAPE '\'
             OR EXISTS (SELECT 1 FROM clip_text t WHERE t.clip_id = c.id AND t.text LIKE %1 ESCAPE '\')))").arg(p);
     }
+}
+
+std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int limit)
+{
+    QStringList where;
+    QStringList binds; // text values, bound in order as ?1, ?2, ...
+    filterWhere(filter, where, binds);
     const QString sql = QStringLiteral("SELECT " CLIP_COLUMNS " FROM clips c WHERE %1 "
                                        "ORDER BY c.last_used DESC, c.id DESC LIMIT ?%2")
                             .arg(where.join(QLatin1String(" AND ")))
@@ -860,6 +865,27 @@ std::vector<Entry> Repository::searchFiltered(const SearchFilter& filter, int li
     }
     s.bindInt(int(binds.size()) + 1, limit);
     return collect(s);
+}
+
+std::vector<qint64> Repository::regexCandidateIds(const SearchFilter& filter)
+{
+    QStringList where;
+    QStringList binds;
+    filterWhere(filter, where, binds);
+    if (where.isEmpty()) {
+        where << QStringLiteral("1 = 1");
+    }
+    const QString sql = QStringLiteral("SELECT c.id FROM clips c WHERE %1 ORDER BY c.last_used DESC, c.id DESC")
+                            .arg(where.join(QLatin1String(" AND ")));
+    Stmt s(m_db, sql.toUtf8());
+    for (int i = 0; i < binds.size(); ++i) {
+        s.bindText(i + 1, binds[i]);
+    }
+    std::vector<qint64> ids;
+    while (s.step()) {
+        ids.push_back(s.colInt(0));
+    }
+    return ids;
 }
 
 std::vector<Entry> Repository::searchLike(const QStringList& tokens, int limit)
@@ -1249,6 +1275,25 @@ void Repository::remove(qint64 id)
     }
 }
 
+std::vector<Entry> Repository::similarPage(int offset, int limit, int maxChars)
+{
+    std::vector<Entry> out;
+    Stmt s(m_db, "SELECT id, substr(content, 1, ?3), tag_or_note, group_name, is_favorite, pin_position FROM clips "
+                 "WHERE kind = 'text' AND secret = 0 ORDER BY last_used DESC, id DESC LIMIT ?1 OFFSET ?2");
+    s.bindInt(1, limit).bindInt(2, offset).bindInt(3, maxChars);
+    while (s.step()) {
+        Entry e;
+        e.id = s.colInt(0);
+        e.content = s.colText(1);
+        e.note = s.colText(2);
+        e.group = s.colText(3);
+        e.favorite = s.colInt(4) != 0;
+        e.pinPosition = s.colIsNull(5) ? -1 : int(s.colInt(5));
+        out.push_back(std::move(e));
+    }
+    return out;
+}
+
 void Repository::setPasteOnce(qint64 id, bool once)
 {
     Stmt s(m_db, "UPDATE clips SET paste_once = ?2 WHERE id = ?1");
@@ -1411,7 +1456,7 @@ void Repository::placeGroupLast(const QString& path)
     s.bindText(1, normalized).bindInt(2, next).run();
 }
 
-qint64 Repository::clearHistory(bool everything)
+qint64 Repository::clearHistory(bool everything, bool alsoSnapshots)
 {
     qint64 deleted = 0;
     {
@@ -1427,6 +1472,10 @@ qint64 Repository::clearHistory(bool everything)
             m_db.exec("DELETE FROM auto_examples");
             m_autoModel.reset();
             ++m_autoForgets;
+        }
+        if (alsoSnapshots) {
+            m_db.exec("DELETE FROM snapshot_items");
+            m_db.exec("DELETE FROM snapshots");
         }
         // The search index only marks deleted rows; their text stays in its segments until
         // they are merged. Merge now, so nothing of the cleared copies is left in it.
@@ -1953,6 +2002,258 @@ void Repository::forgetAutoLearned()
     m_autoModel.reset();
     ++m_autoForgets;
     checkpoint(); // the log may still hold the forgotten rows
+}
+
+// --- Snapshots (roadmap 29)
+
+QString Repository::cleanSnapshotName(const QString& name, SnapshotStatus* status)
+{
+    const QString clean = name.simplified();
+    *status = clean.isEmpty() ? SnapshotStatus::NameEmpty
+        : clean.size() > kMaxSnapshotNameChars ? SnapshotStatus::NameTooLong
+                                               : SnapshotStatus::Done;
+    return clean;
+}
+
+qint64 Repository::countSnapshots()
+{
+    Stmt s(m_db, "SELECT count(*) FROM snapshots");
+    s.step();
+    return s.colInt(0);
+}
+
+std::vector<Repository::SnapshotInfo> Repository::snapshots()
+{
+    std::vector<SnapshotInfo> out;
+    Stmt s(m_db, "SELECT s.id, s.name, s.created_at, (SELECT count(*) FROM snapshot_items i WHERE i.snapshot_id = s.id) "
+                 "FROM snapshots s ORDER BY s.created_at DESC, s.id DESC");
+    while (s.step()) {
+        out.push_back({s.colInt(0), s.colText(1), int(s.colInt(3)), QDateTime::fromString(s.colText(2), Qt::ISODateWithMs)});
+    }
+    return out;
+}
+
+Repository::SnapshotResult Repository::storeInSnapshot(qint64 snapshotId, const std::vector<qint64>& ids)
+{
+    SnapshotResult result;
+    result.id = snapshotId;
+    int have = 0;
+    qint64 position = 0;
+    {
+        Stmt countStmt(m_db, "SELECT count(*), coalesce(max(position), -1) FROM snapshot_items WHERE snapshot_id = ?1");
+        countStmt.bindInt(1, snapshotId);
+        countStmt.step();
+        have = int(countStmt.colInt(0));
+        position = countStmt.colInt(1) + 1;
+    }
+    Stmt insert(m_db, "INSERT OR IGNORE INTO snapshot_items(snapshot_id, position, content, note, content_hash, copied_at) "
+                      "VALUES (?1, ?2, ?3, ?4, ?5, ?6)");
+    for (const qint64 id : ids) {
+        const std::optional<Entry> e = get(id);
+        if (!e) {
+            continue;
+        }
+        // A password copy is skipped by its flag (its row only holds a label; the sealed blob is not read here).
+        if (e->secret) {
+            ++result.skippedPasswords;
+        } else if (e->image) {
+            ++result.skippedPictures;
+        } else if (e->pasteOnce) {
+            ++result.skippedOnce;
+        } else if (e->content.isEmpty()) {
+            continue;
+        } else if (e->content.toUtf8().size() > kMaxSnapshotItemBytes) {
+            ++result.skippedTooLarge;
+        } else if (have >= kMaxSnapshotItems) {
+            ++result.skippedOverLimit;
+        } else {
+            insert.reset();
+            insert.bindInt(1, snapshotId).bindInt(2, position).bindText(3, e->content).bindTextOrNull(4, e->note);
+            insert.bindText(5, textHash(e->content)).bindText(6, e->lastUsed.toUTC().toString(Qt::ISODateWithMs));
+            insert.run();
+            if (m_db.changes() > 0) {
+                ++result.saved;
+                ++have;
+                ++position;
+            } else {
+                ++result.alreadyIn;
+            }
+        }
+    }
+    result.status = result.saved + result.alreadyIn > 0 ? SnapshotStatus::Done : SnapshotStatus::Nothing;
+    return result;
+}
+
+Repository::SnapshotResult Repository::createSnapshot(const QString& name, const std::vector<qint64>& ids)
+{
+    SnapshotResult result;
+    SnapshotStatus status;
+    const QString clean = cleanSnapshotName(name, &status);
+    if (status != SnapshotStatus::Done) {
+        result.status = status;
+        return result;
+    }
+    Transaction tx(m_db);
+    {
+        Stmt taken(m_db, "SELECT count(*) FROM snapshots WHERE name = ?1");
+        taken.bindText(1, clean);
+        taken.step();
+        if (taken.colInt(0) > 0) {
+            result.status = SnapshotStatus::NameTaken;
+            return result;
+        }
+    }
+    if (countSnapshots() >= kMaxSnapshots) {
+        result.status = SnapshotStatus::TooManySnapshots;
+        return result;
+    }
+    {
+        Stmt make(m_db, "INSERT INTO snapshots(name, created_at) VALUES (?1, ?2)");
+        make.bindText(1, clean).bindText(2, now()).run();
+    }
+    qint64 id = 0;
+    {
+        Stmt find(m_db, "SELECT id FROM snapshots WHERE name = ?1");
+        find.bindText(1, clean);
+        find.step();
+        id = find.colInt(0);
+    }
+    result = storeInSnapshot(id, ids);
+    if (result.status != SnapshotStatus::Done) {
+        return result; // nothing to keep: the transaction is rolled back, so no empty snapshot is left
+    }
+    tx.commit();
+    return result;
+}
+
+Repository::SnapshotResult Repository::createSnapshotFromGroup(const QString& name, const QString& group)
+{
+    const QString path = groups::normalize(group);
+    std::vector<qint64> ids;
+    if (!path.isEmpty()) {
+        for (const Entry& e : groupedEntries()) {
+            if (groups::isWithin(e.group, path)) {
+                ids.push_back(e.id);
+            }
+        }
+    }
+    return createSnapshot(name, ids);
+}
+
+Repository::SnapshotResult Repository::addToSnapshot(qint64 snapshotId, const std::vector<qint64>& ids)
+{
+    SnapshotResult result;
+    {
+        Stmt exists(m_db, "SELECT count(*) FROM snapshots WHERE id = ?1");
+        exists.bindInt(1, snapshotId);
+        exists.step();
+        if (exists.colInt(0) == 0) {
+            result.status = SnapshotStatus::Missing;
+            return result;
+        }
+    }
+    Transaction tx(m_db);
+    result = storeInSnapshot(snapshotId, ids);
+    tx.commit();
+    return result;
+}
+
+Repository::SnapshotStatus Repository::renameSnapshot(qint64 id, const QString& name)
+{
+    SnapshotStatus status;
+    const QString clean = cleanSnapshotName(name, &status);
+    if (status != SnapshotStatus::Done) {
+        return status;
+    }
+    {
+        Stmt taken(m_db, "SELECT count(*) FROM snapshots WHERE name = ?1 AND id <> ?2");
+        taken.bindText(1, clean).bindInt(2, id);
+        taken.step();
+        if (taken.colInt(0) > 0) {
+            return SnapshotStatus::NameTaken;
+        }
+    }
+    Stmt s(m_db, "UPDATE snapshots SET name = ?1 WHERE id = ?2");
+    s.bindText(1, clean).bindInt(2, id).run();
+    const bool renamed = m_db.changes() > 0;
+    if (renamed && !checkpoint()) { // the old name must not stay in the log
+        qWarning() << "snapshot renamed, but the write-ahead log is still in use; it is folded in later";
+    }
+    return renamed ? SnapshotStatus::Done : SnapshotStatus::Missing;
+}
+
+bool Repository::deleteSnapshot(qint64 id)
+{
+    bool found = false;
+    {
+        Transaction tx(m_db);
+        {
+            Stmt items(m_db, "DELETE FROM snapshot_items WHERE snapshot_id = ?1");
+            items.bindInt(1, id).run();
+        }
+        Stmt s(m_db, "DELETE FROM snapshots WHERE id = ?1");
+        s.bindInt(1, id).run();
+        found = m_db.changes() > 0;
+        tx.commit();
+    }
+    if (found && !checkpoint()) {
+        qWarning() << "snapshot deleted, but the write-ahead log is still in use; it is folded in later";
+    }
+    return found;
+}
+
+Repository::SnapshotRestoreResult Repository::restoreSnapshot(qint64 id, const SnapshotRestoreOptions& options)
+{
+    SnapshotRestoreResult result;
+    struct Item {
+        QString content;
+        QString note;
+        QString copiedAt;
+    };
+    std::vector<Item> items; // in saved order
+    {
+        Stmt name(m_db, "SELECT name FROM snapshots WHERE id = ?1");
+        name.bindInt(1, id);
+        if (!name.step()) {
+            return result;
+        }
+        // "/" would make sub-groups: the snapshot's name is one group.
+        result.group = groups::normalize(name.colText(0).replace(QLatin1Char('/'), QLatin1Char('-')));
+        Stmt s(m_db, "SELECT content, note, copied_at FROM snapshot_items WHERE snapshot_id = ?1 ORDER BY position");
+        s.bindInt(1, id);
+        while (s.step()) {
+            items.push_back({s.colText(0), s.colText(1), s.colText(2)});
+        }
+    }
+    // The last one put in is the top of the history, so the oldest goes first.
+    if (options.savedOrder) {
+        std::reverse(items.begin(), items.end());
+    } else {
+        std::stable_sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.copiedAt < b.copiedAt; });
+    }
+    const bool file = options.intoGroup && !result.group.isEmpty();
+    if (file) {
+        createGroup(result.group);
+    }
+    for (const Item& item : items) {
+        const IngestResult r = ingest(item.content);
+        if (r.inserted) {
+            ++result.added;
+            if (!item.note.isEmpty()) {
+                setNote(r.id, item.note);
+            }
+        } else {
+            ++result.alreadyThere;
+        }
+        if (file) {
+            const std::optional<Entry> current = get(r.id);
+            if (current && current->group.isEmpty() && setGroup(r.id, result.group) == Change::Done) {
+                ++result.filed;
+            }
+        }
+    }
+    result.ok = true;
+    return result;
 }
 
 } // namespace clipitto::db

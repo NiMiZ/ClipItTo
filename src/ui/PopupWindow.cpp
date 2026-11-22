@@ -1,4 +1,5 @@
 #include "PopupWindow.h"
+#include "PopupSimilar.h"
 
 #include "AppIcon.h"
 #include "Config.h"
@@ -12,6 +13,7 @@
 #include "PasteAs.h"
 #include "PlatformKeys.h"
 #include "SearchBar.h"
+#include "SnapshotsWindow.h"
 #include "SearchController.h"
 #include "TextTransform.h"
 #include "Theme.h"
@@ -192,8 +194,11 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     , m_dragHandle(new DragHandle(this))
     , m_view(new HistoryView(this))
     , m_footer(new QLabel(this))
+    , m_searchNote(new QLabel(this))
     , m_undoButton(new QToolButton(this))
     , m_undoTimer(new QTimer(this))
+    , m_similarTimer(new QTimer(this))
+    , m_keepOneButton(new QToolButton(this))
     , m_groupPrompt(askGroup)
     , m_editPrompt(defaultEditPrompt())
     , m_textPrompt(defaultTextPrompt())
@@ -257,6 +262,8 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     auto* clearMenu = new QMenu(m_clearButton);
     clearMenu->addAction(tr("Clear Recent (copies in groups stay in them)"), this, [this] { clearHistory(false); });
     clearMenu->addAction(tr("Clear everything, also in groups…"), this, [this] { clearHistory(true); });
+    clearMenu->addSeparator();
+    clearMenu->addAction(tr("Snapshots…"), this, [this] { openSnapshots(); });
     connect(clearMenu, &QMenu::aboutToShow, this, [this] { ++m_modalDepth; });
     connect(clearMenu, &QMenu::aboutToHide, this, [this] { --m_modalDepth; });
     m_clearButton->setMenu(clearMenu);
@@ -309,11 +316,31 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     inner->setContentsMargins(8, 8, 8, 6);
     inner->setSpacing(6);
     inner->addLayout(top);
+    m_searchNote->setFont(scaledFont(m_searchNote->font(), 0.85));
+    m_searchNote->setWordWrap(true);
+    m_searchNote->setEnabled(false); // dim, like the footer
+    m_searchNote->hide();
+    inner->addWidget(m_searchNote);
     inner->addWidget(m_view, 1);
     auto* footerRow = new QHBoxLayout;
     footerRow->setContentsMargins(0, 0, 0, 0);
     footerRow->addWidget(m_footer, 1);
+    footerRow->addWidget(m_keepOneButton);
     footerRow->addWidget(m_undoButton);
+    m_keepOneButton->setObjectName(QStringLiteral("keepOneButton"));
+    m_keepOneButton->setText(tr("Keep this one, delete the others"));
+    m_keepOneButton->setAutoRaise(true);
+    m_keepOneButton->setFocusPolicy(Qt::NoFocus);
+    m_keepOneButton->setVisible(false);
+    connect(m_keepOneButton, &QToolButton::clicked, this, [this] {
+        const Entry* current = entryFor(m_view->currentIndex());
+        if (current && m_similar) {
+            keepOnlyThis(current->id);
+        }
+    });
+    m_similarTimer->setSingleShot(true);
+    m_similarTimer->setInterval(0);
+    connect(m_similarTimer, &QTimer::timeout, this, &PopupWindow::similarStep);
     inner->addLayout(footerRow);
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -323,6 +350,9 @@ PopupWindow::PopupWindow(db::Repository& repo, const Config& config, QWidget* pa
     m_view->installEventFilter(this);
 
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString& text) {
+        if (m_similar) {
+            endSimilar(false); // typing leaves the "similar copies" view; the query below fills the list
+        }
         if (!m_search->isPasswordMode()) { // a password search shows only "p[] ****" there
             m_controller->setQuery(text);
         }
@@ -565,6 +595,7 @@ void PopupWindow::togglePopup(const QString& activationToken)
 void PopupWindow::setBusy(const QString& message)
 {
     m_busyMessage = message;
+    endSimilar(false);
     m_controller->setSuspended(isBusy()); // also drops a search still waiting for its delay
     m_search->setEnabled(!isBusy());
     m_view->setEnabled(!isBusy());
@@ -615,6 +646,7 @@ void PopupWindow::panicReset(bool hide, bool keepBusy)
         }
     }
     endUndo();
+    endSimilar(false);
     m_revealTimer->stop();
     m_model->clearRevealed();
     if (m_search->isPasswordMode()) {
@@ -874,13 +906,20 @@ void PopupWindow::showUndoNotice()
 {
     m_undoButton->setVisible(m_undo.has_value());
     if (m_undo) {
-        m_footer->setText(platformKeys(tr("Pasted and forgotten. Undo: Ctrl+Shift+Z")));
+        m_footer->setText(m_undoNotice.isEmpty() ? platformKeys(tr("Pasted and forgotten. Undo: Ctrl+Shift+Z"))
+                                                 : platformKeys(m_undoNotice));
     }
 }
 
 void PopupWindow::endUndo()
 {
     m_undoTimer->stop();
+    for (db::Repository::Removed& more : m_undoMore) {
+        more.entry.content.fill(QLatin1Char('\0'));
+        more.html.fill(QLatin1Char('\0'));
+    }
+    m_undoMore.clear();
+    m_undoNotice.clear();
     if (m_undo) { // the copy is gone for good: its bytes are overwritten before they are freed
         m_undo->entry.content.fill(QLatin1Char('\0'));
         m_undo->png.fill('\0');
@@ -898,13 +937,22 @@ bool PopupWindow::undoPasteOnce()
         return false;
     }
     const db::Repository::Removed removed = *m_undo; // a copy: endUndo wipes the original
+    const std::vector<db::Repository::Removed> more = m_undoMore;
     endUndo();
+    endSimilar(false); // the list is read again below
     qint64 id = 0;
     try {
         id = m_repo.restore(removed); // without the once mark
     } catch (const db::DbError& err) {
         qCWarning(lcPopup) << "paste once: undo failed:" << err.what();
         return false;
+    }
+    for (const db::Repository::Removed& other : more) { // each on its own: one failure does not lose the rest
+        try {
+            m_repo.restore(other);
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "undo: restoring one copy failed:" << err.what();
+        }
     }
     flash(tr("Put back."));
     refreshSelecting(Selection{Kind::Entry, id, {}}, /*focusList=*/false);
@@ -1316,10 +1364,18 @@ void PopupWindow::clearHistory(bool everything)
     {
         ModalGuard guard(m_modalDepth);
         const QString copies = count == 1 ? tr("1 copy") : tr("%1 copies").arg(count);
+        qint64 snapshots = 0;
+        try {
+            snapshots = m_repo.countSnapshots();
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "counting snapshots failed:" << err.what();
+        }
         confirmed = m_confirm(this, everything
                                         ? tr("Delete all %1, including starred, pinned and grouped ones?\n"
                                              "Your groups stay, empty. This can't be undone.")
                                               .arg(copies)
+                                            + (snapshots > 0 ? tr("\nYour snapshots stay too (\"Wipe everything now\" in Settings removes them).")
+                                                             : QString())
                                         : tr("Clear Recent (%1)?\n"
                                              "Starred, pinned and grouped copies stay in their groups; "
                                              "the others are deleted.")
@@ -1341,6 +1397,88 @@ void PopupWindow::clearHistory(bool everything)
     QPixmapCache::clear(); // no thumbnails of cleared pictures stay in memory
     refreshSelecting(std::nullopt, /*focusList=*/false);
     m_search->setFocus();
+}
+
+// --- Snapshots (roadmap 29)
+
+namespace {
+// A refusal or anything skipped needs reading: a box. A plain success is a line in the footer.
+bool snapshotNeedsBox(const db::Repository::SnapshotResult& r)
+{
+    return r.status != db::Repository::SnapshotStatus::Done || r.skippedTotal() > 0;
+}
+} // namespace
+
+void PopupWindow::saveCopyAsSnapshot(qint64 id)
+{
+    std::optional<QString> name;
+    {
+        ModalGuard guard(m_modalDepth);
+        name = m_textPrompt(this, tr("Save as snapshot"), tr("Name of the new snapshot:"), QString());
+    }
+    if (!name) {
+        return;
+    }
+    db::Repository::SnapshotResult result;
+    try {
+        result = m_repo.createSnapshot(*name, {id});
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "saving a snapshot failed:" << err.what();
+        return;
+    }
+    const QString text = snapshotSummary(result, name->simplified());
+    snapshotNeedsBox(result) ? showMessage(text) : flash(text);
+}
+
+void PopupWindow::addCopyToSnapshot(qint64 id, qint64 snapshotId)
+{
+    db::Repository::SnapshotResult result;
+    QString name;
+    try {
+        for (const auto& s : m_repo.snapshots()) {
+            if (s.id == snapshotId) {
+                name = s.name;
+            }
+        }
+        result = m_repo.addToSnapshot(snapshotId, {id});
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "adding to a snapshot failed:" << err.what();
+        return;
+    }
+    const QString text = snapshotSummary(result, name);
+    snapshotNeedsBox(result) ? showMessage(text) : flash(text);
+}
+
+void PopupWindow::saveGroupAsSnapshot(const QString& path)
+{
+    std::optional<QString> name;
+    {
+        ModalGuard guard(m_modalDepth);
+        name = m_textPrompt(this, tr("Save group as snapshot"), tr("Name of the new snapshot:"), groups::leaf(path));
+    }
+    if (!name) {
+        return;
+    }
+    db::Repository::SnapshotResult result;
+    try {
+        result = m_repo.createSnapshotFromGroup(*name, path);
+    } catch (const db::DbError& err) {
+        qCWarning(lcPopup) << "saving a snapshot failed:" << err.what();
+        return;
+    }
+    qCDebug(lcPopup) << "snapshot saved from a group:" << result.saved << "copies," << result.skippedTotal() << "skipped"; // counts only
+    const QString text = snapshotSummary(result, name->simplified());
+    snapshotNeedsBox(result) ? showMessage(text) : flash(text);
+}
+
+void PopupWindow::openSnapshots()
+{
+    if (isBusy()) {
+        return;
+    }
+    SnapshotsWindow window(m_repo, m_textPrompt, m_confirm, this);
+    connect(&window, &SnapshotsWindow::historyChanged, this, [this] { refreshSelecting(std::nullopt, /*focusList=*/false); });
+    execDialog(window);
 }
 
 void PopupWindow::remove(const QModelIndex& index, bool focusList)
@@ -1496,6 +1634,10 @@ void PopupWindow::refreshSelecting(std::optional<Selection> selection, bool focu
 
 void PopupWindow::onResultsUpdated()
 {
+    // Regex search: the calm hint under the search box (invalid pattern, or the scan was stopped).
+    const QString regexNote = m_controller->regexNote();
+    m_searchNote->setText(regexNote);
+    m_searchNote->setVisible(!regexNote.isEmpty());
     if (m_controller->isPasswordSearch()) {
         const bool canMatch = m_passwords && m_passwords->canMatch();
         m_view->setEmptyText(!m_controller->passwordSearchNeedsUnlock() ? tr("No password copies match.")
@@ -1505,7 +1647,8 @@ void PopupWindow::onResultsUpdated()
     } else {
         m_view->setEmptyText(m_controller->query().trimmed().isEmpty()
                                  ? tr("Nothing copied yet. Copied text will show up here.")
-                                 : tr("No matches"));
+                                 : m_controller->regexState() == SearchController::RegexState::Invalid ? regexNote
+                                                                                                     : tr("No matches"));
     }
 
     // Re-open what was open (the model rebuild collapsed everything).
@@ -1593,6 +1736,24 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     }
 
     menu->addAction(entry.note.isEmpty() ? tr("Add note…\tF2") : tr("Edit note…\tF2"), this, [this, id] { editNote(id); });
+    if (!entry.secret && !entry.image) { // a password copy or a picture is never offered to a snapshot
+        QMenu* snapshotMenu = menu->addMenu(tr("Save as snapshot"));
+        snapshotMenu->addAction(tr("New snapshot with this copy…"), this, [this, id] { saveCopyAsSnapshot(id); });
+        try {
+            const auto existingSnapshots = m_repo.snapshots();
+            if (!existingSnapshots.empty()) {
+                snapshotMenu->addSeparator();
+            }
+            for (const auto& snapshot : existingSnapshots) {
+                QString label = tr("Add to \"%1\"").arg(snapshot.name);
+                label.replace(QLatin1Char('&'), QStringLiteral("&&"));
+                const qint64 snapshotId = snapshot.id;
+                snapshotMenu->addAction(label, this, [this, id, snapshotId] { addCopyToSnapshot(id, snapshotId); });
+            }
+        } catch (const db::DbError& err) {
+            qCWarning(lcPopup) << "listing snapshots failed:" << err.what();
+        }
+    }
     if (entry.secret) { // text and pictures have it in their Paste as menu (Settings › Paste as); a password has no such menu
         QAction* once = menu->addAction(platformKeys(tr("Paste once\tCtrl+Shift+Enter")), this,
                                         [this, id] { togglePasteOnce(id); });
@@ -1613,6 +1774,10 @@ QMenu* PopupWindow::createContextMenu(const Entry& entry, QWidget* parent)
     } else {
         menu->addMenu(createPasteAsMenu(entry, menu));
         menu->addAction(tr("Show as QR code…"), this, [this, id] { showQrCode(id); });
+        menu->addAction(tr("Show similar copies"), this, [this, id] { showSimilar(id); });
+        if (m_similar) {
+            menu->addAction(tr("Keep this one, delete the others"), this, [this, id] { keepOnlyThis(id); });
+        }
         QAction* mark = menu->addAction(tr("Mark as password"), this, [this, id] { markAsPassword(id); });
         if (!m_passwords || !m_passwords->isSetUp()) {
             mark->setEnabled(false);
@@ -2174,6 +2339,7 @@ QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
     auto* menu = new QMenu(parent);
     if (path.isEmpty()) {
         menu->addAction(tr("New group…"), this, [this] { newGroup(QString()); });
+        menu->addAction(tr("Snapshots…"), this, [this] { openSnapshots(); });
         return menu;
     }
     menu->addAction(tr("New sub-group…"), this, [this, path] { newGroup(path); });
@@ -2181,6 +2347,9 @@ QMenu* PopupWindow::createGroupMenu(const QString& path, QWidget* parent)
     menu->addAction(tr("Move up (Alt+↑)"), this, [this, path] { moveGroup(path, -1); });
     menu->addAction(tr("Move down (Alt+↓)"), this, [this, path] { moveGroup(path, 1); });
     addOutOfRecentAction(menu, path);
+    menu->addSeparator();
+    menu->addAction(tr("Save group as snapshot…"), this, [this, path] { saveGroupAsSnapshot(path); });
+    menu->addAction(tr("Snapshots…"), this, [this] { openSnapshots(); });
     menu->addSeparator();
     menu->addAction(tr("Delete group"), this, [this, path] { deleteGroup(path); });
     return menu;
@@ -2209,6 +2378,10 @@ void PopupWindow::showContextMenu(const QModelIndex& index, const QPoint& global
 bool PopupWindow::eventFilter(QObject* watched, QEvent* event)
 {
     if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
+        if (m_similar) { // the first Esc leaves the "similar copies" view, the next one closes the popup
+            endSimilar(true);
+            return true;
+        }
         hidePopup();
         return true;
     }
@@ -2294,6 +2467,7 @@ void PopupWindow::hideEvent(QHideEvent* event)
     m_revealTimer->stop();
     m_model->clearRevealed();
     m_search->leavePasswordMode();
+    endSimilar(false);
     m_systemMove = false;
     m_moveEnd->stop();
     if (QGuiApplication::platformName() != QLatin1String("wayland") && m_lastPosition != pos()) {

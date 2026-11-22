@@ -87,6 +87,21 @@ and goes nowhere else. About 2,900 characters fit at most; a longer copy says so
 (their text is never put on the screen) or pictures. A code is on the screen like any text: a screenshot or screen
 sharing can capture it, so close it when done (Esc), especially for Wi-Fi details.
 
+**Similar copies.** Right-click a text copy › *Show similar copies* lists only the copies that are the same text or
+very close to it. Two texts are close when, after trimming, turning every run of spaces, tabs and line breaks (any
+kind) into one space and ignoring upper and lower case, they are equal, or their lengths differ by at most 10% and at most
+10% of the longer text would have to be changed to make them equal. So "Hello  World\r\n" and "hello world" are the
+same, and a sentence with a word swapped or a few characters added is close. Pictures and password copies are never
+compared (and the menu entry is not offered for them). To stay quick the scan reads the newest 5,000 text copies, looks at
+the first 5,000 characters of each, and stops after 200 ms of work; it runs in small slices, so the popup stays usable,
+and if time runs out the list shows what was found so far with a note saying how many copies were checked. Esc, typing
+in the search box or closing the popup leaves the view. Nothing is stored or logged but counts.
+In that view, the button at the bottom (or right-click › *Keep this one, delete the others*) keeps the copy you selected
+and deletes the other copies shown, after asking: "Delete N similar copies and keep this one?". Pinned, starred,
+grouped and noted copies are never deleted; they are skipped and the question and the result say how many. *Undo*
+(the button, or Ctrl+Shift+Z, for 10 seconds) puts all of them back.
+Deleting here is the same as the ordinary Delete: the deleted texts can stay in the database's free pages until its next cleanup.
+
 **Search inside pictures.** ClipItTo reads the text in each copied picture in the background (on your computer,
 with the same recognition as *Paste text from picture*) and keeps it with the picture, so typing a word finds the
 screenshot that shows it, together with `img:`. Pictures copied before are read a few seconds after the start.
@@ -113,10 +128,43 @@ submenu; the result opens in a window and is pasted only if you choose *Paste* t
 Example: `star: budget since:1w`. Words and filters are all required. Anything else with a colon (a URL,
 `foo:bar`) is searched as ordinary text.
 
+**Regular expressions.** `re:` followed by a pattern searches with a regular expression (Qt / PCRE syntax), for example
+`re:^https?://.*\.pdf$` or `group:work re:invoice\s+\d{4}`. It combines with the filters and words above, which narrow the copies
+the pattern is tried on, in the same way. Details:
+
+- Like the filters, the pattern ends at the first space: write `\s` or `[ ]` for a space, or put the pattern in double quotes:
+  `re:"error \d+ at"`. Only one `re:` per search. `re:` alone, or `Re:` in a word, is ordinary text.
+- Not case sensitive. Start the pattern with `(?-i)` to match case. `^` and `$` mean the start and the end of the copy;
+  `(?m)` makes them mean each line.
+- The pattern may have 200 characters at most. Only the first 20,000 characters of each copy are tried (the rest is ignored).
+- The matching can never freeze the popup: it runs in small steps and every key you type cancels it. It stops for good after
+  0.3 s and then shows what it found so far with the note "stopped after 0.3 s: simplify the pattern" (a pattern such as
+  `(a+)+$` that backtracks forever on a long copy). On a very long history a harmless pattern can also reach 0.3 s; the note then
+  says how many of the newest copies were searched.
+- A pattern that is not complete or not valid (for example `re:(` while you are typing) shows a note, "not a valid pattern: ...",
+  instead of results. Patterns starting with `(*` are not supported.
+- Results are listed newest first, like every other search. Matches are not highlighted.
+- Password copies are never searched inside: only their note and group can match (like an ordinary search). Use `p[]` to search
+  passwords. A picture is matched by its label ("Image 1920×1080"), note and group, not by the text read from it.
+- Nothing about the pattern or the copies it matched is written to the log, only that a regex search ran and whether it
+  was ok, invalid or timed out.
+
 **Groups** sit collapsed right under the search box. Open them to browse your groups as a
 tree: each group lists its sub-groups, then its copies. Put a copy in a group with `Ctrl+G`
 and a path such as `Work/Servers` (missing groups are created). Groups appear in the order
 you give them (`Alt+↑/↓`, or Move up/down in Settings); new ones go last.
+
+**Snapshots.** A snapshot is a named set of text copies ("project X") that you can put back into the history later. Right-click a
+group › *Save group as snapshot…* (the group and its sub-groups), or right-click a copy › *Save as snapshot* › *New snapshot with this
+copy…* or *Add to "name"*. *Snapshots…* (in the *Clear* button's menu, and in the menu of a group or of the Groups row) lists them with
+their number of copies: *Restore*, *Rename…*, *Delete…* (asks first). Restoring puts the copies back at the top of the history, the one
+copied last on top (*as copied*) or the first of the snapshot on top (*as saved*); a copy that is in the history already is not doubled,
+only moved up. Tick *Put them in a group named after the snapshot* to file them (copies already in another group stay there). A
+snapshot keeps its own copies, so it stays when the history is pruned or cleared (also *Clear everything*); the panic action and *Wipe
+everything now…* remove snapshots with the rest. **Passwords, pictures and Paste once copies are never put in a snapshot**; the message
+after saving says how many were skipped. Limits: 50 snapshots, 500 copies each, 1 MB per copy. If the history is encrypted, so are the
+snapshots (they are inside the same file). Snapshots are **not** in a backup and are not synced. There is no "paste one after another"
+yet (it needs the paste queue).
 
 **Auto grouping** (Settings › *Groups*, off by default; `auto_group`). ClipItTo learns from the copies you put in
 your groups, and files a *new* copy in the group it matches best, with a small **auto** tag on its group chip. It
@@ -435,6 +483,8 @@ have not already chosen *Later* for that version; the choice is kept in a small 
   date (Y)*, or *Could not check for updates. Try again later.* ClipItTo never downloads, installs or runs anything itself.
 - The log says only that a check ran and how it ended (update available, up to date, failed).
 - In the config file: `update_check_auto = false` (the default).
+- In the Microsoft Store version (an MSIX package, see [microsoft-store.md](microsoft-store.md)) there is no update check at all:
+  the Store updates the app, the menu item and the Settings rows are not shown, and nothing connects to the internet.
 
 ## When something does not work: Check this installation
 

@@ -5,6 +5,7 @@ add_library(clipitto_ui STATIC
     HistoryModel.cpp HistoryModel.h
     HistoryView.cpp HistoryView.h
     PopupWindow.cpp PopupWindow.h
+    PopupSimilar.cpp PopupSimilar.h
     PhoneWindow.cpp PhoneWindow.h
     QrImage.cpp QrImage.h
     Prompts.cpp Prompts.h
@@ -12,6 +13,7 @@ add_library(clipitto_ui STATIC
     SearchController.cpp SearchController.h
     SelfTestWindow.cpp SelfTestWindow.h
     SettingsDialog.cpp SettingsDialog.h
+    SnapshotsWindow.cpp SnapshotsWindow.h
     Theme.cpp Theme.h
     UpdateController.cpp UpdateController.h
     MacApp.h PlatformKeys.h
