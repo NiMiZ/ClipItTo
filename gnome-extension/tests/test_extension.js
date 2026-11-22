@@ -6,7 +6,7 @@ import {CLIPBOARD, PRIMARY, makeWindow, resetState, state} from './stubs/state.j
 import GLib from 'gi://GLib';
 import Gio from './stubs/Gio.js';
 
-import ClipItToExtension, {hasPlainText, hasText, imageType, isPopupMain, isPopupWindow, isSensitive, popupPlacement, sourceAppName, focusedAppIds} from './extension.js';
+import ClipItToExtension, {filesMimeTypes, filesType, hasPlainText, hasText, imageType, isPopupMain, isPopupWindow, isSensitive, popupPlacement, sourceAppName, focusedAppIds} from './extension.js';
 
 const NO_AUTO_START = 1;
 let passed = 0;
@@ -415,6 +415,41 @@ test('Settings opens centered over the popup, on its monitor', () => {
     const toplevel = popup();
     state.display.emit('window-created', toplevel);
     assertEq(toplevel.handlerCount(), 0);
+    ext.disable();
+});
+
+test('files copied in a file manager are sent as their list, labelled', () => {
+    const ext = enabled();
+    const nautilus = ['x-special/gnome-copied-files', 'text/uri-list', 'text/plain;charset=utf-8'];
+    const list = 'copy\nfile:///home/me/a%20b.png';
+    state.mimeData['x-special/gnome-copied-files'] = {[CLIPBOARD]: new TextEncoder().encode(list)};
+    state.selection.setOwner(CLIPBOARD, nautilus, 'a b.png');
+    assertEq(state.dbusCalls.length, 1, 'calls');
+    assertEq(state.dbusCalls[0].method, 'Ingest');
+    assertEq(state.dbusCalls[0].params.deepUnpack(), [list, [...nautilus, 'x-clipitto-files:gnome']]);
+    assertEq(state.dbusCalls[0].flags, NO_AUTO_START, 'flags');
+
+    // Only a uri-list, no plain text: that is a file list too. With plain text it is an ordinary (text) copy.
+    state.mimeData = {'text/uri-list': {[CLIPBOARD]: new TextEncoder().encode('file:///tmp/x.txt\r\n')}};
+    state.selection.setOwner(CLIPBOARD, ['text/uri-list'], null);
+    assertEq(state.dbusCalls[1].params.deepUnpack(), ['file:///tmp/x.txt\r\n', ['text/uri-list', 'x-clipitto-files:uri-list']]);
+    state.selection.setOwner(CLIPBOARD, ['text/uri-list', ...TEXT], 'https://example.org');
+    assertEq(state.dbusCalls[2].params.deepUnpack(), ['https://example.org', ['text/uri-list', ...TEXT]]);
+
+    // An app cannot label its own copy as files; the primary selection is never read as files.
+    assertEq(filesMimeTypes(['x-clipitto-files:gnome', 'x-special/gnome-copied-files'], 'x-special/gnome-copied-files'),
+        ['x-special/gnome-copied-files', 'x-clipitto-files:gnome']);
+    assertEq(filesType(['text/uri-list', 'UTF8_STRING']), null);
+    assertEq(filesType(['x-special/gnome-copied-files']), 'x-special/gnome-copied-files');
+    ext.disable();
+});
+
+test('a marked copy that also offers files is never read as files', () => {
+    const ext = enabled();
+    state.mimeData['x-special/gnome-copied-files'] = {[CLIPBOARD]: new TextEncoder().encode('copy\nfile:///a/b')};
+    state.selection.setOwner(CLIPBOARD, ['x-special/gnome-copied-files', 'x-kde-passwordManagerHint'], null);
+    assertEq(state.contentReads, [], 'content reads');
+    assertEq(state.dbusCalls.length, 0, 'calls');
     ext.disable();
 });
 

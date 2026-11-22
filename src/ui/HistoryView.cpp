@@ -1,5 +1,6 @@
 #include "HistoryView.h"
 
+#include "FileThumbnails.h"
 #include "HistoryModel.h"
 
 #include <QGuiApplication>
@@ -182,8 +183,17 @@ bool HistoryView::viewportEvent(QEvent* event)
         auto* help = static_cast<QHelpEvent*>(event);
         const QModelIndex index = indexAt(help->pos());
         if (!index.data(HistoryModel::ThumbnailRole).value<QPixmap>().isNull()) {
-            showImagePreview(index, help->globalPos());
+            showImagePreview(index, help->globalPos(), index.data(HistoryModel::ThumbnailRole).value<QPixmap>());
             return true;
+        }
+        // A picture file in a copied file list: its thumbnail, once the row has asked for it (and it is made).
+        if (m_thumbnails) {
+            const QStringList files = index.data(HistoryModel::FilesRole).toStringList();
+            const QPixmap picture = files.isEmpty() ? QPixmap() : m_thumbnails->thumbnail(FileThumbnails::pictureAmong(files));
+            if (!picture.isNull()) {
+                showImagePreview(index, help->globalPos(), picture);
+                return true;
+            }
         }
         hideImagePreview();
         break;
@@ -210,7 +220,7 @@ void HistoryView::hideEvent(QHideEvent* event)
     QTreeView::hideEvent(event);
 }
 
-void HistoryView::showImagePreview(const QModelIndex& index, const QPoint& globalPos)
+void HistoryView::showImagePreview(const QModelIndex& index, const QPoint& globalPos, const QPixmap& pixmap)
 {
     if (!m_preview) {
         auto* label = new QLabel(this, Qt::ToolTip | Qt::FramelessWindowHint);
@@ -220,7 +230,7 @@ void HistoryView::showImagePreview(const QModelIndex& index, const QPoint& globa
         m_preview = label;
     }
     auto* label = static_cast<QLabel*>(m_preview);
-    label->setPixmap(index.data(HistoryModel::ThumbnailRole).value<QPixmap>());
+    label->setPixmap(pixmap);
     label->adjustSize();
     // Below and right of the pointer, kept on its screen.
     QPoint pos = globalPos + QPoint(16, 16);

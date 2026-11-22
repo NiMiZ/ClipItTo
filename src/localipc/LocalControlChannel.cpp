@@ -1,5 +1,7 @@
 #include "LocalControlChannel.h"
 
+#include "Previews.h"
+
 #include "ClipFilter.h"
 
 #include <QJsonObject>
@@ -110,7 +112,8 @@ Reply LocalControlChannel::dispatch(const Request& request)
         if (ClipFilter::isSensitive(mimeTypes)) {
             return {false, {}, QStringLiteral("marked copies are not accepted")};
         }
-        emit ingestRequested(firstArg, mimeTypes);
+        // The label for a copied file list is the GNOME extension's alone.
+        emit ingestRequested(firstArg, preview::withoutFilesMimeType(mimeTypes));
     } else if (m == QLatin1String("ReloadConfig")) {
         emit reloadRequested();
     } else if (m == QLatin1String("SyncNow")) {

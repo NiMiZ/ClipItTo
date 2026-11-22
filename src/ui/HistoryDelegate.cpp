@@ -1,5 +1,6 @@
 #include "HistoryDelegate.h"
 
+#include "FileThumbnails.h"
 #include "HistoryModel.h"
 #include "Previews.h"
 
@@ -358,7 +359,24 @@ void HistoryDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
     }
     const QStringList files = index.data(HistoryModel::FilesRole).toStringList();
     if (!files.isEmpty()) {
-        drawFile(painter, QRectF(content.left(), content.top(), fm.height(), fm.height()), text);
+        // A picture file shows its thumbnail (made in the background; the icon until it is there, and when there is none).
+        const QPixmap pictureFile = m_thumbnails ? m_thumbnails->thumbnail(FileThumbnails::pictureAmong(files)) : QPixmap();
+        if (!pictureFile.isNull()) {
+            const QSize fitted = pictureFile.size().scaled(QSize(fm.height(), fm.height()), Qt::KeepAspectRatio);
+            const QRect box(content.left() + (fm.height() - fitted.width()) / 2,
+                            content.top() + (fm.height() - fitted.height()) / 2, fitted.width(), fitted.height());
+            painter->save();
+            painter->setRenderHint(QPainter::SmoothPixmapTransform);
+            painter->drawPixmap(box, pictureFile);
+            QColor frame = text;
+            frame.setAlphaF(0.25);
+            painter->setPen(frame);
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRect(QRectF(box).adjusted(0.5, 0.5, -0.5, -0.5));
+            painter->restore();
+        } else {
+            drawFile(painter, QRectF(content.left(), content.top(), fm.height(), fm.height()), text);
+        }
         content.setLeft(content.left() + fm.height() + kGap / 2);
     }
 

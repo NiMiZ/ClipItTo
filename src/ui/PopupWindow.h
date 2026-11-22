@@ -32,6 +32,7 @@ class Repository;
 
 namespace clipitto::ui {
 
+class FileThumbnails;
 class HistoryView;
 class SearchBar;
 class SearchController;
@@ -276,6 +277,7 @@ private:
     QToolButton* m_clearButton;
     QWidget* m_dragHandle; // the app name: drag it to move the popup
     HistoryView* m_view;
+    FileThumbnails* m_fileThumbnails = nullptr; // thumbnails of picture files in file lists (child)
     QLabel* m_footer;
     QToolButton* m_undoButton; // "Undo" after a Paste once removal, for kUndoMs
     QTimer* m_undoTimer;
