@@ -169,12 +169,15 @@ private slots:
             paths << m_dir.filePath(QStringLiteral("p%1.png").arg(i));
             QVERIFY(makeImage(paths.last(), 16, 16, "PNG"));
         }
+        // One at a time: the pool has two threads, so thumbnails asked for together can arrive in any order, and the
+        // order they arrive in is the order of the list.
         for (int i = 0; i < 3; ++i) {
             thumbs.thumbnail(paths.at(i));
+            QTRY_COMPARE(thumbs.cachedCount(), i + 1);
         }
-        QTRY_COMPARE(thumbs.cachedCount(), 3);
         QVERIFY(!thumbs.thumbnail(paths.at(0)).isNull()); // 0 is now the most recently used
-        thumbs.thumbnail(paths.at(3)); // evicts 1, the least recently used
+        thumbs.thumbnail(paths.at(3)); // evicts 1, the least recently used, once it has arrived
+        QTRY_VERIFY(!thumbs.thumbnail(paths.at(3)).isNull());
         QTRY_COMPARE(thumbs.outcomeCount(Outcome::Ok), 4);
         QCOMPARE(thumbs.cachedCount(), 3);
         QVERIFY(!thumbs.thumbnail(paths.at(0)).isNull());
