@@ -161,7 +161,9 @@ difference: the update-check sentences do not apply to it (the Store build never
 > token, and stops after 5 minutes (30 at most). It is never on at program start. Without using it the app opens no network port.
 > The packaged app has no internet access and no telemetry: there is no update check in this build. Clipboard contents are stored
 > only in local files of the user's account and are never logged or sent anywhere. Copies that password managers mark as secret
-> are skipped, or stored encrypted when the user sets a master password. To test: start the app (tray icon), copy some text, press
+> are skipped, or stored encrypted when the user sets a master password. **Donations:** Settings > "Support ClipItTo..." opens the
+> developer's PayPal.me page in the user's web browser. It is an optional voluntary donation to the open-source developer. Nothing in
+> the app is sold, locked or unlocked by it, no payment is made inside the app, and the app handles no payment data. To test: start the app (tray icon), copy some text, press
 > Ctrl+Alt+V, pick the item. Source code: https://github.com/NiMiZ/ClipItTo
 
 ## Store policy risks found
@@ -188,7 +190,7 @@ fetch them from here and list the risks from what ClipItTo does, not from a poli
    collects install and crash data for the publisher in Partner Center; do not claim "no data is collected about this app anywhere".
 7. **Donation button.** *Settings > Support ClipItTo...* opens a PayPal page in the browser. Store policy limits how apps ask for money
    (digital goods and in-app payments must use Microsoft's commerce; links that send users elsewhere to pay are a common rejection reason).
-   A donation to the developer is a gray zone. **Not changed here**; if certification objects, hide the button when
+   A donation to the developer is a gray zone. **Kept (owner decision, 2026-11-25), and declared in the certification notes above**; if certification objects, hide the button when
    `packaging::isPackaged()` is true (the same one-line mechanism as the update rows).
 8. **GPL-3.0 and the Store's terms.** The Store's distribution terms add conditions (usage rules, the Standard Application License
    Terms) that GPL-3.0 §10 ("no further restrictions") can collide with for third-party copyright holders; as the sole
